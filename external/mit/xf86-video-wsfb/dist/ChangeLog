@@ -1,0 +1,618 @@
+commit 4a3eb3bf6b1fc4b1452818041cd7e18959b79d49
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 16:10:15 2012 +0100
+
+    xf86-video-wsfb 0.4.0
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 79d47687953367c911b8e6ce692373417ae9f8ed
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 16:07:55 2012 +0100
+
+    Constify argument of wsfb_open()
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 78bb956de171c089e934457e9494858c804b1b86
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 16:05:11 2012 +0100
+
+    Add missing headers for ioctl() and getpagesize() prototypes
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 2ad009debfd9144269dd77c60283bd740efd6c7b
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:42:17 2012 +0100
+
+    Bump copyright year.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 547d37a2736e19e1000a5b9fbd90473d5d465967
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:33:45 2012 +0100
+
+    Fix white space
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit e77776cceb00a71abacfeddc42634fd6c91b8961
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:33:13 2012 +0100
+
+    Remove RCS Ids.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 47a5c076884f319d155cc952d44a7390a8d665c1
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:20:12 2012 +0100
+
+    Reference xorg.conf(5) in comments an manual pages.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 1ced10fbe2d6f30ea9c03b131e31e31965cebeda
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:19:38 2012 +0100
+
+    man: document "rotate" option.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 1d7997ca895889afcf25c6a576a88a7cd6f8ff83
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:19:10 2012 +0100
+
+    man: update the list of OpenBSD architectures using this driver.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 10e14a318c4802f844f780ca79153498775ef54b
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:18:42 2012 +0100
+
+    White space fix
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit fa39e25af3243b939f3df049f0d63b02449df585
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:08:55 2012 +0100
+
+    Replace deprecated xalloc/xfree with malloc/free.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit a0408855877efbaead018d08a0c464797622f15a
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 15:06:31 2012 +0100
+
+    unifdef XFree86LOADER, this isn't optional anymore.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 48671091bbb1e833ab47bde6635febffa42c44bd
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Jan 1 12:38:17 2012 +0100
+
+    Sync OpenBSD CVS rcs id.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit fc031767214e6c0939334341ced0c439165d0ad6
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Aug 29 14:26:28 2010 +0200
+
+    Do not call shawdowRemove() if shadow fb was disabled.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 06e673f8db5a003e4a0fdf8c22abaef8f2bf74c9
+Author: Miod Vallat <miod@online.fr>
+Date:   Sun Aug 29 14:25:13 2010 +0200
+
+    Correctly handle off-screen memory in 1bpp and 4bpp modes.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit c6878a3e51a408269a70d73f9badd9da9b1f8fe4
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Aug 29 14:05:08 2010 +0200
+
+    Fix allocation size of th shadow framebuffer.Use byes, not bits.
+    
+    Since the shadowfb is only used for bitsPerPixel >= 8, bitsPerPixel/8
+    is always the correct amount of bytes.
+    
+    Acked-by: Miod Vallat <miod@online.fr>
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 9cfd9c25098604924dfddd111c54dafb059794c1
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Aug 29 13:59:30 2010 +0200
+
+    replace XF86Config -> xorg.conf in a comment.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 87232d36fc06adc64e034d5fb38eb43cc1ac7b39
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 21 16:49:04 2010 -0400
+
+    config: add comments for main statements
+
+commit 63020e786e81fe8da25deb0ffa9516d32a05cdb8
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 21 16:07:00 2010 -0400
+
+    config: replace deprecated use of AC_OUTPUT with AC_CONFIG_FILES
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 8e6006c72b747f5a38cae7862d3f2b373beeec7e
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 21 14:37:42 2010 -0400
+
+    config: replace deprecated AC_HELP_STRING with AS_HELP_STRING
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 55fe28efa889fdaf66bae48d41e5657ae5005a99
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 21 14:05:23 2010 -0400
+
+    config: replace deprecated AM_CONFIG_HEADER with AC_CONFIG_HEADERS
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 96f25ab0ce60787475f3420ae3253e3762f1b6e3
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 21 09:27:42 2010 -0400
+
+    config: complete AC_INIT m4 quoting
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 109fa3c2cf8452623b77b3e6b6369519df3bb403
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Jul 20 21:44:58 2010 -0400
+
+    config: remove unrequired AC_SUBST([XORG_CFLAGS])
+    
+    This macro is called by PKG_CHECK_MODULES
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit c000c078ee1e5cdda301798331952c69bf4a4cfb
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Jul 20 20:24:42 2010 -0400
+
+    config: remove unrequired AC_HEADER_STDC
+    
+    Autoconf says:
+    "This macro is obsolescent, as current systems have conforming
+    header files. New programs need not use this macro".
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 39110592366d49d730d8adf686f4826c51421337
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Jul 20 19:41:31 2010 -0400
+
+    config: remove AC_PROG_CC as it overrides AC_PROG_C_C99
+    
+    XORG_STRICT_OPTION from XORG_DEFAULT_OPTIONS calls
+    AC_PROG_C_C99. This sets gcc with -std=gnu99.
+    If AC_PROG_CC macro is called afterwards, it resets CC to gcc.
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 7401695110f880beeb202df2997d9863e197739d
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Jul 20 18:45:19 2010 -0400
+
+    config: update AC_PREREQ statement to 2.60
+    
+    Unrelated to the previous patches, the new value simply reflects
+    the reality that the minimum level for autoconf to configure
+    all x.org modules is 2.60 dated June 2006.
+    
+    ftp://ftp.gnu.org/gnu/autoconf/autoconf-2.60.tar.gz
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit 60ca72ea815dae75619d41a2a47c07f7eff76bd5
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Jul 20 16:15:30 2010 -0400
+
+    config: upgrade to util-macros 1.8 for additional man page support
+    
+    Use MAN_SUBST now supplied in XORG_MANPAGE_SECTIONS
+    The value of MAN_SUBST is the same for all X.Org packages.
+
+commit 083c64abda1244d5f2f9d704e353fa6766fc8300
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Jan 15 15:51:11 2010 -0800
+
+    Update Sun license notices to current X.Org standard form
+    
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@sun.com>
+
+commit 0f97b1b9daac4892727968bce7b92da740690300
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Tue Dec 15 22:01:03 2009 -0500
+
+    configure.ac: remove unused sdkdir=$(pkg-config...) statement
+    
+    The sdkdir variable isn't use, so remove the statement.
+    
+    Acked-by: Dan Nicholson <dbn.lists@gmail.com>
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+
+commit c62ad2beb96e5e0c0fb0bda235b7716b20758cce
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Mon Nov 23 09:25:06 2009 -0500
+
+    Makefile.am: add ChangeLog and INSTALL on MAINTAINERCLEANFILES
+    
+    Now that the INSTALL file is generated.
+    Allows running make maintainer-clean.
+
+commit bbb53cc05093c499bf560132c93a25c783661639
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Oct 28 14:41:41 2009 -0400
+
+    INSTALL, NEWS, README or AUTHORS files are missing/incorrect #24206
+    
+    Automake 'foreign' option is specified in configure.ac.
+    Remove from Makefile.am
+
+commit 2f60c9d03b7dc3556991ec7c7ab7f3e62f5eeb54
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Oct 28 14:09:10 2009 -0400
+
+    INSTALL, NEWS, README or AUTHORS files are missing/incorrect #24206
+    
+    Add missing INSTALL file. Use standard GNU file on building tarball
+    README may have been updated
+    Remove AUTHORS file as it is empty and no content available yet.
+    Remove NEWS file as it is empty and no content available yet.
+
+commit 7fa8c7184057302a3efc692f0072226b1cee50fa
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Mon Oct 26 12:54:23 2009 -0400
+
+    Several driver modules do not have a ChangeLog target in Makefile.am #23814
+    
+    The git generated ChangeLog replaces the hand written one.
+    Update configure.ac to xorg-macros level 1.3.
+    Use XORG_DEFAULT_OPTIONS which replaces four XORG_* macros
+    Update Makefile.am to add ChangeLog target if missing
+    Remove ChangeLog from EXTRA_DIST or *CLEAN variables
+    This is a pre-req for the INSTALL_CMD
+
+commit b3c841f663dda87933b924479b02d18bc3c2b218
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Thu Oct 22 12:34:18 2009 -0400
+
+    .gitignore: use common defaults with custom section # 24239
+    
+    Using common defaults will reduce errors and maintenance.
+    Only the very small or inexistent custom section need periodic maintenance
+    when the structure of the component changes. Do not edit defaults.
+
+commit 3bde5ad99c5bd99a9a4729748f27ef92bb3ee8b3
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 13 22:43:42 2009 +0200
+
+    wsfb: do not forget tiny.
+
+commit ae67e097dbf7d496e67c5a3b8b357fc641bc972d
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 13 22:39:54 2009 +0200
+
+    wsfb: fix typo in previous bump
+
+commit f056af63d7fdd7f5ba32558bb3dde7b149c04e4d
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 13 22:30:03 2009 +0200
+
+    wsfb: bump for release 0.3
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 872c691cbad253e4670a98349395b650677269cd
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 13 22:21:49 2009 +0200
+
+    Call shadowRemove() in wsfbCloseScreen().
+    
+    This fixes a free memory dereference on exit. Hint by Daniel Stone.
+    Thanks.
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit ffe84aa5f99cb95467c86fc914724496cab53952
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 13 22:21:03 2009 +0200
+
+    wsfb: update for resources/RAC API removal
+    
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit 23ca8d8f9bc90ced9102c51ca588dab16956293b
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Mon Sep 7 11:12:13 2009 -0400
+
+    xf86-video-wsfb: Remove unused .cvsignore file #23776
+    
+    Signed-off-by: Peter Hutterer <peter.hutterer@who-t.net>
+
+commit 15b83219b51deb2f87f4d2be4a8ac14f15ffbde2
+Author: Gaetan Nadon <memsize@videotron.ca>
+Date:   Wed Jul 8 09:58:43 2009 -0400
+
+    wsfb: use XORG_CHANGELOG macro to create ChangeLog. #22611
+    
+    Build break: Makefile.am: command not found: git-log
+    Adding the macro in configure.ac and use it in Makefile.am
+    Refer to: https://bugs.freedesktop.org/show_bug.cgi?id=22611
+    
+    Signed-off-by: Gaetan Nadon <memsize@videotron.ca>
+    Signed-off-by: Peter Hutterer <peter.hutterer@who-t.net>
+
+commit ad757e0c29f7e826f48b60df2d5b8b436d243449
+Author: Jasper Lievisse Adriaanse <jasper@openbsd.org>
+Date:   Mon Jun 1 14:34:39 2009 -0600
+
+    add some missing TRACE_EXITs, tweak and clean up comments.
+    Signed-off-by: Matthieu Herrb <matthieu.herrb@laas.fr>
+
+commit bce9fd21483fbeddc84672a1ef01fdd9b58c88ed
+Author: Adam Jackson <ajax@redhat.com>
+Date:   Thu May 28 15:28:20 2009 -0400
+
+    Remove useless loader symbol lists.
+
+commit bb53781f1e274dd9adef4038bd1b06bea2d55c35
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Jan 30 21:07:23 2009 -0800
+
+    Add README with pointers to mailing list, bugzilla & git repos
+
+commit f5540f76b1c756521b541601902b20e1fa118a87
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Tue Jan 13 15:04:12 2009 -0800
+
+    Don't call xf1bpp or xf4bpp if they're not present (xorg-server-1.6 & later)
+
+commit 7a654c551ae470f63052fe58fd13d961090cc468
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Jan 9 16:39:31 2009 -0800
+
+    Remove xorgconfig & xorgcfg from See Also list in man page
+
+commit 5f5df6a1e170317d323b7e1ea45f7560b4067ad3
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Tue Sep 30 00:09:30 2008 +0200
+
+    Remove old libc wrapper stuff. now works with xserver 1.5.
+
+commit 42c0fcc9e255619d03b705a4da1e0978075b79e2
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Mar 9 00:10:59 2008 +0100
+
+    Makefile.am: nuke RCS Id
+
+commit 22d5f6a0ffd8103c049a2bd13333bcf25aea5ffc
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Tue Feb 27 13:46:26 2007 -0800
+
+    Change XFree86 to __xservername__ in man page See Also section
+
+commit ea7029410336675de8fecc7c6ebe62c8504ae988
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Jan 26 14:38:26 2007 -0800
+
+    If using shadowfb, allocate shadow area before fbScreenInit
+    
+    (Copied from xf86-video-fbdev)
+
+commit 09d7df64c837c819c7feb88891b8845ab660c150
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Tue Jan 2 16:09:45 2007 +0100
+
+    Makefile.am: make ChangeLog hook safer
+    
+    Make ChangeLog hook as safe as possible
+    Bump patchlevel.
+
+commit 1ac8c63bba9a65a706334aa98d8bdbc489cc2ab6
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Tue Jan 2 15:54:14 2007 +0100
+
+    Use PACKAGE_VERSION_* macros provided by xorg-macros.
+
+commit 3b71a8e000abab9106c53324a65743f0d2e3951b
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Tue Jan 2 15:36:52 2007 +0100
+
+    Fix shadow framebuffer, and by extension rotation.
+    
+    Based on similar fixes in xf86-video-fbdev and xf86-video-vesa.
+
+commit 579e15946892894f4ee75576855767dae27292d3
+Author: Jeremy C. Reed <reed@glacier.reedmedia.net>
+Date:   Thu Dec 21 05:53:21 2006 -0600
+
+    "framebuffer size is linebytes * height, not linebytes * height *
+    depth" Noticed in recent NetBSD CVS commit. Also in OpenBSD's CVS.
+    Okayed by Matthieu.  Before my system said: "(II) wsfb(0): Vidmem: 24576k".
+    Now says: "(II) wsfb(0): Vidmem: 1536k"
+
+commit b5d1de955b4bf40edd1ff08fc4d562590a4e1f98
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Dec 3 18:07:02 2006 +0100
+
+    Pull code from OpenBSD 4.0 version.
+    
+        - rotation support
+        - only allocate space for colormap save/restore at 8bpp
+        - switch on render extension at 8bpp
+
+commit ab847a95a8ae9cd2d0001ebb612c8387b0784ad5
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Dec 1 13:12:44 2006 -0800
+
+    Add *~ to .gitignore
+
+commit c2d87cdd9230eda0de7f64e2db0a9e789af7a497
+Author: Alan Coopersmith <alan.coopersmith@sun.com>
+Date:   Fri Dec 1 13:12:22 2006 -0800
+
+    Change XF86_VERSION_CURRENT to XORG_VERSION_CURRENT in WsfbVersRec
+
+commit 6babc377334b4bdba945bed5ca0e60c6b3f1ab06
+Author: Jeremy C. Reed <reed@glacier.reedmedia.net>
+Date:   Wed Oct 18 15:02:26 2006 -0500
+
+    Replace stub with real license found in man page and wsfb_driver.c.
+    
+    It is based on fbdev.c so include its generic XFree86 license for that too.
+
+commit f4fe4cd560d7380ec18de383e55671bce8b2139d
+Author: Jeremy C. Reed <reed@glacier.reedmedia.net>
+Date:   Tue Oct 17 09:14:55 2006 -0500
+
+    Increase version to reflect newer changes and to be ready for release.
+
+commit 3fd859c64b7936d95f1ae65a2b9ce66269c6186b
+Author: Jeremy C. Reed <reed@glacier.reedmedia.net>
+Date:   Tue Oct 17 08:58:33 2006 -0500
+
+    In man page, also mention it supports NetBSD/i386.
+    (Uncomment my previous comment in the man page.)
+
+commit 1890f3e6b8977c362fff413b9dbba6f3aafc4049
+Author: Matthieu Herrb <matthieu@deville.herrb.com>
+Date:   Sun Sep 17 22:08:41 2006 +0200
+
+    Add a driverfunc to indicate that this driver doesn't need hw access.
+
+commit 5c30a4b51326d5d9d1db4ed74573ffa38c1b519a
+Author: Matthieu Herrb <matthieu@deville.herrb.com>
+Date:   Sun Sep 17 22:02:56 2006 +0200
+
+    Replace ChangeLog with a rule that generates it on 'make dist'
+
+commit 8a602328c9a231a9648def19690f361c0f1666e0
+Author: Matthieu Herrb <matthieu@deville.herrb.com>
+Date:   Sun Sep 17 21:47:20 2006 +0200
+
+    renamed: .cvsignore -> .gitignore
+
+commit b77092858a178aa169ed4c1c7fe733d5cd355702
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Thu Jun 1 01:52:35 2006 +0000
+
+    Fix for dlopen() -based module loader.
+
+commit 17dab6d85a369c83fa59129e9ce0570e18ea7fb3
+Author: Jeremy C. Reed <reed@reedmedia.net>
+Date:   Sat May 27 16:24:02 2006 +0000
+
+    Added autoconf related files. Copied from other driver so keeping same
+        copyright. The version is 0.1.0 based on what was in wsfb_driver.c.
+    In wsfb_driver.c, renamed VERSION to WSFB_VERSION so doesn't conflict with
+        VERSION from new makefile.
+    Tested under NetBSD using wsdisplay on vesafb.
+
+commit bfc4b42efaf221740d693ae50f86ba20f9a5a129
+Author: Jeremy C. Reed <reed@reedmedia.net>
+Date:   Fri May 26 20:32:58 2006 +0000
+
+    Use __xservername__ macro instead of hardcoding. Mention it is for NetBSD
+        also (I tested under NetBSD/i386). Add a comment (roff comment) about
+        NetBSD. Mention device name for NetBSD.
+
+commit b3eeae114a521cf68b53575be5c128ea5cd60774
+Author: Jeremy C. Reed <reed@reedmedia.net>
+Date:   Fri May 26 20:23:21 2006 +0000
+
+    NetBSD uses /dev/ttyE?. (Already that way in
+        xserver/xorg/hw/xfree86/os-support/bsd/bsd_init.c.)
+    I tested on NetBSD/i386 using NetBSD's vesafb. Also this is in NetBSD's CVS
+        too where it was tested on Sparc.
+    Also added a ChangeLog file.
+
+commit 509c5587ad0474aee101d6dcebe87e02231ebe7d
+Author: Kevin E Martin <kem@kem.org>
+Date:   Thu May 18 21:14:44 2006 +0000
+
+    Fix ShadowFB support to work with recent miext/shadow changes from bug
+        #5460.
+
+commit c639cb95424cdf7b8c04a0970b68114f2224c150
+Author: Adam Jackson <ajax@nwnk.net>
+Date:   Mon Dec 19 16:25:56 2005 +0000
+
+    Stub COPYING files
+
+commit 7340d355ccd9d9f5d1d8564fdfd7c6e6fcb21728
+Author: Eric Anholt <anholt@freebsd.org>
+Date:   Mon Nov 21 10:49:23 2005 +0000
+
+    Add .cvsignores for drivers.
+
+commit 22571cf4bc09eeaf0be9038ef0896f1d30a1f3b6
+Author: Adam Jackson <ajax@nwnk.net>
+Date:   Mon Jul 11 02:30:07 2005 +0000
+
+    Prep for modular builds by adding guarded #include "config.h" everywhere.
+
+commit 4e0146d2bef7709a8e88461684453f261c0792af
+Author: Adam Jackson <ajax@nwnk.net>
+Date:   Sat Jun 25 21:17:00 2005 +0000
+
+    Bug #3626: _X_EXPORT tags for video and input drivers.
+
+commit 53de0a660c3e253a4d70e147917109eeec7e2fa2
+Author: Markus Kuhn <Markus.Kuhn@cl.cam.ac.uk>
+Date:   Sat Dec 4 00:43:10 2004 +0000
+
+    Encoding of numerous files changed to UTF-8
+
+commit d18e0128136b7070bc40ccf3e64dc5379ae81067
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sat Nov 27 15:14:15 2004 +0000
+
+    xc/programs/Xserver/hw/xfree86/driver/ati/radeon.man
+    xc/programs/Xserver/hw/xfree86/driver/voodoo/voodo.man
+    xc/programs/Xserver/hw/xfree86/driver/wsfb/wsfb.man XF86Config ->
+        __xconfigfile__
+
+commit 60ee2b97e6e723c584d966a67de5c4d8056eb45b
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Tue Nov 9 21:01:05 2004 +0000
+
+    Bugs #1807 & #1808: make wsfb driver work on NetBSD (Nathan J. Williams).
+
+commit e7c66868a9c6be8928541abc31a4fadafde672ae
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Oct 24 21:12:11 2004 +0000
+
+    - don't pretend to support 24bpp or 32bpp framebuffers if probed depth is
+        less than 24. Avoids a core dump after a common configuration error.
+        CVS:
+        ----------------------------------------------------------------------
+
+commit 6b390a5d40c3d36a3742cbd3a37f667f599e2a91
+Author: Matthieu Herrb <matthieu.herrb@laas.fr>
+Date:   Sun Sep 26 17:06:45 2004 +0000
+
+    Hook the wsfb driver and resynchonize with OpenBSD's version.
+    Add wsfb, a Net- and OpenBSD specific driver for dumb bitmapped wsdisplay
+        screens.
