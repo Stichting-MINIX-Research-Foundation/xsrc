@@ -57,7 +57,7 @@
 #define USE_SYSV_TERMIO
 #endif
 
-#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__INTERIX) || defined(__APPLE__) || defined(__UNIXWARE__) || defined(__hpux)
+#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__INTERIX) || defined(__APPLE__) || defined(__UNIXWARE__) || defined(__hpux) || defined(__minix)
 #ifndef USE_POSIX_TERMIOS
 #define USE_POSIX_TERMIOS
 #endif

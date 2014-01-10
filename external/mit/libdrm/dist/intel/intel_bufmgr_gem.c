@@ -46,7 +46,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 #include <stddef.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -1450,8 +1455,12 @@ map_gtt(drm_intel_bo *bo)
 		}
 
 		/* and mmap it */
+#if !defined(__minix)
 		ret = drmMap(bufmgr_gem->fd, mmap_arg.offset, bo->size,
 		    &bo_gem->gtt_virtual);
+#else
+		ret = -ENOSYS;
+#endif /* !defined(__minix) */
 		if (ret) {
 			bo_gem->gtt_virtual = NULL;
 			DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",

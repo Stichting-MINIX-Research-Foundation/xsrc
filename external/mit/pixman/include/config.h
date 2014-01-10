@@ -40,6 +40,7 @@
 /* Whether we have mmap() */
 #define HAVE_MMAP 1
 
+#if !defined(__minix)
 /* Whether we have mprotect() */
 #define HAVE_MPROTECT 1
 
@@ -48,6 +49,7 @@
 
 /* Whether pthreads is supported */
 #define HAVE_PTHREADS 1
+#endif /* !defined(__minix) */
 
 /* Whether we have sigaction() */
 #define HAVE_SIGACTION 1

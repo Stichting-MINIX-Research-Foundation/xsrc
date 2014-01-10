@@ -40,6 +40,11 @@
 extern int _mesa_glsl_debug;
 #endif
 
+#if defined(__minix)
+/* Work around a legacy macro we still have... */
+#undef EXTERN
+#endif /* defined(__minix) */
+
 /* Token type.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE

@@ -30,6 +30,10 @@
 #include <X11/extensions/XvMClib.h>
 #include <stdlib.h>
 #include <X11/Xutil.h>
+#if defined(__minix)
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* defined(__minix) */
 #include "vldXvMC.h"
 #include "via_xvmc.h"
 

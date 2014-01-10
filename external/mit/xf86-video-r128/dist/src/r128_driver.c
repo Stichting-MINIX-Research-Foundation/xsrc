@@ -613,6 +613,8 @@ fallback:
 	    r128_output->PanelYRes = fbinfo.height;
 	}
     }
+#else
+    /* MINIX: To prevent "Expected statement warning" */;
 #endif
 }
 

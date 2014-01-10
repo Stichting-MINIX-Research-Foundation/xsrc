@@ -125,9 +125,14 @@
 #include <ctype.h>
 #include <assert.h>
 
+#if !defined(__minix)
 #if defined(HAVE_SCHED_YIELD)
 #include <sched.h>
 #endif
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 
 #include <VTparse.h>
 #include <data.h>

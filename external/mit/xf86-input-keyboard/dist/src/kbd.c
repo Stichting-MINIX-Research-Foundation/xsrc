@@ -92,7 +92,11 @@ static const char *kbdDefaults[] = {
     "Protocol",		"standard",
 #endif
 #else /* NetBSD */
+#if defined(__minix)
+    "Protocol",		"mxkbd",
+#else
     "Protocol",		"standard",
+#endif /* __minix */
 #endif /* NetBSD */
     "XkbRules",		"base",
     "XkbModel",		"pc105",

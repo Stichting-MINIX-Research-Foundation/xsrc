@@ -36,7 +36,12 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 #include <sys/ioctl.h>
 #include "radeon_cs.h"
 #include "radeon_cs_int.h"

@@ -102,8 +102,10 @@ xf86VTSwitchTo()
 Bool
 xf86VTActivate(int vtno)
 {
+#if defined (SYSCONS_SUPPORT) || defined (PCVT_SUPPORT)
 	if (ioctl(xf86Info.consoleFd, VT_ACTIVATE, vtno) < 0) {
 		return FALSE;
 	}
+#endif
 	return TRUE;
 }

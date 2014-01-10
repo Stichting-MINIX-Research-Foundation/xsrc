@@ -752,12 +752,14 @@ DefineSelf (int fd)
 	    )
 		continue;
 
+#if defined(IFF_LOOPBACK) && defined(__minix)
 	    /* 
 	     * ignore 'localhost' entries as they're not useful
 	     * on the other end of the wire
 	     */
 	    if (ifr->ifa_flags & IFF_LOOPBACK) 
 		    continue;
+#endif
 
 	    if (family == FamilyInternet && 
 		addr[0] == 127 && addr[1] == 0 &&
@@ -784,6 +786,7 @@ DefineSelf (int fd)
 		/* IPv6 doesn't support broadcasting, so we drop out here */
 		continue;
 #endif
+#if defined(IFF_BROADCAST) && defined(__minix)
 	    if ((ifr->ifa_flags & IFF_BROADCAST) &&
 		(ifr->ifa_flags & IFF_UP) &&
                 ifr->ifa_broadaddr)
@@ -791,6 +794,7 @@ DefineSelf (int fd)
 		    (struct sockaddr_in *) ifr->ifa_broadaddr);
 	    else
 		continue;
+#endif
 	}
 #endif /* XDMCP */
 		

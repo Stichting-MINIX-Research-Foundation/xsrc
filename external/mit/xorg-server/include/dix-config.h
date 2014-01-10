@@ -67,8 +67,10 @@
 /* Define to 1 if you have the `getpeerucred' function. */
 /* #undef HAS_GETPEERUCRED */
 
+#if !defined(__minix)
 /* Define to 1 if you have the `mmap' function. */
 #define HAS_MMAP 1
+#endif /* !defined(__minix) */
 
 /* Support SHM */
 #define HAS_SHM 1
@@ -107,8 +109,10 @@
 /* Define to 1 if you have the <fcntl.h> header file. */
 #define HAVE_FCNTL_H 1
 
+#if !defined(__minix)
 /* Define to 1 if you have the `geteuid' function. */
 #define HAVE_GETEUID 1
+#endif /* !defined(__minix) */
 
 /* Define to 1 if you have the `getisax' function. */
 /* #undef HAVE_GETISAX */
@@ -247,8 +251,10 @@
 /* Define to 1 if you have the `vasprintf' function. */
 #define HAVE_VASPRINTF 1
 
+#if !defined(__minix)
 /* Support IPv6 for TCP connections */
 #define IPv6 1
+#endif /* !defined(__minix) */
 
 /* Support os-specific local connections */
 /* #undef LOCALCONN */

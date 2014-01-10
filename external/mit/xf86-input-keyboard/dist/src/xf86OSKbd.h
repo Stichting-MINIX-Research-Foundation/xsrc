@@ -89,6 +89,9 @@ typedef struct {
 typedef enum {
     PROT_STD,
     PROT_WSCONS,
+#if defined(__minix)
+    PROT_MXCONS,
+#endif /* defined(__minix) */
     PROT_UNKNOWN_KBD
 } KbdProtocolId;
 

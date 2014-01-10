@@ -551,6 +551,7 @@ MapPhysAddress(unsigned long address, unsigned long size)
     vaddr = (void *)smem_create("XF86DGA", (char *)offset,
 				size + delta, SM_READ|SM_WRITE);
 #else
+#if !defined(__minix)
 #ifndef MAP_FILE
 #define MAP_FILE 0
 #endif
@@ -562,6 +563,7 @@ MapPhysAddress(unsigned long address, unsigned long size)
                         MAP_FILE | MAP_SHARED, mapFd, (off_t)offset);
     if (vaddr == (void *)-1)
 	return NULL;
+#endif /* !defined(__minix) */
 #endif
 
     if (!vaddr) {
@@ -624,14 +626,14 @@ XF86DGADirectVideo(
     if (enable & XF86DGADirectGraphics) {
 #if !defined(ISC) && !defined(HAS_SVR3_MMAP) \
 	&& !(defined(Lynx) && defined(NO_MMAP)) \
-	&& !defined(__UNIXOS2__)
+	&& !defined(__UNIXOS2__) && !defined(__minix)
 	if (mp && mp->vaddr)
 	    mprotect(mp->vaddr, mp->size + mp->delta, PROT_READ | PROT_WRITE);
 #endif
     } else {
 #if !defined(ISC) && !defined(HAS_SVR3_MMAP) \
 	&& !(defined(Lynx) && defined(NO_MMAP)) \
-	&& !defined(__UNIXOS2__)
+	&& !defined(__UNIXOS2__) && !defined(__minix)
 	if (mp && mp->vaddr)
 	    mprotect(mp->vaddr, mp->size + mp->delta, PROT_READ);
 #elif defined(Lynx) && defined(NO_MMAP)

@@ -29,7 +29,9 @@
   *   Keith Whitwell <keithw@vmware.com>
   */
 
+#if !defined(__minix)
 #include <pthread.h>
+#endif /* !defined(__minix) */
 #include "main/imports.h"
 #include "main/enums.h"
 #include "main/shaderobj.h"

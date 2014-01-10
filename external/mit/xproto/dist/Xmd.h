@@ -116,6 +116,10 @@ typedef unsigned char  CARD8;
 typedef CARD32		BITS32;
 typedef CARD16		BITS16;
 
+#if defined(__minix) && defined(BYTE)
+#undef BYTE
+#endif /* defined(__minix) && defined(BYTE) */
+
 typedef CARD8		BYTE;
 typedef CARD8		BOOL;
 

@@ -97,7 +97,12 @@ typedef pthread_t xthread_t;
 #pragma weak tis_cond_signal = _Xthr_zero_stub_
 #pragma weak tis_cond_broadcast = _Xthr_zero_stub_
 #else
+#  if defined(__minix)
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#  else
 #include <pthread.h>
+#  endif /* defined(__minix) */
 typedef pthread_t xthread_t;
 #if __GNUC__ >= 3 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 95)
 xthread_t pthread_self()    __attribute__ ((weak, alias ("_Xthr_self_stub_")));

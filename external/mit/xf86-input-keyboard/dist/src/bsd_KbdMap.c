@@ -207,7 +207,7 @@ TransMapRec sysconsCODE = {
 #endif
 #endif /* SYSCONS_SUPPORT || PCVT_SUPPORT */
 
-#ifdef WSCONS_SUPPORT
+#if defined(WSCONS_SUPPORT) || defined(__minix)
 
 static CARD8 wsUsbMap[] = {
 	/* 0 */ KEY_NOTUSED,
@@ -1244,7 +1244,7 @@ TransMapRec wsSun = {
     wsSunMap
 };
 
-#endif /* WSCONS_SUPPORT */
+#endif /* WSCONS_SUPPORT || __minix */
 
 /*ARGSUSED*/
 
@@ -1367,6 +1367,11 @@ KbdGetMapping (InputInfoPtr pInfo, KeySymsPtr pKeySyms, CARD8 *pModMap)
            pKbd->RemapScanCode = ATScancode;
 	   break;
 #endif
+#if defined(__minix)
+      case MXCONS:
+	   pKbd->scancodeMap = &wsUsb;
+	   break;
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
       case WSCONS:
 	if (!pKbd->isConsole) {

@@ -26,6 +26,7 @@
  *
  */
 
+#if !defined(__minix)
 #ifdef __SSE4_1__
 #include "main/macros.h"
 #include "main/streaming-load-memcpy.h"
@@ -86,3 +87,4 @@ _mesa_streaming_load_memcpy(void *restrict dst, void *restrict src, size_t len)
 }
 
 #endif
+#endif /* !defined(__minix) */

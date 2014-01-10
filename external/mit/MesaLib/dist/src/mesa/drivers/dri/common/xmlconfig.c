@@ -39,7 +39,7 @@
 
 #undef GET_PROGRAM_NAME
 
-#if defined(__NetBSD__)
+#if defined(__NetBSD__) || defined(__minix)
 #include <sys/param.h>
 #endif
 
@@ -57,7 +57,7 @@ extern char *program_invocation_name, *program_invocation_short_name;
 #        include <stdlib.h>
 #        define GET_PROGRAM_NAME() getprogname()
 #    endif
-#elif defined(__NetBSD__) && defined(__NetBSD_Version) && (__NetBSD_Version >= 106000100)
+#elif defined(__NetBSD__) && defined(__NetBSD_Version) && (__NetBSD_Version >= 106000100) || defined(__minix)
 #    include <stdlib.h>
 #    define GET_PROGRAM_NAME() getprogname()
 #elif defined(__APPLE__)

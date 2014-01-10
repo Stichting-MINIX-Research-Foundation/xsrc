@@ -171,6 +171,11 @@ static bool match_layout_qualifier(const char *s1, const char *s2,
 extern int _mesa_glsl_debug;
 #endif
 
+#if defined(__minix)
+/* Work around a legacy macro we still have... */
+#undef EXTERN
+#endif /* defined(__minix) */
+
 /* Token type.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE

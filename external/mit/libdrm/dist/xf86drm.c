@@ -1247,7 +1247,11 @@ int drmMap(int fd, drm_handle_t handle, drmSize size, drmAddressPtr address)
 
     size = (size + pagesize_mask) & ~pagesize_mask;
 
+#if !defined(__minix)
     *address = drm_mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, handle);
+#else
+    *address = MAP_FAILED;
+#endif /* !defined(__minix) */
     if (*address == MAP_FAILED)
 	return -errno;
     return 0;

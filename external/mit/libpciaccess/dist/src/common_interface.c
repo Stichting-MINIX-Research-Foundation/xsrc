@@ -74,7 +74,7 @@
 #define HTOLE_16(x)	htole16(x)
 #define HTOLE_32(x)	htole32(x)
 
-#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__minix)
 #define LETOH_16(x)	le16toh(x)
 #define LETOH_32(x)	le32toh(x)
 #else

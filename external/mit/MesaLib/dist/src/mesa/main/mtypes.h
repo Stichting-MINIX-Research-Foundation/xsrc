@@ -1274,6 +1274,11 @@ struct gl_tex_env_combine_state
  * TexGenEnabled flags.
  */
 /*@{*/
+#if defined(__minix)
+/* LSC: It seems we have to better protect include/minix/const.h as itr
+ *      exports MINIXisms to the userland. */
+#undef R_BIT
+#endif /* defined(__MINIX) */
 #define S_BIT 1
 #define T_BIT 2
 #define R_BIT 4

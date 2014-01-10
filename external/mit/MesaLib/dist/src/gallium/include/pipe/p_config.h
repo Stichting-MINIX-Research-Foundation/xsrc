@@ -167,7 +167,7 @@
 # define PIPE_ARCH_BIG_ENDIAN
 #endif
 
-#elif defined(__NetBSD__)
+#elif defined(__NetBSD__) || defined(__minix)
 #include <sys/types.h>
 #include <sys/endian.h>
 
@@ -222,7 +222,7 @@
 #define PIPE_OS_UNIX
 #endif
 
-#if defined(__NetBSD__)
+#if defined(__NetBSD__) || defined(__minix)
 #define PIPE_OS_NETBSD
 #define PIPE_OS_BSD
 #define PIPE_OS_UNIX

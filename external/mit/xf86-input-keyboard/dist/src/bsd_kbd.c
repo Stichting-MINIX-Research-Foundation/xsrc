@@ -27,8 +27,22 @@
 #include "atKeynames.h"
 #include "bsd_kbd.h"
 
+#if defined(__minix)
+#include <minix/input.h>
+
+#include <sys/kbdio.h>
+#include <sys/ttycom.h>
+
+#define LED_NUM	KBD_LEDS_NUM
+#define LED_CAP	KBD_LEDS_CAPS
+#define LED_SCR	KBD_LEDS_CAPS
+#endif /* defined(__minix) */
+
 static KbdProtocolRec protocols[] = {
    {"standard", PROT_STD },
+#if defined(__minix)
+   {"mxkbd", PROT_MXCONS },
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
    {"wskbd", PROT_WSCONS },
 #endif
@@ -71,6 +85,9 @@ int KbdInit(InputInfoPtr pInfo, int what)
 #endif
 		tcgetattr(pInfo->fd, &(priv->kbdtty));
 #endif
+#if defined(__minix)
+	    case MXCONS:
+#endif /* defined(__minix) */
 	         break;
         }
     }
@@ -107,6 +124,15 @@ SetKbdLeds(InputInfoPtr pInfo, int leds)
 	     ioctl(pInfo->fd, KDSETLED, real_leds);
 	     break;
 #endif
+#if defined(__minix)
+        case MXCONS:
+	     {
+		struct kio_leds _leds;
+		_leds.kl_bits = real_leds;
+		ioctl(pInfo->fd, KIOCSLEDS, &_leds);
+	     }
+             break;
+#endif /* defined(__minix) */
 #if defined(WSCONS_SUPPORT)
         case WSCONS:
              ioctl(pInfo->fd, WSKBDIO_SETLEDS, &real_leds);
@@ -221,6 +247,14 @@ KbdOn(InputInfoPtr pInfo, int what)
 #endif
     } else {
         switch (pKbd->consType) {
+#if defined(__minix)
+	    case MXCONS:
+		if (pInfo->fd == -1) {
+			xf86Msg(X_INFO, "opening %s\n", "/dev/kbdmux");
+			pInfo->fd = open("/dev/kbdmux", O_RDONLY | O_NONBLOCK);
+		}
+		break;
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
             case WSCONS:
 		if ((pKbd->wsKbdDev[0] != 0) && (pInfo->fd == -1)) {
@@ -272,6 +306,16 @@ KbdOff(InputInfoPtr pInfo, int what)
         }
     } else {
          switch (pKbd->consType) {
+#if defined(__minix)
+	    case MXCONS:
+		if (pInfo->fd != -1) {
+			xf86Msg(X_INFO, "closing %s\n", "/dev/kbdmux");
+			/* need to close the fd while we're gone */
+			close(pInfo->fd);
+			pInfo->fd = -1;
+		}
+		break;
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
             case WSCONS:
                  if ((pKbd->wsKbdDev[0] != 0) && (pInfo->fd != -1)) {
@@ -372,6 +416,39 @@ printWsType(const char *type, const char *name)
 }
 #endif
 
+#if defined(__minix)
+
+#define NUMEVENTS 64
+
+static void
+MxReadInput(InputInfoPtr pInfo)
+{
+    KbdDevPtr pKbd = (KbdDevPtr) pInfo->private;
+    static struct input_event eventList[NUMEVENTS];
+    struct input_event *event = eventList;
+    int n;
+
+    n = read(pInfo->fd, (char *)event, sizeof(eventList));
+    if (n == 0)
+        return;
+
+    n /= sizeof(struct input_event);
+    while( n-- ) {
+	switch(event->page) {
+	case INPUT_PAGE_KEY:
+		pKbd->PostEvent(pInfo, event->code, event->value == INPUT_RELEASE ? FALSE : TRUE);
+		break;
+	default:
+		LogMessageVerbSigSafe(X_WARNING, -1,
+			"%s: bad MinixCons event: page %04x code %04x value %08x flags %04x devid %04x\n",
+			pInfo->name, event->page, event->code, event->value, event->flags, event->devid);
+	}
+	++event;
+    }
+}
+
+#endif /* defined(__minix) */
+
 static Bool
 OpenKeyboard(InputInfoPtr pInfo)
 {
@@ -392,6 +469,11 @@ OpenKeyboard(InputInfoPtr pInfo)
 	case PROT_STD:
            pInfo->read_input = stdReadInput;
            break;
+#ifdef __minix
+        case PROT_MXCONS:
+           pInfo->read_input = MxReadInput;
+           break;
+#endif
 #ifdef WSCONS_SUPPORT
         case PROT_WSCONS:
            pInfo->read_input = WSReadInput;
@@ -406,6 +488,10 @@ OpenKeyboard(InputInfoPtr pInfo)
 
     if (prot == PROT_WSCONS)
 	s = xf86SetStrOption(pInfo->options, "Device", "/dev/wskbd");
+#if defined(__minix)
+    else if (prot == PROT_MXCONS)
+	s = xf86SetStrOption(pInfo->options, "Device", "/dev/kbdmux");
+#endif /* defined(__minix) */
     else
 	s = xf86SetStrOption(pInfo->options, "Device", NULL);
 
@@ -427,6 +513,11 @@ OpenKeyboard(InputInfoPtr pInfo)
        free(s);
     }
 
+#if defined(__minix)
+    if( prot == PROT_MXCONS) {
+       pKbd->consType = MXCONS;
+    }
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
     if( prot == PROT_WSCONS) {
        pKbd->consType = WSCONS;

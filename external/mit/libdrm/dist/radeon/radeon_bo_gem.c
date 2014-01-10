@@ -178,7 +178,11 @@ static int bo_map(struct radeon_bo_int *boi, int write)
                 boi, boi->handle, r);
         return r;
     }
+#if !defined(__minix)
     r = drmMap(boi->bom->fd, args.addr_ptr, args.size, &ptr);
+#else
+    r = -ENOSYS;
+#endif /* !defined(__minix) */
     if (r)
         return -errno;
     bo_gem->priv_ptr = ptr;

@@ -77,12 +77,12 @@ typedef struct {
 
 #endif
 
-#if (defined(__sun) || defined(__NetBSD__)) && !defined(HAS_ATOMIC_OPS)  /* Solaris & OpenSolaris & NetBSD */
+#if (defined(__sun) || defined(__NetBSD__) || defined(__minix)) && !defined(HAS_ATOMIC_OPS)  /* Solaris & OpenSolaris & NetBSD */
 
 #include <sys/atomic.h>
 #define HAS_ATOMIC_OPS 1
 
-#if defined(__NetBSD__)
+#if defined(__NetBSD__) || defined(__minix)
 #define LIBDRM_ATOMIC_TYPE int
 #else
 #define LIBDRM_ATOMIC_TYPE uint_t

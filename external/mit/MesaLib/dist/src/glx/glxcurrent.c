@@ -33,9 +33,11 @@
  * Client-side GLX interface for current context management.
  */
 
+#if !defined(__minix)
 #ifdef HAVE_PTHREAD
 #include <pthread.h>
 #endif
+#endif /* !defined(__minix) */
 
 #include "glxclient.h"
 
@@ -180,9 +182,16 @@ glXGetCurrentDrawable(void)
    return gc->currentDrawable;
 }
 
+
+#if defined(__minix)
+static void
+__glXGenerateError(Display * dpy, XID resource,
+                   CARD8 errorCode, CARD16 minorCode)
+#else
 static void
 __glXGenerateError(Display * dpy, XID resource,
                    BYTE errorCode, CARD16 minorCode)
+#endif /* defined(__minix) */
 {
    xError error;
 

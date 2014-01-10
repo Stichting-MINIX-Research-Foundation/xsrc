@@ -62,6 +62,9 @@ static char *DFLT_MOUSE_PROTO = "auto";
 #elif defined(linux)
 static char DFLT_MOUSE_DEV[] = "/dev/input/mice";
 static char DFLT_MOUSE_PROTO[] = "auto";
+#elif defined(__minix)
+static char *DFLT_MOUSE_DEV = "/dev/mousemux";
+static char *DFLT_MOUSE_PROTO = "auto";
 #else
 static char *DFLT_MOUSE_DEV = "/dev/mouse";
 static char *DFLT_MOUSE_PROTO = "auto";
@@ -161,6 +164,12 @@ configureInputSection (void)
     ptr->inp_identifier = "Keyboard0";
     ptr->inp_driver = "kbd";
     ptr->list.next = NULL;
+#if defined(__minix)
+    ptr->inp_option_lst = xf86addNewOption(ptr->inp_option_lst,
+        xstrdup("Protocol"), "mxkbd");
+    ptr->inp_option_lst = xf86addNewOption(ptr->inp_option_lst,
+        xstrdup("Device"), "/dev/kbdmux");
+#endif /* defined(__minix) */
 #if defined(WSCONS_SUPPORT) && !defined(__i386__) && !defined(__amd64__)
     ptr->inp_option_lst = xf86addNewOption(ptr->inp_option_lst,
         xstrdup("Protocol"), "wskbd");

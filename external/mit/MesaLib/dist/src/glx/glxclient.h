@@ -54,7 +54,12 @@
 #include "glxconfig.h"
 #include "glxhash.h"
 #if defined( HAVE_PTHREAD )
+# if !defined(__minix)
 # include <pthread.h>
+# else
+# define _MTHREADIFY_PTHREADS 1
+# include <minix/mthread.h>
+# endif /* !defined(__minix) */
 #endif
 
 #include "glxextensions.h"

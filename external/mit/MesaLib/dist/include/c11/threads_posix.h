@@ -43,12 +43,17 @@ Configuration macro:
     Use pthread_mutex_timedlock() for `mtx_timedlock()'
     Otherwise use mtx_trylock() + *busy loop* emulation.
 */
-#if !defined(__CYGWIN__) && !defined(__APPLE__) && !defined(__NetBSD__)
+#if !defined(__CYGWIN__) && !defined(__APPLE__) && !defined(__NetBSD__) && !defined(__minix)
 #define EMULATED_THREADS_USE_NATIVE_TIMEDLOCK
 #endif
 
 
+#if defined(__minix)
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#else
 #include <pthread.h>
+#endif /* defined(__minix) */
 
 /*---------------------------- macros ----------------------------*/
 #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
@@ -133,6 +138,7 @@ cnd_signal(cnd_t *cond)
     return thrd_success;
 }
 
+#if !defined(__minix)
 // 7.25.3.5
 static inline int
 cnd_timedwait(cnd_t *cond, mtx_t *mtx, const xtime *xt)
@@ -145,6 +151,7 @@ cnd_timedwait(cnd_t *cond, mtx_t *mtx, const xtime *xt)
         return thrd_busy;
     return (rt == 0) ? thrd_success : thrd_error;
 }
+#endif /* !defined(__minix) */
 
 // 7.25.3.6
 static inline int

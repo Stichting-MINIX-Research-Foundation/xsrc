@@ -33,6 +33,11 @@
 
 #undef yyerror
 
+#if defined(__minix)
+/* Work around a legacy macro we still have... */
+#undef EXTERN
+#endif /* defined(__minix) */
+
 static void yyerror(YYLTYPE *loc, _mesa_glsl_parse_state *st, const char *msg)
 {
    _mesa_glsl_error(loc, st, "%s", msg);

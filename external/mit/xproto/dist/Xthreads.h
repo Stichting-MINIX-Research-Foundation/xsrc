@@ -220,7 +220,12 @@ typedef mutex_t xmutex_rec;
 #      define xcondition_signal(c) cond_signal(c)
 #      define xcondition_broadcast(c) cond_broadcast(c)
 #     else
+#      if defined(__minix)
+#      define _MTHREADIFY_PTHREADS 1
+#      include <minix/mthread.h>
+#      else
 #      include <pthread.h>
+#      endif /* defined(__minix) */
 typedef pthread_t xthread_t;
 typedef pthread_key_t xthread_key_t;
 typedef pthread_cond_t xcondition_rec;

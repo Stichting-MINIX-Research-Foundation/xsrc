@@ -99,6 +99,7 @@
 /* System is BSD-like */
 #define CSRG_BASED 1
 
+#if !defined(__minix)
 /* System has PC console */
 #define PCCONS_SUPPORT 1
 
@@ -110,6 +111,7 @@
 
 /* System has wscons console */
 #define WSCONS_SUPPORT 1
+#endif /* !defined(__minix) */
 
 /* System has /dev/xf86 aperture driver */
 /* #undef HAS_APERTURE_DRV */

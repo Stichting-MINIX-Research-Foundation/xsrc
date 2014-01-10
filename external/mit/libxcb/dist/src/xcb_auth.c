@@ -29,6 +29,9 @@
 #include "config.h"
 #endif
 
+#if defined(__minix)
+#include <time.h>
+#endif /* defined(__minix) */
 #include <assert.h>
 #include <X11/Xauth.h>
 #include <sys/param.h>

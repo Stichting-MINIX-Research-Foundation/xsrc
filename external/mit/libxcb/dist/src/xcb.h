@@ -35,12 +35,19 @@
 #include <stdint.h>
 #endif
 
+#if defined(__minix)
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* defined(__minix) */
+
 #ifndef _WIN32
 #include <sys/uio.h>
 #else
 #include "xcb_windefs.h"
 #endif
+#if !defined(__minix)
 #include <pthread.h>
+#endif /* !defined(__minix) */
 
 
 #ifdef __cplusplus
