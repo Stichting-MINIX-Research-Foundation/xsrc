@@ -138,7 +138,7 @@
 #define PCI_TAG_NO_DOMAIN(tag) ((tag) & 0x00ffff00u)
 
 #if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || \
-	defined(__OpenBSD__) || defined(__NetBSD__) || \
+	defined(__OpenBSD__) || defined(__minix) || defined(__NetBSD__) || \
 	defined(__DragonFly__) || defined(__sun) || defined(__GNU__)
 #define ARCH_PCI_INIT bsdPciInit
 #endif

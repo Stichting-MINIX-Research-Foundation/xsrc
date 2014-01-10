@@ -967,6 +967,7 @@ DGAMapPhysical(
 #ifndef MAP_FILE
 #define MAP_FILE 0
 #endif
+#if !defined(__minix)
     if (!name)
 	    name = DEV_MEM;
     if ((pMap->fd = open(name, O_RDWR)) < 0)
@@ -976,6 +977,7 @@ DGAMapPhysical(
     if (pMap->virtual == (void *)-1)
 	return False;
     mprotect(pMap->virtual, size, PROT_READ | PROT_WRITE);
+#endif /* !defined(__minix) */
 #endif
 
     return True;
@@ -996,7 +998,9 @@ DGAUnmapPhysical(DGAMapPtr pMap)
     smem_remove("XF86DGA");
 #else
     if (pMap->virtual && pMap->virtual != (void *)-1) {
+#if !defined(__minix)
 	mprotect(pMap->virtual,pMap->size, PROT_READ);
+#endif /* ! defined(__minix) */
 	munmap(pMap->virtual, pMap->size);
 	pMap->virtual = 0;
     }

@@ -43,7 +43,12 @@
 #include <assert.h>
 #include <errno.h>
 #include <xf86drm.h>
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 #include "intel_bufmgr.h"
 #include "intel_bufmgr_priv.h"
 #include "drm.h"

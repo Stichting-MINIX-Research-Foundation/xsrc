@@ -323,7 +323,7 @@ static __inline__ void stw_u(uint16_t val, uint16_t *p)
 
 # ifndef NO_INLINE
 #  ifdef __GNUC__
-#   if (defined(linux) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)) && (defined(__alpha__))
+#   if (defined(linux) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__minix) || defined(__OpenBSD__)) && (defined(__alpha__))
 
 #    ifdef linux
 /* for Linux on Alpha, we use the LIBC _inx/_outx routines */
@@ -393,7 +393,7 @@ extern _X_EXPORT unsigned int inl(unsigned int port);
 #    endif /* (__FreeBSD__ || __OpenBSD__ ) && !DO_PROTOTYPES */
 
 
-#if defined(__NetBSD__)
+#if defined(__NetBSD__) || defined(__minix)
 #include <machine/pio.h>
 #endif /* __NetBSD__ */
 

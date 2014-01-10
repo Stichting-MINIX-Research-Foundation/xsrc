@@ -145,7 +145,9 @@ unsigned char g_DVI_I_SignalType = 0x00;
 static int pix24bpp = 0;
 int FbDevExist;
 
+#if defined(__minix) && !defined(FBIOGET_FSCREENINFO)
 #define FBIOGET_FSCREENINFO	0x4602
+#endif /* defined(__minix) && !defined(FBIOGET_FSCREENINFO) */
 #define FB_ACCEL_XGI_GLAMOUR	41
 
 struct fb_fix_screeninfo

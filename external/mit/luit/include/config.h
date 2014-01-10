@@ -1,8 +1,10 @@
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+#if !defined(__minix)
 /* Define to 1 if you have the `grantpt' function. */
 #define HAVE_GRANTPT 1
+#endif /* !defined(__minix) */
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1

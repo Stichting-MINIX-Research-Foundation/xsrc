@@ -77,6 +77,10 @@ static Bool ShareVTs = FALSE;
 #define WSCONS_PCVT_COMPAT_CONSOLE_DEV "/dev/ttyE0"
 #endif
 
+#if defined(__minix)
+#define MINIX_CONSOLE_DEV "/dev/video"
+#endif /* defined(__minix) */
+
 #ifdef __GLIBC__
 #define setpgrp setpgid
 #endif
@@ -97,6 +101,9 @@ static char *supported_drivers[] = {
 #ifdef WSCONS_SUPPORT
 	"wscons",
 #endif
+#if defined(__minix)
+	"minix",
+#endif /* defined(__minix) */
 };
 
 
@@ -126,6 +133,10 @@ static int xf86OpenPcvt(void);
 static int xf86OpenWScons(void);
 #endif
 
+#if defined(__minix)
+static int xf86OpenMinixcons(void);
+#endif /* defined(__minix) */
+
 /*
  * The sequence of the driver probes is important; start with the
  * driver that is best distinguishable, and end with the most generic
@@ -145,6 +156,9 @@ static xf86ConsOpen_t xf86ConsTab[] = {
 #ifdef WSCONS_SUPPORT
     xf86OpenWScons,
 #endif
+#if defined(__minix)
+    xf86OpenMinixcons,
+#endif /* defined(__minix) */
     (xf86ConsOpen_t)NULL
 };
 
@@ -314,6 +328,11 @@ acquire_vt:
 	    /* Nothing to do */
    	    break; 
 #endif
+#if defined(__minix)
+	case MXCONS:
+	    /* I don't know what to do. */
+	    break;
+#endif /* defined(__minix) */
         }
     }
     else 
@@ -648,6 +667,25 @@ xf86OpenWScons()
 }
 
 #endif /* WSCONS_SUPPORT */
+
+#if defined(__minix)
+static int
+xf86OpenMinixcons()
+{
+    int fd = -1;
+    // O_READONLY == 2 ??
+    fd = open("/dev/console", 2);
+    if (fd < 0) {
+	FatalError("%s: /dev/console failed (%s)\n%s",
+	"xf86OpenConsole", strerror(errno),
+	CHECK_DRIVER_MSG);
+    }
+    xf86Info.consType = MXCONS;
+    xf86Msg(X_PROBED, "Using Minix Console driver\n");
+
+    return fd;
+}
+#endif  /* defined(__minix) */
 
 void
 xf86CloseConsole()

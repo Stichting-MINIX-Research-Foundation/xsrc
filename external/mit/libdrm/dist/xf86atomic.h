@@ -92,7 +92,7 @@ typedef struct { uint_t atomic; } atomic_t;
 
 #endif
 
-#if defined(__NetBSD__) && !defined(HAS_ATOMIC_OPS)  /* NetBSD */
+#if (defined(__NetBSD__) || defined(__minix)) && !defined(HAS_ATOMIC_OPS)  /* NetBSD */
 
 #include <sys/atomic.h>
 #define HAS_ATOMIC_OPS 1

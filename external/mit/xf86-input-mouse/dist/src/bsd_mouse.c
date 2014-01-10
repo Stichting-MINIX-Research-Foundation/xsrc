@@ -36,6 +36,9 @@
 #include "mouse.h"
 #include "xisb.h"
 #include "mipointer.h"
+#if defined(__minix)
+#include <minix/input.h>
+#endif /* defined(__minix) */
 #ifdef WSCONS_SUPPORT
 #include <dev/wscons/wsconsio.h>
 #endif
@@ -82,6 +85,12 @@ static const char *mouseDevs[] = {
         DEFAULT_PS2_DEV,
         NULL
 };
+#elif defined(__minix)
+#define DEFAULT_MOUSEMUX_DEV		"/dev/mousemux"
+static const char *mouseDevs[] = {
+	DEFAULT_MOUSEMUX_DEV,
+	NULL
+};
 #elif (defined(__OpenBSD__) || defined(__NetBSD__)) && defined(WSCONS_SUPPORT)
 /* Only wsmouse mices are autoconfigured for now on OpenBSD */
 #define DEFAULT_WSMOUSE_DEV             "/dev/wsmouse"
@@ -99,6 +108,8 @@ SupportedInterfaces(void)
 {
 #if defined(__NetBSD__)
     return MSE_SERIAL | MSE_BUS | MSE_PS2 | MSE_AUTO | MSE_MISC;
+#elif defined(__minix)
+    return MSE_SERIAL | MSE_BUS | MSE_PS2 | MSE_AUTO | MSE_MISC;
 #elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
     return MSE_SERIAL | MSE_BUS | MSE_PS2 | MSE_AUTO | MSE_MISC;
 #else
@@ -108,6 +119,9 @@ SupportedInterfaces(void)
 
 /* Names of protocols that are handled internally here. */
 static const char *internalNames[] = {
+#if defined(__minix)
+        "MinixMouse",
+#endif
 #if defined(WSCONS_SUPPORT)
         "WSMouse",
 #endif
@@ -152,6 +166,8 @@ static const char *
 DefaultProtocol(void)
 {
 #if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+    return "Auto";
+#elif defined(__minix)
     return "Auto";
 #elif (defined(__OpenBSD__) || defined(__NetBSD__)) && defined(WSCONS_SUPPORT)
     return "WSMouse";
@@ -759,10 +775,153 @@ usbPreInit(InputInfoPtr pInfo, const char *protocol, int flags)
 }
 #endif /* USBMOUSE */
 
+#if defined(__minix)
+/* Only support usb mouse configuration for now, through mousemux */
+static const char *
+SetupAuto(InputInfoPtr pInfo, int *protoPara)
+{
+
+    xf86MsgVerb(X_INFO, 3, "%s: SetupAuto: protocol is %s\n",
+                pInfo->name, "MinixMouse");
+    return "MinixMouse";
+}
+
+static void
+SetMouseRes(InputInfoPtr pInfo, const char *protocol, int rate, int res)
+{
+
+    xf86MsgVerb(X_INFO, 3, "%s: SetMouseRes: protocol %s rate %d res %d\n",
+            pInfo->name, protocol, rate, res);
+}
+
+static const char *
+FindDevice(InputInfoPtr pInfo, const char *protocol, int flags)
+{
+    int fd = -1;
+    const char **pdev;
+
+    for (pdev = mouseDevs; *pdev; pdev++) {
+        SYSCALL(fd = open(*pdev, O_RDWR | O_NONBLOCK));
+        if (fd != -1) {
+            /* Set the Device option. */
+            pInfo->options =
+                xf86AddNewOption(pInfo->options,
+                                 "Device", *pdev);
+            xf86Msg(X_INFO, "%s: found Device \"%s\"\n",
+                    pInfo->name, *pdev);
+            close(fd);
+            break;
+        }
+    }
+    return *pdev;
+}
+
+#define NUMEVENTS 64
+#define UMS_BUT(i) ((i) == 0 ? 2 : (i) == 1 ? 0 : (i) == 2 ? 1 : (i))
+
+static void
+minixReadInput(InputInfoPtr pInfo)
+{
+    MouseDevPtr pMse;
+    static struct input_event eventList[NUMEVENTS];
+    int n, c;
+    struct input_event *event = eventList;
+    unsigned char *pBuf;
+
+    pMse = pInfo->private;
+
+    XisbBlockDuration(pMse->buffer, -1);
+    pBuf = (unsigned char *)eventList;
+    n = 0;
+    while (n < sizeof(eventList) && (c = XisbRead(pMse->buffer)) >= 0) {
+        pBuf[n++] = (unsigned char)c;
+    }
+
+    if (n == 0)
+        return;
+
+    n /= sizeof(struct input_event);
+    while( n-- ) {
+        int buttons = pMse->lastButtons;
+        int dx = 0, dy = 0, dz = 0, dw = 0, x, y;
+        switch (event->page) {
+	case INPUT_PAGE_BUTTON:
+	    if (event->value == INPUT_RELEASE) {
+		buttons &= ~(1 << UMS_BUT(event->code - 1));
+	    }
+
+	    if (event->value == INPUT_PRESS) {
+		buttons |= (1 << UMS_BUT(event->code - 1));
+	    }
+	    break;
+	case INPUT_PAGE_GD:
+	    if ((event->flags & INPUT_FLAG_REL) == INPUT_FLAG_REL) {
+		if (event->code == INPUT_GD_X) {
+		    dx += event->value;
+		}
+
+		if (event->code == INPUT_GD_Y) {
+		    dy -= event->value;
+		}
+		break;
+	    }
+
+	    if (event->flags == INPUT_FLAG_ABS) {
+		miPointerGetPosition (pInfo->dev, &x, &y);
+		if (event->code == INPUT_GD_X) {
+		    x = event->value;
+		}
+
+		if (event->code == INPUT_GD_Y) {
+		    y = event->value;
+		}
+
+		miPointerSetPosition (pInfo->dev, &x, &y);
+		xf86PostMotionEvent(pInfo->dev, TRUE, 0, 2, x, y);
+		++event;
+		continue;
+	    }
+        default:
+            LogMessageVerbSigSafe(X_WARNING, -1,
+			"%s: bad MinixMouse event: page %04x code %04x value %08x flags %04x devid %04x\n",
+			pInfo->name, event->page, event->code, event->value, event->flags, event->devid);
+            ++event;
+            continue;
+        }
+        pMse->PostEvent(pInfo, buttons, dx, dy, dz, dw);
+        ++event;
+    }
+    return;
+}
+
+/* This function is called when the protocol is "wsmouse". */
+static Bool
+minixPreInit(InputInfoPtr pInfo, const char *protocol, int flags)
+{
+    MouseDevPtr pMse = pInfo->private;
+
+    /* Setup the local input proc. */
+    pInfo->read_input = minixReadInput;
+    pMse->xisbscale = sizeof(struct input_event);
+
+    pMse->invX = 1;
+    pMse->invY = 1;
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 12
+    pInfo->flags |= XI86_CONFIGURED;
+#endif
+    return TRUE;
+}
+#endif /* defined(__minix) */
+
 static Bool
 bsdMousePreInit(InputInfoPtr pInfo, const char *protocol, int flags)
 {
     /* The protocol is guaranteed to be one of the internalNames[] */
+#ifdef __minix
+    if (xf86NameCmp(protocol, "MinixMouse") == 0) {
+        return minixPreInit(pInfo, protocol, flags);
+    }
+#endif
 #ifdef WSCONS_SUPPORT
     if (xf86NameCmp(protocol, "WSMouse") == 0) {
         return wsconsPreInit(pInfo, protocol, flags);
@@ -794,11 +953,11 @@ OSMouseInit(int flags)
     p->SetBMRes = SetSysMouseRes;
     p->SetMiscRes = SetSysMouseRes;
 #endif
-#if (defined(__OpenBSD__) || defined(__NetBSD__)) && defined(WSCONS_SUPPORT)
+#if (defined(__OpenBSD__) || defined(__NetBSD__)) && defined(WSCONS_SUPPORT) || defined(__minix)
     p->SetupAuto = SetupAuto;
     p->SetMiscRes = SetMouseRes;
 #endif
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__minix)
     p->FindDevice = FindDevice;
 #endif
     p->PreInit = bsdMousePreInit;

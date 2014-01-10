@@ -1010,7 +1010,7 @@ extern void XGI_SetRegANDOR(XGIIOADDRESS Port, USHORT Index, USHORT DataAND,
 extern void XGI_SetRegAND(XGIIOADDRESS Port, USHORT Index, USHORT DataAND);
 extern void XGI_SetRegOR(XGIIOADDRESS Port, USHORT Index, USHORT DataOR);
 
-#ifndef __NetBSD__
+#if !(defined(__NetBSD__) || defined(__minix))
 #define uint8_t	CARD8
 #endif
 

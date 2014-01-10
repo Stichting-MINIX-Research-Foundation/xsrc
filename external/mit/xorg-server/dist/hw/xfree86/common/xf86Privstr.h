@@ -165,4 +165,8 @@ typedef struct _RootWinProp {
 #define WSCONS		  32
 #endif
 
+#if defined(__minix)
+#define MXCONS		  64
+#endif
+
 #endif /* _XF86PRIVSTR_H */

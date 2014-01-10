@@ -39,7 +39,12 @@
 #define __XCB_REPLY_H__
 
 #include <xcb/xcb.h>
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 
 #ifdef __cplusplus
 extern "C" {

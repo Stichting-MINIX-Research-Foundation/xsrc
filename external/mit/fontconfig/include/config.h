@@ -117,11 +117,13 @@
 /* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
 /* #undef HAVE_NDIR_H */
 
+#if !defined(__minix)
 /* Define to 1 if you have the 'posix_fadvise' function. */
 #define HAVE_POSIX_FADVISE 1
 
 /* Have POSIX threads */
 #define HAVE_PTHREAD 1
+#endif /* !defined(__minix) */
 
 /* Have PTHREAD_PRIO_INHERIT. */
 /* #undef HAVE_PTHREAD_PRIO_INHERIT */

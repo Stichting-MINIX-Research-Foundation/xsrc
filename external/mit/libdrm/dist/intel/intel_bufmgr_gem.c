@@ -46,7 +46,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 #include <stddef.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -1062,9 +1067,13 @@ int drm_intel_gem_bo_map_gtt(drm_intel_bo *bo)
 		}
 
 		/* and mmap it */
+#if !defined(__minix)
 		bo_gem->gtt_virtual = mmap(0, bo->size, PROT_READ | PROT_WRITE,
 					   MAP_SHARED, bufmgr_gem->fd,
 					   mmap_arg.offset);
+#else
+		bo_gem->gtt_virtual = MAP_FAILED;
+#endif /* !defined(__minix) */
 		if (bo_gem->gtt_virtual == MAP_FAILED) {
 			bo_gem->gtt_virtual = NULL;
 			ret = -errno;

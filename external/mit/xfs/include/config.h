@@ -45,8 +45,10 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1
 
+#if !defined(__minix)
 /* Support IPv6 for TCP connections */
 #define IPv6 1
+#endif /* !defined(__minix) */
 
 /* Support os-specific local connections */
 /* #undef LOCALCONN */

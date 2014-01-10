@@ -164,6 +164,7 @@
 /* System is BSD-like */
 #define CSRG_BASED 1
 
+#if !defined(__minix)
 /* System has PC console */
 #define PCCONS_SUPPORT 1
 
@@ -175,6 +176,7 @@
 
 /* System has wscons console */
 #define WSCONS_SUPPORT 1
+#endif /* !defined(__minix) */
 
 /* Loadable XFree86 server awesomeness */
 #define XFree86LOADER 1

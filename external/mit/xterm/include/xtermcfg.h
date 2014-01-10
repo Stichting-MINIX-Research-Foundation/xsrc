@@ -53,7 +53,9 @@
 /* #undef DISABLE_SETUID */		/* CF_ARG_DISABLE(setuid) */
 #define HAVE_GETHOSTNAME 1		/* AC_CHECK_FUNCS(gethostname) */
 #define HAVE_GETLOGIN 1		/* AC_CHECK_FUNCS(getlogin) */
+#if !defined(__minix)
 #define HAVE_GRANTPT 1		/* CF_FUNC_GRANTPT */
+#endif /* !defined(__minix) */
 /* #undef HAVE_GRANTPT_PTY_ISATTY */	/* CF_FUNC_GRANTPT */
 #define HAVE_LANGINFO_CODESET 1	/* AM_LANGINFO_CODESET */
 /* #undef HAVE_LASTLOG_H */		/* CF_LASTLOG */
@@ -67,9 +69,13 @@
 /* #undef HAVE_NCURSES_TERM_H */	/* AC_CHECK_HEADERS(ncurses/term.h) */
 #define HAVE_PATHS_H 1		/* CF_LASTLOG */
 /* #undef HAVE_PCREPOSIX_H */		/* CF_WITH_PCRE */
+#if !defined(__minix)
 #define HAVE_POSIX_OPENPT 1	/* CF_FUNC_GRANTPT */
+#endif /* !defined(__minix) */
 #define HAVE_POSIX_SAVED_IDS 1	/* CF_POSIX_SAVED_IDS */
+#if !defined(__minix)
 #define HAVE_PTSNAME 1		/* CF_FUNC_GRANTPT */
+#endif /* !defined(__minix) */
 #define HAVE_PUTENV 1		/* AC_CHECK_FUNCS(putenv) */
 #define HAVE_SCHED_YIELD 1		/* AC_CHECK_FUNCS(sched_yield) */
 #define HAVE_SETPGID 1		/* AC_CHECK_FUNCS(setpgid) */

@@ -27,7 +27,12 @@
 #ifndef INTEL_XVMC_H
 #define INTEL_XVMC_H
 
+#if !defined(__minix)
 #include <pthread.h>
+#else
+#define _MTHREADIFY_PTHREADS 1
+#include <minix/mthread.h>
+#endif /* !defined(__minix) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

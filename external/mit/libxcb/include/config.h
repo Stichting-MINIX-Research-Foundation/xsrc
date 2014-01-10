@@ -86,8 +86,10 @@
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
 
+#if !defined(__minix)
 /* poll() function is available */
 #define USE_POLL 1
+#endif /* !defined(__minix) */
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE

@@ -78,6 +78,12 @@
 		"\trefer to xf86(4) for details"
 #endif
 
+#if defined(__minix)
+#include <minix/type.h>
+#include <dev/pci/pciio.h>
+static int pci_fd = -1;
+#endif /* defined(__minix) */
+
 /***************************************************************************/
 /* Video Memory Mapping section                                            */
 /***************************************************************************/
@@ -122,12 +128,42 @@ checkDevMem(Bool warn)
 	if ((fd = open(DEV_MEM, O_RDWR)) >= 0)
 	{
 	    /* Try to map a page at the VGA address */
+ #if !defined(__minix)
 	    base = mmap((caddr_t)0, 4096, PROT_READ | PROT_WRITE,
 				 MAP_FLAGS, fd, (off_t)0xA0000);
 	
+#else
+	{
+		struct pciio_map _map;
+		int r;
+		_map.flags = 0;
+		_map.phys_offset = (phys_bytes)0xA0000;
+		_map.size = 4096;
+		_map.readonly = 0;
+
+		pci_fd = open("/dev/pci", O_RDWR);
+		r = ioctl(pci_fd, PCI_IOC_MAP, &_map);
+
+		base = _map.vaddr_ret;
+		if (r < 0) {
+			base = MAP_FAILED;
+		}
+		fprintf(stderr, "%s, base = %08x\n", __func__, (unsigned int)base);
+	}
+#endif /* !defined(__minix) */
 	    if (base != MAP_FAILED)
 	    {
+ #if !defined(__minix)
 		munmap((caddr_t)base, 4096);
+#else
+	{
+		struct pciio_map _map;
+		_map.size = 4096;
+		_map.vaddr = base;
+
+		ioctl(pci_fd, PCI_IOC_UNMAP, &_map);
+	}
+#endif /* !defined(__minix) */
 		devMemFd = fd;
 		useDevMem = TRUE;
 		return;
@@ -236,10 +272,28 @@ mapVidMem(int ScreenNum, unsigned long Base, unsigned long Size, int flags)
 		FatalError("xf86MapVidMem: failed to open %s (%s)",
 			   DEV_MEM, strerror(errno));
 	    }
+ #if !defined(__minix)
 	    base = mmap((caddr_t)0, Size,
 			(flags & VIDMEM_READONLY) ?
 			 PROT_READ : (PROT_READ | PROT_WRITE),
 			MAP_FLAGS, devMemFd, (off_t)Base);
+#else
+	{
+		struct pciio_map _map;
+		int r;
+		_map.flags = 0;
+		_map.phys_offset = (phys_bytes)Base;
+		_map.size = Size;
+		_map.readonly = (flags & VIDMEM_READONLY) ? 1: 0;
+
+		r = ioctl(pci_fd, PCI_IOC_MAP, &_map);
+
+		base = _map.vaddr_ret;
+		if (r < 0) {
+			base = MAP_FAILED;
+		}
+	}
+#endif /* !defined(__minix) */
 	    if (base == MAP_FAILED)
 	    {
 		FatalError("%s: could not mmap %s [s=%lx,a=%lx] (%s)",
@@ -272,7 +326,17 @@ mapVidMem(int ScreenNum, unsigned long Base, unsigned long Size, int flags)
 static void
 unmapVidMem(int ScreenNum, pointer Base, unsigned long Size)
 {
+ #if !defined(__minix)
 	munmap((caddr_t)Base, Size);
+#else
+	{
+		struct pciio_map _map;
+		_map.size = Size;
+		_map.vaddr = Base;
+
+		(void)ioctl(pci_fd, PCI_IOC_UNMAP, &_map);
+	}
+#endif /* !defined(__minix) */
 }
 
 /*
@@ -296,8 +360,26 @@ xf86ReadBIOS(unsigned long Base, unsigned long Offset, unsigned char *Buf,
 	Offset += Base & (psize - 1);
 	Base &= ~(psize - 1);
 	mlen = (Offset + Len + psize - 1) & ~(psize - 1);
+ #if !defined(__minix)
 	ptr = (unsigned char *)mmap((caddr_t)0, mlen, PROT_READ,
 					MAP_SHARED, devMemFd, (off_t)Base);
+#else
+	{
+		struct pciio_map _map;
+		int r;
+		_map.flags = 0;
+		_map.phys_offset = (phys_bytes)Base;
+		_map.size = mlen;
+		_map.readonly = 1;
+
+		r = ioctl(pci_fd, PCI_IOC_MAP, &_map);
+
+		ptr = _map.vaddr_ret;
+		if (r < 0) {
+			ptr = MAP_FAILED;
+		}
+	}
+#endif /* !defined(__minix) */
 	if ((long)ptr == -1)
 	{
 		xf86Msg(X_WARNING, 
@@ -315,7 +397,17 @@ xf86ReadBIOS(unsigned long Base, unsigned long Offset, unsigned char *Buf,
 		Base, ptr[0] | (ptr[1] << 8));
 #endif
 	(void)memcpy(Buf, (void *)(ptr + Offset), Len);
+ #if !defined(__minix)
 	(void)munmap((caddr_t)ptr, mlen);
+#else
+	{
+		struct pciio_map _map;
+		_map.size = mlen;
+		_map.vaddr = ptr;
+
+		(void)ioctl(pci_fd, PCI_IOC_UNMAP, &_map);
+	}
+#endif /* !defined(__minix) */
 #ifdef DEBUG
 	xf86MsgVerb(X_INFO, 3, "xf86ReadBIOS(%x, %x, Buf, %x)"
 		"-> %02x %02x %02x %02x...\n",
@@ -444,6 +536,33 @@ xf86DisableIO()
 
 #endif
 
+#if defined(__minix)
+static int IoFd = -1;
+Bool
+xf86EnableIO()
+{
+	if (IoFd >= 0)
+		return TRUE;
+
+	if ((IoFd = open("/dev/mem", O_RDWR)) == -1)
+	{
+		xf86Msg(X_WARNING,"xf86EnableIO: "
+				"Failed to open /dev/mem for extended I/O");
+		return FALSE;
+	}
+	return TRUE;
+}
+
+void xf86DisableIO()
+{
+	if (IoFd < 0)
+		return;
+
+	close(IoFd);
+	IoFd = -1;
+	return;
+}
+#endif /* defined(__minix) */
 #ifdef __NetBSD__
 /***************************************************************************/
 /* Set TV output mode                                                      */

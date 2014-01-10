@@ -218,7 +218,7 @@
 /* 386BSD and derivatives,  BSD/386                                       */
 /**************************************************************************/
 
-#if defined(__386BSD__) && (defined(__FreeBSD__) || defined(__NetBSD__))
+#if defined(__386BSD__) && (defined(__FreeBSD__) || defined(__minix) || defined(__NetBSD__))
 # undef __386BSD__
 #endif
 

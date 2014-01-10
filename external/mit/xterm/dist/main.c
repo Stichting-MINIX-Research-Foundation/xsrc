@@ -374,8 +374,11 @@ extern struct utmp *getutid __((struct utmp * _Id));
 #include <local/openpty.h>
 #endif /* PUCC_PTYD */
 
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__minix)
 #include <util.h>		/* openpty() */
+#if defined(__minix)
+#define setpgrp(x, y) /* empty */
+#endif /* defined(__minix) */
 #endif
 
 #if defined(__FreeBSD__) || defined(__DragonFly__)
@@ -2493,7 +2496,7 @@ main(int argc, char *argv[]ENVP_ARG)
     }
 #endif
 #endif
-#if defined(USE_ANY_SYSV_TERMIO) || defined(__MVS__)
+#if defined(USE_ANY_SYSV_TERMIO) || defined(__MVS__) || defined(__minix)
     if (0 > (mode = fcntl(screen->respond, F_GETFL, 0)))
 	SysError(ERROR_F_GETFL);
 #ifdef O_NDELAY
@@ -2583,7 +2586,7 @@ main(int argc, char *argv[]ENVP_ARG)
     }
 }
 
-#if defined(__osf__) || (defined(__GLIBC__) && !defined(USE_USG_PTYS)) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__APPLE__)
+#if defined(__osf__) || (defined(__GLIBC__) && !defined(USE_USG_PTYS)) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__APPLE__) || defined(__minix)
 #define USE_OPENPTY 1
 static int opened_tty = -1;
 #endif
@@ -3583,7 +3586,7 @@ spawnXTerm(XtermWidget xw)
 	    /*
 	     * now in child process
 	     */
-#if defined(_POSIX_SOURCE) || defined(SVR4) || defined(__convex__) || defined(__SCO__) || defined(__QNX__)
+#if defined(_POSIX_SOURCE) || defined(SVR4) || defined(__convex__) || defined(__SCO__) || defined(__QNX__) || defined(__minix)
 	    int pgrp = setsid();	/* variable may not be used... */
 #else
 	    int pgrp = getpid();
@@ -3719,7 +3722,9 @@ spawnXTerm(XtermWidget xw)
 		    }
 #endif /* USE_NO_DEV_TTY */
 #ifdef CSRG_BASED
+#if !defined(__minix)
 		    IGNORE_RC(revoke(ttydev));
+#endif /* !defined(__minix) */
 #endif
 		    if ((ttyfd = open(ttydev, O_RDWR)) >= 0) {
 			TRACE_TTYSIZE(ttyfd, "after open");

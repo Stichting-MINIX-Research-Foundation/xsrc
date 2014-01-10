@@ -420,7 +420,9 @@ startServer(char *server[])
          * prevent server from getting sighup from vhangup()
          * if client is xterm -L
          */
+#if !defined(__minix)
         setpgid(0,getpid());
+#endif /* !defined(__minix) */
         Execute(server);
 
         Error("unable to run server \"%s\"", server[0]);
@@ -566,7 +568,9 @@ startClient(char *client[])
             Error("cannot change uid");
             _exit(EXIT_FAILURE);
         }
+#if !defined(__minix)
         setpgid(0, getpid());
+#endif /* !defined(__minix) */
         Execute(client);
         Error("Unable to run program \"%s\"", client[0]);
 

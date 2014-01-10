@@ -247,8 +247,10 @@
 /* Define to 1 if you have the `vasprintf' function. */
 #define HAVE_VASPRINTF 1
 
+#if !defined(__minix)
 /* Support IPv6 for TCP connections */
 #define IPv6 1
+#endif /* !defined(__minix) */
 
 /* Support os-specific local connections */
 /* #undef LOCALCONN */
