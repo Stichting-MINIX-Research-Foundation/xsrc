@@ -950,42 +950,42 @@ static __inline__ void
 outb(unsigned short port, unsigned char value)
 {
         if(ioBase == MAP_FAILED) return;
-        xf86WriteMmio8((void *)ioBase, port, value);
+        xf86WriteMmio8(ioBase, port, value);
 }
 
 static __inline__ void
 outw(unsigned short port, unsigned short value)
 {
         if(ioBase == MAP_FAILED) return;
-        xf86WriteMmio16Le((void *)ioBase, port, value);
+        xf86WriteMmio16Le(ioBase, port, value);
 }
 
 static __inline__ void
 outl(unsigned short port, unsigned int value)
 {
         if(ioBase == MAP_FAILED) return;
-        xf86WriteMmio32Le((void *)ioBase, port, value);
+        xf86WriteMmio32Le(ioBase, port, value);
 }
 
 static __inline__ unsigned int
 inb(unsigned short port)
 {
         if(ioBase == MAP_FAILED) return 0;
-        return xf86ReadMmio8((void *)ioBase, port);
+        return xf86ReadMmio8(ioBase, port);
 }
 
 static __inline__ unsigned int
 inw(unsigned short port)
 {
         if(ioBase == MAP_FAILED) return 0;
-        return xf86ReadMmio16Le((void *)ioBase, port);
+        return xf86ReadMmio16Le(ioBase, port);
 }
 
 static __inline__ unsigned int
 inl(unsigned short port)
 {
         if(ioBase == MAP_FAILED) return 0;
-        return xf86ReadMmio32Le((void *)ioBase, port);
+        return xf86ReadMmio32Le(ioBase, port);
 }
 
 #elif defined(__arm__) && defined(__linux__)
@@ -1525,11 +1525,11 @@ inl(unsigned short port)
 #      define asm __asm
 #     endif
 #    endif
-#     if !defined(__SUNPRO_C)
+#     if !defined(__SUNPRO_C) && !defined(__lint__)
 #      include <sys/inline.h>
 #     endif
 #    if !defined(__HIGHC__) && !defined(__SUNPRO_C) || \
-	defined(__USLC__)
+	defined(__USLC__) && !defined(__lint__)
 #     pragma asm partial_optimization outl
 #     pragma asm partial_optimization outw
 #     pragma asm partial_optimization outb

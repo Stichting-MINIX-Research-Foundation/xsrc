@@ -28,14 +28,16 @@
 #include "nouveau_context.h"
 #include "nouveau_util.h"
 
+#include "main/formats.h"
+
 void
-nouveau_surface_alloc(GLcontext *ctx, struct nouveau_surface *s,
+nouveau_surface_alloc(struct gl_context *ctx, struct nouveau_surface *s,
 		      enum nouveau_surface_layout layout,
 		      unsigned flags, unsigned format,
 		      unsigned width, unsigned height)
 {
-	unsigned tile_mode, cpp = _mesa_get_format_bytes(format);
-	int ret;
+	union nouveau_bo_config config = {};
+	int ret, cpp = _mesa_get_format_bytes(format);
 
 	nouveau_bo_ref(NULL, &s->bo);
 
@@ -45,19 +47,28 @@ nouveau_surface_alloc(GLcontext *ctx, struct nouveau_surface *s,
 		.width = width,
 		.height = height,
 		.cpp = cpp,
-		.pitch = width * cpp,
+		.pitch = _mesa_format_row_stride(format, width),
 	};
 
 	if (layout == TILED) {
 		s->pitch = align(s->pitch, 256);
-		tile_mode = s->pitch;
+		config.nv04.surf_pitch = s->pitch;
+
+		if (cpp == 4)
+			config.nv04.surf_flags = NV04_BO_32BPP;
+		else if (cpp == 2)
+			config.nv04.surf_flags = NV04_BO_16BPP;
+
+		if (_mesa_get_format_bits(format, GL_DEPTH_BITS))
+			config.nv04.surf_flags |= NV04_BO_ZETA;
+
 	} else {
 		s->pitch = align(s->pitch, 64);
-		tile_mode = 0;
 	}
 
-	ret = nouveau_bo_new_tile(context_dev(ctx), flags, 0, s->pitch * height,
-				  tile_mode, 0, &s->bo);
+	ret = nouveau_bo_new(context_dev(ctx), flags, 0,
+			     get_format_blocksy(format, height) * s->pitch,
+			     &config, &s->bo);
 	assert(!ret);
 }
 

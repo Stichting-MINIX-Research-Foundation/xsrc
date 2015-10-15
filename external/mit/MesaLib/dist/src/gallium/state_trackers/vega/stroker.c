@@ -35,7 +35,7 @@
 #include "path_utils.h"
 #include "polygon.h"
 
-#include "math.h"
+#include "util/u_math.h"
 
 #ifndef M_2PI
 #define M_2PI 6.28318530717958647692528676655900576
@@ -623,7 +623,7 @@ static INLINE void create_round_join(struct stroker *stroker,
 
    /*stroker_emit_line_to(stroker, nx, ny);*/
 
-   arc_init(&arc, VG_SCCWARC_TO_ABS,
+   arc_init(&arc, VG_SCCWARC_TO,
             x1, y1, x2, y2, width/2, height/2, 0);
    arc_stroker_emit(&arc, stroker, &matrix);
 }
@@ -870,7 +870,7 @@ static VGboolean vg_stroke_outline(struct stroke_iterator *it,
                                 VGboolean cap_first,
                                 VGfloat *start_tangent)
 {
-   const int MAX_OFFSET = 16;
+#define MAX_OFFSET 16
    struct bezier offset_curves[MAX_OFFSET];
    VGPathCommand first_element;
    VGfloat start[2], prev[2];
@@ -1017,6 +1017,7 @@ static VGboolean vg_stroke_outline(struct stroke_iterator *it,
 #endif
       return VG_FALSE;
    }
+#undef MAX_OFFSET
 }
 
 static void stroker_process_subpath(struct stroker *stroker)
@@ -1096,12 +1097,12 @@ static void stroker_process_subpath(struct stroker *stroker)
                matrix_load_identity(&matrix);
 
                stroker_emit_move_to(stroker, cx + offset, cy);
-               arc_init(&arc, VG_SCCWARC_TO_ABS,
+               arc_init(&arc, VG_SCCWARC_TO,
                         cx + offset, cy,
                         cx - offset, cy,
                         offset, offset, 0);
                arc_stroker_emit(&arc, stroker, &matrix);
-               arc_init(&arc, VG_SCCWARC_TO_ABS,
+               arc_init(&arc, VG_SCCWARC_TO,
                          cx - offset, cy,
                          cx + offset, cy,
                          offset, offset, 0);
@@ -1290,7 +1291,8 @@ void stroker_init(struct stroker *stroker,
    stroker->path = path_create(VG_PATH_DATATYPE_F, 1.0f, 0.0f,
                                0, 0, VG_PATH_CAPABILITY_ALL);
 
-   stroker->last_cmd = VG_CLOSE_PATH;
+   /* Initialize with an invalid value */
+   stroker->last_cmd = (VGPathCommand)0;
 }
 
 void dash_stroker_init(struct stroker *str,

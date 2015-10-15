@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright (c) 2008 VMware, Inc.
  * All Rights Reserved.
  * 
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,7 +30,6 @@
 #include "pipe/p_config.h" 
 
 #include "pipe/p_compiler.h"
-#include "os/os_stream.h"
 #include "util/u_debug.h" 
 #include "pipe/p_format.h" 
 #include "pipe/p_state.h" 
@@ -40,19 +39,60 @@
 #include "util/u_string.h" 
 #include "util/u_math.h" 
 #include "util/u_tile.h" 
-#include "util/u_prim.h" 
+#include "util/u_prim.h"
+#include "util/u_surface.h"
+
+#include <stdio.h>
+#include <limits.h> /* CHAR_BIT */
+#include <ctype.h> /* isalnum */
+
+#ifdef _WIN32
+#include <windows.h>
+#include <stdlib.h>
+#endif
 
 
 void _debug_vprintf(const char *format, va_list ap)
 {
-   /* We buffer until we find a newline. */
    static char buf[4096] = {'\0'};
+#if defined(PIPE_OS_WINDOWS) || defined(PIPE_SUBSYSTEM_EMBEDDED)
+   /* We buffer until we find a newline. */
    size_t len = strlen(buf);
    int ret = util_vsnprintf(buf + len, sizeof(buf) - len, format, ap);
    if(ret > (int)(sizeof(buf) - len - 1) || util_strchr(buf + len, '\n')) {
       os_log_message(buf);
       buf[0] = '\0';
    }
+#else
+   util_vsnprintf(buf, sizeof(buf), format, ap);
+   os_log_message(buf);
+#endif
+}
+
+
+void
+debug_disable_error_message_boxes(void)
+{
+#ifdef _WIN32
+   /* When Windows' error message boxes are disabled for this process (as is
+    * typically the case when running tests in an automated fashion) we disable
+    * CRT message boxes too.
+    */
+   UINT uMode = SetErrorMode(0);
+   SetErrorMode(uMode);
+   if (uMode & SEM_FAILCRITICALERRORS) {
+      /* Disable assertion failure message box.
+       * http://msdn.microsoft.com/en-us/library/sas1dkb2.aspx
+       */
+      _set_error_mode(_OUT_TO_STDERR);
+#ifdef _MSC_VER
+      /* Disable abort message box.
+       * http://msdn.microsoft.com/en-us/library/e631wekh.aspx
+       */
+      _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+   }
+#endif /* _WIN32 */
 }
 
 
@@ -74,6 +114,24 @@ void debug_print_blob( const char *name,
 #endif
 
 
+static boolean
+debug_get_option_should_print(void)
+{
+   static boolean first = TRUE;
+   static boolean value = FALSE;
+
+   if (!first)
+      return value;
+
+   /* Oh hey this will call into this function,
+    * but its cool since we set first to false
+    */
+   first = FALSE;
+   value = debug_get_bool_option("GALLIUM_PRINT_OPTIONS", FALSE);
+   /* XXX should we print this option? Currently it wont */
+   return value;
+}
+
 const char *
 debug_get_option(const char *name, const char *dfault)
 {
@@ -82,8 +140,9 @@ debug_get_option(const char *name, const char *dfault)
    result = os_get_option(name);
    if(!result)
       result = dfault;
-      
-   debug_printf("%s: %s = %s\n", __FUNCTION__, name, result ? result : "(null)");
+
+   if (debug_get_option_should_print())
+      debug_printf("%s: %s = %s\n", __FUNCTION__, name, result ? result : "(null)");
    
    return result;
 }
@@ -104,12 +163,17 @@ debug_get_bool_option(const char *name, boolean dfault)
       result = FALSE;
    else if(!util_strcmp(str, "f"))
       result = FALSE;
+   else if(!util_strcmp(str, "F"))
+      result = FALSE;
    else if(!util_strcmp(str, "false"))
+      result = FALSE;
+   else if(!util_strcmp(str, "FALSE"))
       result = FALSE;
    else
       result = TRUE;
 
-   debug_printf("%s: %s = %s\n", __FUNCTION__, name, result ? "TRUE" : "FALSE");
+   if (debug_get_option_should_print())
+      debug_printf("%s: %s = %s\n", __FUNCTION__, name, result ? "TRUE" : "FALSE");
    
    return result;
 }
@@ -142,12 +206,55 @@ debug_get_num_option(const char *name, long dfault)
       }
       result *= sign;
    }
-   
-   debug_printf("%s: %s = %li\n", __FUNCTION__, name, result);
+
+   if (debug_get_option_should_print())
+      debug_printf("%s: %s = %li\n", __FUNCTION__, name, result);
 
    return result;
 }
 
+static boolean str_has_option(const char *str, const char *name)
+{
+   /* Empty string. */
+   if (!*str) {
+      return FALSE;
+   }
+
+   /* OPTION=all */
+   if (!util_strcmp(str, "all")) {
+      return TRUE;
+   }
+
+   /* Find 'name' in 'str' surrounded by non-alphanumeric characters. */
+   {
+      const char *start = str;
+      unsigned name_len = strlen(name);
+
+      /* 'start' is the beginning of the currently-parsed word,
+       * we increment 'str' each iteration.
+       * if we find either the end of string or a non-alphanumeric character,
+       * we compare 'start' up to 'str-1' with 'name'. */
+
+      while (1) {
+         if (!*str || !(isalnum(*str) || *str == '_')) {
+            if (str-start == name_len &&
+                !memcmp(start, name, name_len)) {
+               return TRUE;
+            }
+
+            if (!*str) {
+               return FALSE;
+            }
+
+            start = str+1;
+         }
+
+         str++;
+      }
+   }
+
+   return FALSE;
+}
 
 unsigned long
 debug_get_flags_option(const char *name, 
@@ -156,31 +263,37 @@ debug_get_flags_option(const char *name,
 {
    unsigned long result;
    const char *str;
+   const struct debug_named_value *orig = flags;
+   unsigned namealign = 0;
    
    str = os_get_option(name);
    if(!str)
       result = dfault;
    else if (!util_strcmp(str, "help")) {
       result = dfault;
-      while (flags->name) {
-         debug_printf("%s: help for %s: %s [0x%lx]\n", __FUNCTION__, name, flags->name, flags->value);
-         flags++;
-      }
+      _debug_printf("%s: help for %s:\n", __FUNCTION__, name);
+      for (; flags->name; ++flags)
+         namealign = MAX2(namealign, strlen(flags->name));
+      for (flags = orig; flags->name; ++flags)
+         _debug_printf("| %*s [0x%0*lx]%s%s\n", namealign, flags->name,
+                      (int)sizeof(unsigned long)*CHAR_BIT/4, flags->value,
+                      flags->desc ? " " : "", flags->desc ? flags->desc : "");
    }
    else {
       result = 0;
       while( flags->name ) {
-	 if (!util_strcmp(str, "all") || util_strstr(str, flags->name ))
+	 if (str_has_option(str, flags->name))
 	    result |= flags->value;
 	 ++flags;
       }
    }
 
-   if (str) {
-      debug_printf("%s: %s = 0x%lx (%s)\n", __FUNCTION__, name, result, str);
-   }
-   else {
-      debug_printf("%s: %s = 0x%lx\n", __FUNCTION__, name, result);
+   if (debug_get_option_should_print()) {
+      if (str) {
+         debug_printf("%s: %s = 0x%lx (%s)\n", __FUNCTION__, name, result, str);
+      } else {
+         debug_printf("%s: %s = 0x%lx\n", __FUNCTION__, name, result);
+      }
    }
 
    return result;
@@ -193,14 +306,7 @@ void _debug_assert_fail(const char *expr,
                         const char *function) 
 {
    _debug_printf("%s:%u:%s: Assertion `%s' failed.\n", file, line, function, expr);
-#if defined(PIPE_OS_WINDOWS) && !defined(PIPE_SUBSYSTEM_WINDOWS_USER)
-   if (debug_get_bool_option("GALLIUM_ABORT_ON_ASSERT", FALSE))
-#else
-   if (debug_get_bool_option("GALLIUM_ABORT_ON_ASSERT", TRUE))
-#endif
-      os_abort();
-   else
-      _debug_printf("continuing...\n");
+   os_abort();
 }
 
 
@@ -260,10 +366,10 @@ debug_dump_flags(const struct debug_named_value *names,
    while(names->name) {
       if((names->value & value) == names->value) {
 	 if (!first)
-	    util_strncat(output, "|", sizeof(output));
+	    util_strncat(output, "|", sizeof(output) - strlen(output) - 1);
 	 else
 	    first = 0;
-	 util_strncat(output, names->name, sizeof(output) - 1);
+	 util_strncat(output, names->name, sizeof(output) - strlen(output) - 1);
 	 output[sizeof(output) - 1] = '\0';
 	 value &= ~names->value;
       }
@@ -272,12 +378,12 @@ debug_dump_flags(const struct debug_named_value *names,
    
    if (value) {
       if (!first)
-	 util_strncat(output, "|", sizeof(output));
+	 util_strncat(output, "|", sizeof(output) - strlen(output) - 1);
       else
 	 first = 0;
       
       util_snprintf(rest, sizeof(rest), "0x%08lx", value);
-      util_strncat(output, rest, sizeof(output) - 1);
+      util_strncat(output, rest, sizeof(output) - strlen(output) - 1);
       output[sizeof(output) - 1] = '\0';
    }
    
@@ -309,6 +415,10 @@ static const struct debug_named_value pipe_prim_names[] = {
    DEBUG_NAMED_VALUE(PIPE_PRIM_QUADS),
    DEBUG_NAMED_VALUE(PIPE_PRIM_QUAD_STRIP),
    DEBUG_NAMED_VALUE(PIPE_PRIM_POLYGON),
+   DEBUG_NAMED_VALUE(PIPE_PRIM_LINES_ADJACENCY),
+   DEBUG_NAMED_VALUE(PIPE_PRIM_LINE_STRIP_ADJACENCY),
+   DEBUG_NAMED_VALUE(PIPE_PRIM_TRIANGLES_ADJACENCY),
+   DEBUG_NAMED_VALUE(PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY),
 #endif
    DEBUG_NAMED_VALUE_END
 };
@@ -321,10 +431,45 @@ const char *u_prim_name( unsigned prim )
 
 
 
+#ifdef DEBUG
+int fl_indent = 0;
+const char* fl_function[1024];
+
+int debug_funclog_enter(const char* f, const int line, const char* file)
+{
+   int i;
+
+   for (i = 0; i < fl_indent; i++)
+      debug_printf("  ");
+   debug_printf("%s\n", f);
+
+   assert(fl_indent < 1023);
+   fl_function[fl_indent++] = f;
+
+   return 0;
+}
+
+void debug_funclog_exit(const char* f, const int line, const char* file)
+{
+   --fl_indent;
+   assert(fl_indent >= 0);
+   assert(fl_function[fl_indent] == f);
+}
+
+void debug_funclog_enter_exit(const char* f, const int line, const char* file)
+{
+   int i;
+   for (i = 0; i < fl_indent; i++)
+      debug_printf("  ");
+   debug_printf("%s\n", f);
+}
+#endif
+
+
 
 #ifdef DEBUG
 /**
- * Dump an image to a .raw or .ppm file (depends on OS).
+ * Dump an image to .ppm file.
  * \param format  PIPE_FORMAT_x
  * \param cpp  bytes per pixel
  * \param width  width in pixels
@@ -332,149 +477,104 @@ const char *u_prim_name( unsigned prim )
  * \param stride  row stride in bytes
  */
 void debug_dump_image(const char *prefix,
-                      unsigned format, unsigned cpp,
+                      enum pipe_format format, unsigned cpp,
                       unsigned width, unsigned height,
                       unsigned stride,
                       const void *data)     
 {
-#ifdef PIPE_SUBSYSTEM_WINDOWS_DISPLAY
-   static unsigned no = 0; 
-   char filename[256];
-   WCHAR wfilename[sizeof(filename)];
-   ULONG_PTR iFile = 0;
-   struct {
-      unsigned format;
-      unsigned cpp;
-      unsigned width;
-      unsigned height;
-   } header;
-   unsigned char *pMap = NULL;
-   unsigned i;
-
-   util_snprintf(filename, sizeof(filename), "\\??\\c:\\%03u%s.raw", ++no, prefix);
-   for(i = 0; i < sizeof(filename); ++i)
-      wfilename[i] = (WCHAR)filename[i];
-   
-   pMap = (unsigned char *)EngMapFile(wfilename, sizeof(header) + height*width*cpp, &iFile);
-   if(!pMap)
-      return;
-   
-   header.format = format;
-   header.cpp = cpp;
-   header.width = width;
-   header.height = height;
-   memcpy(pMap, &header, sizeof(header));
-   pMap += sizeof(header);
-   
-   for(i = 0; i < height; ++i) {
-      memcpy(pMap, (unsigned char *)data + stride*i, cpp*width);
-      pMap += cpp*width;
-   }
-      
-   EngUnmapFile(iFile);
-#elif defined(PIPE_OS_UNIX)
    /* write a ppm file */
    char filename[256];
+   unsigned char *rgb8;
    FILE *f;
 
    util_snprintf(filename, sizeof(filename), "%s.ppm", prefix);
 
-   f = fopen(filename, "w");
+   rgb8 = MALLOC(height * width * 3);
+   if (!rgb8) {
+      return;
+   }
+
+   util_format_translate(
+         PIPE_FORMAT_R8G8B8_UNORM,
+         rgb8, width * 3,
+         0, 0,
+         format,
+         data, stride,
+         0, 0, width, height);
+
+   /* Must be opened in binary mode or DOS line ending causes data
+    * to be read with one byte offset.
+    */
+   f = fopen(filename, "wb");
    if (f) {
-      int i, x, y;
-      int r, g, b;
-      const uint8_t *ptr = (uint8_t *) data;
-
-      /* XXX this is a hack */
-      switch (format) {
-      case PIPE_FORMAT_B8G8R8A8_UNORM:
-         r = 2;
-         g = 1;
-         b = 0;
-         break;
-      default:
-         r = 0;
-         g = 1;
-         b = 1;
-      }
-
       fprintf(f, "P6\n");
-      fprintf(f, "# ppm-file created by osdemo.c\n");
+      fprintf(f, "# ppm-file created by gallium\n");
       fprintf(f, "%i %i\n", width, height);
       fprintf(f, "255\n");
-      fclose(f);
-
-      f = fopen(filename, "ab");  /* reopen in binary append mode */
-      for (y = 0; y < height; y++) {
-         for (x = 0; x < width; x++) {
-            i = y * stride + x * cpp;
-            fputc(ptr[i + r], f); /* write red */
-            fputc(ptr[i + g], f); /* write green */
-            fputc(ptr[i + b], f); /* write blue */
-         }
-      }
+      fwrite(rgb8, 1, height * width * 3, f);
       fclose(f);
    }
    else {
       fprintf(stderr, "Can't open %s for writing\n", filename);
    }
-#endif
+
+   FREE(rgb8);
 }
 
-void debug_dump_surface(const char *prefix,
-                        struct pipe_surface *surface)     
+/* FIXME: dump resources, not surfaces... */
+void debug_dump_surface(struct pipe_context *pipe,
+                        const char *prefix,
+                        struct pipe_surface *surface)
 {
-   struct pipe_texture *texture;
-   struct pipe_screen *screen;
+   struct pipe_resource *texture;
    struct pipe_transfer *transfer;
    void *data;
 
    if (!surface)
       return;
 
+   /* XXX: this doesn't necessarily work, as the driver may be using
+    * temporary storage for the surface which hasn't been propagated
+    * back into the texture.  Need to nail down the semantics of views
+    * and transfers a bit better before we can say if extra work needs
+    * to be done here:
+    */
    texture = surface->texture;
-   screen = texture->screen;
 
-   transfer = screen->get_tex_transfer(screen, texture, surface->face,
-                                       surface->level, surface->zslice,
-                                       PIPE_TRANSFER_READ, 0, 0, surface->width,
-                                       surface->height);
-   
-   data = screen->transfer_map(screen, transfer);
+   data = pipe_transfer_map(pipe, texture, surface->u.tex.level,
+                            surface->u.tex.first_layer,
+                            PIPE_TRANSFER_READ,
+                            0, 0, surface->width, surface->height, &transfer);
    if(!data)
-      goto error;
-   
-   debug_dump_image(prefix, 
+      return;
+
+   debug_dump_image(prefix,
                     texture->format,
-                    util_format_get_blocksize(texture->format), 
-                    util_format_get_nblocksx(texture->format, transfer->width),
-                    util_format_get_nblocksy(texture->format, transfer->height),
+                    util_format_get_blocksize(texture->format),
+                    util_format_get_nblocksx(texture->format, surface->width),
+                    util_format_get_nblocksy(texture->format, surface->height),
                     transfer->stride,
                     data);
-   
-   screen->transfer_unmap(screen, transfer);
-error:
-   screen->tex_transfer_destroy(transfer);
+
+   pipe->transfer_unmap(pipe, transfer);
 }
 
 
-void debug_dump_texture(const char *prefix,
-                        struct pipe_texture *texture)
+void debug_dump_texture(struct pipe_context *pipe,
+                        const char *prefix,
+                        struct pipe_resource *texture)
 {
-   struct pipe_surface *surface;
-   struct pipe_screen *screen;
+   struct pipe_surface *surface, surf_tmpl;
 
    if (!texture)
       return;
 
-   screen = texture->screen;
-
-   /* XXX for now, just dump image for face=0, level=0 */
-   surface = screen->get_tex_surface(screen, texture, 0, 0, 0,
-                                     PIPE_TEXTURE_USAGE_SAMPLER);
+   /* XXX for now, just dump image for layer=0, level=0 */
+   u_surface_default_template(&surf_tmpl, texture);
+   surface = pipe->create_surface(pipe, texture, &surf_tmpl);
    if (surface) {
-      debug_dump_surface(prefix, surface);
-      screen->tex_surface_destroy(surface);
+      debug_dump_surface(pipe, prefix, surface);
+      pipe->surface_destroy(pipe, surface);
    }
 }
 
@@ -511,51 +611,51 @@ struct bmp_rgb_quad {
 };
 
 void
-debug_dump_surface_bmp(const char *filename,
+debug_dump_surface_bmp(struct pipe_context *pipe,
+                       const char *filename,
                        struct pipe_surface *surface)
 {
-#ifndef PIPE_SUBSYSTEM_WINDOWS_MINIPORT
    struct pipe_transfer *transfer;
-   struct pipe_texture *texture = surface->texture;
-   struct pipe_screen *screen = texture->screen;
+   struct pipe_resource *texture = surface->texture;
+   void *ptr;
 
-   transfer = screen->get_tex_transfer(screen, texture, surface->face,
-                                       surface->level, surface->zslice,
-                                       PIPE_TRANSFER_READ, 0, 0, surface->width,
-                                       surface->height);
+   ptr = pipe_transfer_map(pipe, texture, surface->u.tex.level,
+                           surface->u.tex.first_layer, PIPE_TRANSFER_READ,
+                           0, 0, surface->width, surface->height, &transfer);
 
-   debug_dump_transfer_bmp(filename, transfer);
+   debug_dump_transfer_bmp(pipe, filename, transfer, ptr);
 
-   screen->tex_transfer_destroy(transfer);
-#endif
+   pipe->transfer_unmap(pipe, transfer);
 }
 
 void
-debug_dump_transfer_bmp(const char *filename,
-                        struct pipe_transfer *transfer)
+debug_dump_transfer_bmp(struct pipe_context *pipe,
+                        const char *filename,
+                        struct pipe_transfer *transfer, void *ptr)
 {
-#ifndef PIPE_SUBSYSTEM_WINDOWS_MINIPORT
    float *rgba;
 
    if (!transfer)
       goto error1;
 
-   rgba = MALLOC(transfer->width*transfer->height*4*sizeof(float));
+   rgba = MALLOC(transfer->box.width *
+		 transfer->box.height *
+		 transfer->box.depth *
+		 4*sizeof(float));
    if(!rgba)
       goto error1;
 
-   pipe_get_tile_rgba(transfer, 0, 0,
-                      transfer->width, transfer->height,
+   pipe_get_tile_rgba(transfer, ptr, 0, 0,
+                      transfer->box.width, transfer->box.height,
                       rgba);
 
    debug_dump_float_rgba_bmp(filename,
-                             transfer->width, transfer->height,
-                             rgba, transfer->width);
+                             transfer->box.width, transfer->box.height,
+                             rgba, transfer->box.width);
 
    FREE(rgba);
 error1:
    ;
-#endif
 }
 
 void
@@ -563,8 +663,7 @@ debug_dump_float_rgba_bmp(const char *filename,
                           unsigned width, unsigned height,
                           float *rgba, unsigned stride)
 {
-#ifndef PIPE_SUBSYSTEM_WINDOWS_MINIPORT
-   struct os_stream *stream;
+   FILE *stream;
    struct bmp_file_header bmfh;
    struct bmp_info_header bmih;
    unsigned x, y;
@@ -590,12 +689,12 @@ debug_dump_float_rgba_bmp(const char *filename,
    bmih.biClrUsed = 0;
    bmih.biClrImportant = 0;
 
-   stream = os_file_stream_create(filename);
+   stream = fopen(filename, "wb");
    if(!stream)
       goto error1;
 
-   os_stream_write(stream, &bmfh, 14);
-   os_stream_write(stream, &bmih, 40);
+   fwrite(&bmfh, 14, 1, stream);
+   fwrite(&bmih, 40, 1, stream);
 
    y = height;
    while(y--) {
@@ -606,15 +705,55 @@ debug_dump_float_rgba_bmp(const char *filename,
          pixel.rgbRed   = float_to_ubyte(ptr[x*4 + 0]);
          pixel.rgbGreen = float_to_ubyte(ptr[x*4 + 1]);
          pixel.rgbBlue  = float_to_ubyte(ptr[x*4 + 2]);
-         pixel.rgbAlpha = 255;
-         os_stream_write(stream, &pixel, 4);
+         pixel.rgbAlpha = float_to_ubyte(ptr[x*4 + 3]);
+         fwrite(&pixel, 1, 4, stream);
       }
    }
 
-   os_stream_close(stream);
+   fclose(stream);
 error1:
    ;
-#endif
 }
+
+
+/**
+ * Print PIPE_TRANSFER_x flags with a message.
+ */
+void
+debug_print_transfer_flags(const char *msg, unsigned usage)
+{
+#define FLAG(x)  { x, #x }
+   static const struct {
+      unsigned bit;
+      const char *name;
+   } flags[] = {
+      FLAG(PIPE_TRANSFER_READ),
+      FLAG(PIPE_TRANSFER_WRITE),
+      FLAG(PIPE_TRANSFER_MAP_DIRECTLY),
+      FLAG(PIPE_TRANSFER_DISCARD_RANGE),
+      FLAG(PIPE_TRANSFER_DONTBLOCK),
+      FLAG(PIPE_TRANSFER_UNSYNCHRONIZED),
+      FLAG(PIPE_TRANSFER_FLUSH_EXPLICIT),
+      FLAG(PIPE_TRANSFER_DISCARD_WHOLE_RESOURCE)
+   };
+   unsigned i;
+
+   debug_printf("%s ", msg);
+
+   for (i = 0; i < Elements(flags); i++) {
+      if (usage & flags[i].bit) {
+         debug_printf("%s", flags[i].name);
+         usage &= ~flags[i].bit;
+         if (usage) {
+            debug_printf(" | ");
+         }
+      }
+   }
+
+   debug_printf("\n");
+#undef FLAG
+}
+
+
 
 #endif

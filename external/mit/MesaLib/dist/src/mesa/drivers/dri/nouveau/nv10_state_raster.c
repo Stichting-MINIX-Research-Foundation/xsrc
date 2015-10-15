@@ -27,155 +27,148 @@
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_gldefs.h"
-#include "nouveau_class.h"
+#include "nouveau_util.h"
+#include "nv_object.xml.h"
+#include "nv10_3d.xml.h"
 #include "nv10_driver.h"
 
+#include "main/stencil.h"
+
 void
-nv10_emit_alpha_func(GLcontext *ctx, int emit)
+nv10_emit_alpha_func(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_ALPHA_FUNC_ENABLE, 1);
-	OUT_RING(chan, ctx->Color.AlphaEnabled ? 1 : 0);
+	BEGIN_NV04(push, NV10_3D(ALPHA_FUNC_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Color.AlphaEnabled);
 
-	BEGIN_RING(chan, celsius, NV10TCL_ALPHA_FUNC_FUNC, 2);
-	OUT_RING(chan, nvgl_comparison_op(ctx->Color.AlphaFunc));
-	OUT_RING(chan, FLOAT_TO_UBYTE(ctx->Color.AlphaRef));
+	BEGIN_NV04(push, NV10_3D(ALPHA_FUNC_FUNC), 2);
+	PUSH_DATA (push, nvgl_comparison_op(ctx->Color.AlphaFunc));
+	PUSH_DATA (push, FLOAT_TO_UBYTE(ctx->Color.AlphaRef));
 }
 
 void
-nv10_emit_blend_color(GLcontext *ctx, int emit)
+nv10_emit_blend_color(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_BLEND_COLOR, 1);
-	OUT_RING(chan, FLOAT_TO_UBYTE(ctx->Color.BlendColor[3]) << 24 |
+	BEGIN_NV04(push, NV10_3D(BLEND_COLOR), 1);
+	PUSH_DATA (push, FLOAT_TO_UBYTE(ctx->Color.BlendColor[3]) << 24 |
 		 FLOAT_TO_UBYTE(ctx->Color.BlendColor[0]) << 16 |
 		 FLOAT_TO_UBYTE(ctx->Color.BlendColor[1]) << 8 |
 		 FLOAT_TO_UBYTE(ctx->Color.BlendColor[2]) << 0);
 }
 
 void
-nv10_emit_blend_equation(GLcontext *ctx, int emit)
+nv10_emit_blend_equation(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_BLEND_FUNC_ENABLE, 1);
-	OUT_RING(chan, ctx->Color.BlendEnabled ? 1 : 0);
+	BEGIN_NV04(push, NV10_3D(BLEND_FUNC_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Color.BlendEnabled);
 
-	BEGIN_RING(chan, celsius, NV10TCL_BLEND_EQUATION, 1);
-	OUT_RING(chan, nvgl_blend_eqn(ctx->Color.BlendEquationRGB));
+	BEGIN_NV04(push, NV10_3D(BLEND_EQUATION), 1);
+	PUSH_DATA (push, nvgl_blend_eqn(ctx->Color.Blend[0].EquationRGB));
 }
 
 void
-nv10_emit_blend_func(GLcontext *ctx, int emit)
+nv10_emit_blend_func(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_BLEND_FUNC_SRC, 2);
-	OUT_RING(chan, nvgl_blend_func(ctx->Color.BlendSrcRGB));
-	OUT_RING(chan, nvgl_blend_func(ctx->Color.BlendDstRGB));
+	BEGIN_NV04(push, NV10_3D(BLEND_FUNC_SRC), 2);
+	PUSH_DATA (push, nvgl_blend_func(ctx->Color.Blend[0].SrcRGB));
+	PUSH_DATA (push, nvgl_blend_func(ctx->Color.Blend[0].DstRGB));
 }
 
 void
-nv10_emit_color_mask(GLcontext *ctx, int emit)
+nv10_emit_color_mask(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_COLOR_MASK, 1);
-	OUT_RING(chan, ((ctx->Color.ColorMask[0][3] ? 1 << 24 : 0) |
+	BEGIN_NV04(push, NV10_3D(COLOR_MASK), 1);
+	PUSH_DATA (push, ((ctx->Color.ColorMask[0][3] ? 1 << 24 : 0) |
 			(ctx->Color.ColorMask[0][0] ? 1 << 16 : 0) |
 			(ctx->Color.ColorMask[0][1] ? 1 << 8 : 0) |
 			(ctx->Color.ColorMask[0][2] ? 1 << 0 : 0)));
 }
 
 void
-nv10_emit_depth(GLcontext *ctx, int emit)
+nv10_emit_depth(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
+	struct gl_framebuffer *fb = ctx->DrawBuffer;
 
-	BEGIN_RING(chan, celsius, NV10TCL_DEPTH_TEST_ENABLE, 1);
-	OUT_RING(chan, ctx->Depth.Test ? 1 : 0);
-	BEGIN_RING(chan, celsius, NV10TCL_DEPTH_WRITE_ENABLE, 1);
-	OUT_RING(chan, ctx->Depth.Mask ? 1 : 0);
-	BEGIN_RING(chan, celsius, NV10TCL_DEPTH_FUNC, 1);
-	OUT_RING(chan, nvgl_comparison_op(ctx->Depth.Func));
+	BEGIN_NV04(push, NV10_3D(DEPTH_TEST_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Depth.Test && fb->Visual.depthBits > 0);
+	BEGIN_NV04(push, NV10_3D(DEPTH_WRITE_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Depth.Mask && fb->Visual.depthBits > 0);
+	BEGIN_NV04(push, NV10_3D(DEPTH_FUNC), 1);
+	PUSH_DATA (push, nvgl_comparison_op(ctx->Depth.Func));
 }
 
 void
-nv10_emit_dither(GLcontext *ctx, int emit)
+nv10_emit_dither(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_DITHER_ENABLE, 1);
-	OUT_RING(chan, ctx->Color.DitherFlag ? 1 : 0);
+	BEGIN_NV04(push, NV10_3D(DITHER_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Color.DitherFlag);
 }
 
 void
-nv10_emit_logic_opcode(GLcontext *ctx, int emit)
+nv10_emit_logic_opcode(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
 	assert(!ctx->Color.ColorLogicOpEnabled
-	       || context_chipset(ctx) >= 0x11);
+	       || context_eng3d(ctx)->oclass >= NV15_3D_CLASS);
 
-	BEGIN_RING(chan, celsius, NV11TCL_COLOR_LOGIC_OP_ENABLE, 2);
-	OUT_RING(chan, ctx->Color.ColorLogicOpEnabled ? 1 : 0);
-	OUT_RING(chan, nvgl_logicop_func(ctx->Color.LogicOp));
+	BEGIN_NV04(push, NV11_3D(COLOR_LOGIC_OP_ENABLE), 2);
+	PUSH_DATAb(push, ctx->Color.ColorLogicOpEnabled);
+	PUSH_DATA (push, nvgl_logicop_func(ctx->Color.LogicOp));
 }
 
 void
-nv10_emit_shade_model(GLcontext *ctx, int emit)
+nv10_emit_shade_model(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_SHADE_MODEL, 1);
-	OUT_RING(chan, ctx->Light.ShadeModel == GL_SMOOTH ?
-		 NV10TCL_SHADE_MODEL_SMOOTH : NV10TCL_SHADE_MODEL_FLAT);
+	BEGIN_NV04(push, NV10_3D(SHADE_MODEL), 1);
+	PUSH_DATA (push, ctx->Light.ShadeModel == GL_SMOOTH ?
+		 NV10_3D_SHADE_MODEL_SMOOTH : NV10_3D_SHADE_MODEL_FLAT);
 }
 
 void
-nv10_emit_stencil_func(GLcontext *ctx, int emit)
+nv10_emit_stencil_func(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_STENCIL_ENABLE, 1);
-	OUT_RING(chan, ctx->Stencil.Enabled ? 1 : 0);
+	BEGIN_NV04(push, NV10_3D(STENCIL_ENABLE), 1);
+	PUSH_DATAb(push, ctx->Stencil._Enabled);
 
-	BEGIN_RING(chan, celsius, NV10TCL_STENCIL_FUNC_FUNC, 3);
-	OUT_RING(chan, nvgl_comparison_op(ctx->Stencil.Function[0]));
-	OUT_RING(chan, ctx->Stencil.Ref[0]);
-	OUT_RING(chan, ctx->Stencil.ValueMask[0]);
+	BEGIN_NV04(push, NV10_3D(STENCIL_FUNC_FUNC), 3);
+	PUSH_DATA (push, nvgl_comparison_op(ctx->Stencil.Function[0]));
+	PUSH_DATA (push, _mesa_get_stencil_ref(ctx, 0));
+	PUSH_DATA (push, ctx->Stencil.ValueMask[0]);
 }
 
 void
-nv10_emit_stencil_mask(GLcontext *ctx, int emit)
+nv10_emit_stencil_mask(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_STENCIL_MASK, 1);
-	OUT_RING(chan, ctx->Stencil.WriteMask[0]);
+	BEGIN_NV04(push, NV10_3D(STENCIL_MASK), 1);
+	PUSH_DATA (push, ctx->Stencil.WriteMask[0]);
 }
 
 void
-nv10_emit_stencil_op(GLcontext *ctx, int emit)
+nv10_emit_stencil_op(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, celsius, NV10TCL_STENCIL_OP_FAIL, 3);
-	OUT_RING(chan, nvgl_stencil_op(ctx->Stencil.FailFunc[0]));
-	OUT_RING(chan, nvgl_stencil_op(ctx->Stencil.ZFailFunc[0]));
-	OUT_RING(chan, nvgl_stencil_op(ctx->Stencil.ZPassFunc[0]));
+	BEGIN_NV04(push, NV10_3D(STENCIL_OP_FAIL), 3);
+	PUSH_DATA (push, nvgl_stencil_op(ctx->Stencil.FailFunc[0]));
+	PUSH_DATA (push, nvgl_stencil_op(ctx->Stencil.ZFailFunc[0]));
+	PUSH_DATA (push, nvgl_stencil_op(ctx->Stencil.ZPassFunc[0]));
 }

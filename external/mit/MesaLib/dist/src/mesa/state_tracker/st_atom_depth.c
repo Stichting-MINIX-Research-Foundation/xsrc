@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,17 +27,22 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   *   Zack  Rusin
   */
  
+
+#include <assert.h>
 
 #include "st_context.h"
 #include "st_atom.h"
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
 #include "cso_cache/cso_context.h"
+
+#include "main/core.h"
+#include "main/stencil.h"
 
 
 /**
@@ -47,14 +52,14 @@ GLuint
 st_compare_func_to_pipe(GLenum func)
 {
    /* Same values, just biased */
-   assert(PIPE_FUNC_NEVER == GL_NEVER - GL_NEVER);
-   assert(PIPE_FUNC_LESS == GL_LESS - GL_NEVER);
-   assert(PIPE_FUNC_EQUAL == GL_EQUAL - GL_NEVER);
-   assert(PIPE_FUNC_LEQUAL == GL_LEQUAL - GL_NEVER);
-   assert(PIPE_FUNC_GREATER == GL_GREATER - GL_NEVER);
-   assert(PIPE_FUNC_NOTEQUAL == GL_NOTEQUAL - GL_NEVER);
-   assert(PIPE_FUNC_GEQUAL == GL_GEQUAL - GL_NEVER);
-   assert(PIPE_FUNC_ALWAYS == GL_ALWAYS - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_NEVER == GL_NEVER - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_LESS == GL_LESS - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_EQUAL == GL_EQUAL - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_LEQUAL == GL_LEQUAL - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_GREATER == GL_GREATER - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_NOTEQUAL == GL_NOTEQUAL - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_GEQUAL == GL_GEQUAL - GL_NEVER);
+   STATIC_ASSERT(PIPE_FUNC_ALWAYS == GL_ALWAYS - GL_NEVER);
    assert(func >= GL_NEVER);
    assert(func <= GL_ALWAYS);
    return func - GL_NEVER;
@@ -95,7 +100,7 @@ update_depth_stencil_alpha(struct st_context *st)
 {
    struct pipe_depth_stencil_alpha_state *dsa = &st->state.depth_stencil;
    struct pipe_stencil_ref sr;
-   GLcontext *ctx = st->ctx;
+   struct gl_context *ctx = st->ctx;
 
    memset(dsa, 0, sizeof(*dsa));
    memset(&sr, 0, sizeof(sr));
@@ -114,7 +119,7 @@ update_depth_stencil_alpha(struct st_context *st)
       dsa->stencil[0].zpass_op = gl_stencil_op_to_pipe(ctx->Stencil.ZPassFunc[0]);
       dsa->stencil[0].valuemask = ctx->Stencil.ValueMask[0] & 0xff;
       dsa->stencil[0].writemask = ctx->Stencil.WriteMask[0] & 0xff;
-      sr.ref_value[0] = ctx->Stencil.Ref[0] & 0xff;
+      sr.ref_value[0] = _mesa_get_stencil_ref(ctx, 0);
 
       if (ctx->Stencil._TestTwoSide) {
          const GLuint back = ctx->Stencil._BackFace;
@@ -125,7 +130,7 @@ update_depth_stencil_alpha(struct st_context *st)
          dsa->stencil[1].zpass_op = gl_stencil_op_to_pipe(ctx->Stencil.ZPassFunc[back]);
          dsa->stencil[1].valuemask = ctx->Stencil.ValueMask[back] & 0xff;
          dsa->stencil[1].writemask = ctx->Stencil.WriteMask[back] & 0xff;
-         sr.ref_value[1] = ctx->Stencil.Ref[back] & 0xff;
+         sr.ref_value[1] = _mesa_get_stencil_ref(ctx, back);
       }
       else {
          /* This should be unnecessary. Drivers must not expect this to
@@ -140,7 +145,7 @@ update_depth_stencil_alpha(struct st_context *st)
    if (ctx->Color.AlphaEnabled) {
       dsa->alpha.enabled = 1;
       dsa->alpha.func = st_compare_func_to_pipe(ctx->Color.AlphaFunc);
-      dsa->alpha.ref_value = ctx->Color.AlphaRef;
+      dsa->alpha.ref_value = ctx->Color.AlphaRefUnclamped;
    }
 
    cso_set_depth_stencil_alpha(st->cso_context, dsa);
@@ -151,7 +156,7 @@ update_depth_stencil_alpha(struct st_context *st)
 const struct st_tracked_state st_update_depth_stencil_alpha = {
    "st_update_depth_stencil",				/* name */
    {							/* dirty */
-      (_NEW_DEPTH|_NEW_STENCIL|_NEW_COLOR),		/* mesa */
+      (_NEW_DEPTH|_NEW_STENCIL|_NEW_COLOR|_NEW_BUFFERS),/* mesa */
       0,						/* st */
    },
    update_depth_stencil_alpha				/* update */

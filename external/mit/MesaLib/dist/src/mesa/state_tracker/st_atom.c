@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -34,8 +34,7 @@
 #include "st_atom.h"
 #include "st_cb_bitmap.h"
 #include "st_program.h"
-
-#include "pipe/p_context.h"
+#include "st_manager.h"
 
 
 /**
@@ -48,6 +47,7 @@ static const struct st_tracked_state *atoms[] =
 
    &st_finalize_textures,
    &st_update_fp,
+   &st_update_gp,
    &st_update_vp,
 
    &st_update_rasterizer,
@@ -55,12 +55,23 @@ static const struct st_tracked_state *atoms[] =
    &st_update_viewport,
    &st_update_scissor,
    &st_update_blend,
-   &st_update_sampler,
-   &st_update_texture,
+   &st_update_vertex_texture,
+   &st_update_fragment_texture,
+   &st_update_geometry_texture,
+   &st_update_sampler, /* depends on update_*_texture for swizzle */
    &st_update_framebuffer,
+   &st_update_msaa,
+   &st_update_sample_shading,
    &st_update_vs_constants,
+   &st_update_gs_constants,
    &st_update_fs_constants,
-   &st_update_pixel_transfer
+   &st_bind_vs_ubos,
+   &st_bind_fs_ubos,
+   &st_bind_gs_ubos,
+   &st_update_pixel_transfer,
+
+   /* this must be done after the vertex program update */
+   &st_update_array
 };
 
 
@@ -107,7 +118,7 @@ static void xor_states( struct st_state_flags *result,
  */
 static void check_program_state( struct st_context *st )
 {
-   GLcontext *ctx = st->ctx;
+   struct gl_context *ctx = st->ctx;
 
    if (ctx->VertexProgram._Current != &st->vp->Base)
       st->dirty.st |= ST_NEW_VERTEX_PROGRAM;
@@ -115,6 +126,34 @@ static void check_program_state( struct st_context *st )
    if (ctx->FragmentProgram._Current != &st->fp->Base)
       st->dirty.st |= ST_NEW_FRAGMENT_PROGRAM;
 
+   if (ctx->GeometryProgram._Current != &st->gp->Base)
+      st->dirty.st |= ST_NEW_GEOMETRY_PROGRAM;
+}
+
+static void check_attrib_edgeflag(struct st_context *st)
+{
+   const struct gl_client_array **arrays = st->ctx->Array._DrawArrays;
+   GLboolean vertdata_edgeflags, edgeflag_culls_prims, edgeflags_enabled;
+
+   if (!arrays)
+      return;
+
+   edgeflags_enabled = st->ctx->Polygon.FrontMode != GL_FILL ||
+                       st->ctx->Polygon.BackMode != GL_FILL;
+
+   vertdata_edgeflags = edgeflags_enabled &&
+                        arrays[VERT_ATTRIB_EDGEFLAG]->StrideB != 0;
+   if (vertdata_edgeflags != st->vertdata_edgeflags) {
+      st->vertdata_edgeflags = vertdata_edgeflags;
+      st->dirty.st |= ST_NEW_VERTEX_PROGRAM;
+   }
+
+   edgeflag_culls_prims = edgeflags_enabled && !vertdata_edgeflags &&
+                          !st->ctx->Current.Attrib[VERT_ATTRIB_EDGEFLAG][0];
+   if (edgeflag_culls_prims != st->edgeflag_culls_prims) {
+      st->edgeflag_culls_prims = edgeflag_culls_prims;
+      st->dirty.st |= ST_NEW_RASTERIZER;
+   }
 }
 
 
@@ -127,25 +166,29 @@ void st_validate_state( struct st_context *st )
    struct st_state_flags *state = &st->dirty;
    GLuint i;
 
-   /* The bitmap cache is immune to pixel unpack changes.
-    * Note that GLUT makes several calls to glPixelStore for each
-    * bitmap char it draws so this is an important check.
-    */
-   if (state->mesa & ~_NEW_PACKUNPACK)
+   /* Get Mesa driver state. */
+   st->dirty.st |= st->ctx->NewDriverState;
+   st->ctx->NewDriverState = 0;
+
+   check_attrib_edgeflag(st);
+
+   if (state->mesa)
       st_flush_bitmap_cache(st);
 
    check_program_state( st );
 
-   if (st->pipe->screen->update_buffer)
-      st->pipe->screen->update_buffer(st->pipe->screen,
-				      st->pipe->priv);
+   st_manager_validate_framebuffers(st);
 
    if (state->st == 0)
       return;
 
    /*printf("%s %x/%x\n", __FUNCTION__, state->mesa, state->st);*/
 
+#ifdef DEBUG
    if (1) {
+#else
+   if (0) {
+#endif
       /* Debug version which enforces various sanity checks on the
        * state flags which are generated and checked to help ensure
        * state atoms are ordered correctly in the list.

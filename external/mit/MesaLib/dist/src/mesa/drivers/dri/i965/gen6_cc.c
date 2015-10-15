@@ -31,266 +31,270 @@
 #include "brw_util.h"
 #include "intel_batchbuffer.h"
 #include "main/macros.h"
-
-struct gen6_blend_state_key {
-   GLboolean color_blend, alpha_enabled;
-   GLboolean dither;
-
-   GLenum logic_op;
-
-   GLenum blend_eq_rgb, blend_eq_a;
-   GLenum blend_src_rgb, blend_src_a;
-   GLenum blend_dst_rgb, blend_dst_a;
-
-   GLenum alpha_func;
-};
+#include "main/enums.h"
+#include "main/glformats.h"
+#include "main/stencil.h"
 
 static void
-blend_state_populate_key(struct brw_context *brw,
-			 struct gen6_blend_state_key *key)
+gen6_upload_blend_state(struct brw_context *brw)
 {
-   GLcontext *ctx = &brw->intel.ctx;
+   bool is_buffer_zero_integer_format = false;
+   struct gl_context *ctx = &brw->ctx;
+   struct gen6_blend_state *blend;
+   int b;
+   int nr_draw_buffers = ctx->DrawBuffer->_NumColorDrawBuffers;
+   int size;
 
-   memset(key, 0, sizeof(*key));
+   /* We need at least one BLEND_STATE written, because we might do
+    * thread dispatch even if _NumColorDrawBuffers is 0 (for example
+    * for computed depth or alpha test), which will do an FB write
+    * with render target 0, which will reference BLEND_STATE[0] for
+    * alpha test enable.
+    */
+   if (nr_draw_buffers == 0 && ctx->Color.AlphaEnabled)
+      nr_draw_buffers = 1;
 
-   /* _NEW_COLOR */
-   if (ctx->Color._LogicOpEnabled)
-      key->logic_op = ctx->Color.LogicOp;
-   else
-      key->logic_op = GL_COPY;
+   size = sizeof(*blend) * nr_draw_buffers;
+   blend = brw_state_batch(brw, AUB_TRACE_BLEND_STATE,
+			   size, 64, &brw->cc.blend_state_offset);
 
-   /* _NEW_COLOR */
-   key->color_blend = ctx->Color.BlendEnabled;
-   if (key->color_blend) {
-      key->blend_eq_rgb = ctx->Color.BlendEquationRGB;
-      key->blend_eq_a = ctx->Color.BlendEquationA;
-      key->blend_src_rgb = ctx->Color.BlendSrcRGB;
-      key->blend_dst_rgb = ctx->Color.BlendDstRGB;
-      key->blend_src_a = ctx->Color.BlendSrcA;
-      key->blend_dst_a = ctx->Color.BlendDstA;
-   }
+   memset(blend, 0, size);
 
-   /* _NEW_COLOR */
-   key->alpha_enabled = ctx->Color.AlphaEnabled;
-   if (key->alpha_enabled) {
-      key->alpha_func = ctx->Color.AlphaFunc;
-   }
+   for (b = 0; b < nr_draw_buffers; b++) {
+      /* _NEW_BUFFERS */
+      struct gl_renderbuffer *rb = ctx->DrawBuffer->_ColorDrawBuffers[b];
+      GLenum rb_type;
+      bool integer;
 
-   /* _NEW_COLOR */
-   key->dither = ctx->Color.DitherFlag;
-}
+      if (rb)
+	 rb_type = _mesa_get_format_datatype(rb->Format);
+      else
+	 rb_type = GL_UNSIGNED_NORMALIZED;
 
-/**
- * Creates the state cache entry for the given CC unit key.
- */
-static drm_intel_bo *
-blend_state_create_from_key(struct brw_context *brw,
-			    struct gen6_blend_state_key *key)
-{
-   struct gen6_blend_state blend;
-   drm_intel_bo *bo;
+      /* Used for implementing the following bit of GL_EXT_texture_integer:
+       *     "Per-fragment operations that require floating-point color
+       *      components, including multisample alpha operations, alpha test,
+       *      blending, and dithering, have no effect when the corresponding
+       *      colors are written to an integer color buffer."
+      */
+      integer = (rb_type == GL_INT || rb_type == GL_UNSIGNED_INT);
 
-   memset(&blend, 0, sizeof(blend));
+      if(b == 0 && integer)
+         is_buffer_zero_integer_format = true;
 
-   if (key->logic_op != GL_COPY) {
-      blend.blend1.logic_op_enable = 1;
-      blend.blend1.logic_op_func = intel_translate_logic_op(key->logic_op);
-   } else if (key->color_blend) {
-      GLenum eqRGB = key->blend_eq_rgb;
-      GLenum eqA = key->blend_eq_a;
-      GLenum srcRGB = key->blend_src_rgb;
-      GLenum dstRGB = key->blend_dst_rgb;
-      GLenum srcA = key->blend_src_a;
-      GLenum dstA = key->blend_dst_a;
+      /* _NEW_COLOR */
+      if (ctx->Color.ColorLogicOpEnabled) {
+	 /* Floating point RTs should have no effect from LogicOp,
+	  * except for disabling of blending, but other types should.
+	  *
+	  * However, from the Sandy Bridge PRM, Vol 2 Par 1, Section 8.1.11,
+	  * "Logic Ops",
+	  *
+	  *     "Logic Ops are only supported on *_UNORM surfaces (excluding
+	  *      _SRGB variants), otherwise Logic Ops must be DISABLED."
+	  */
+         WARN_ONCE(ctx->Color.LogicOp != GL_COPY &&
+                   rb_type != GL_UNSIGNED_NORMALIZED &&
+                   rb_type != GL_FLOAT, "Ignoring %s logic op on %s "
+                   "renderbuffer\n",
+                   _mesa_lookup_enum_by_nr(ctx->Color.LogicOp),
+                   _mesa_lookup_enum_by_nr(rb_type));
+	 if (rb_type == GL_UNSIGNED_NORMALIZED) {
+	    blend[b].blend1.logic_op_enable = 1;
+	    blend[b].blend1.logic_op_func =
+	       intel_translate_logic_op(ctx->Color.LogicOp);
+	 }
+      } else if (ctx->Color.BlendEnabled & (1 << b) && !integer) {
+	 GLenum eqRGB = ctx->Color.Blend[b].EquationRGB;
+	 GLenum eqA = ctx->Color.Blend[b].EquationA;
+	 GLenum srcRGB = ctx->Color.Blend[b].SrcRGB;
+	 GLenum dstRGB = ctx->Color.Blend[b].DstRGB;
+	 GLenum srcA = ctx->Color.Blend[b].SrcA;
+	 GLenum dstA = ctx->Color.Blend[b].DstA;
 
-      if (eqRGB == GL_MIN || eqRGB == GL_MAX) {
-	 srcRGB = dstRGB = GL_ONE;
+	 if (eqRGB == GL_MIN || eqRGB == GL_MAX) {
+	    srcRGB = dstRGB = GL_ONE;
+	 }
+
+	 if (eqA == GL_MIN || eqA == GL_MAX) {
+	    srcA = dstA = GL_ONE;
+	 }
+
+         /* Due to hardware limitations, the destination may have information
+          * in an alpha channel even when the format specifies no alpha
+          * channel. In order to avoid getting any incorrect blending due to
+          * that alpha channel, coerce the blend factors to values that will
+          * not read the alpha channel, but will instead use the correct
+          * implicit value for alpha.
+          */
+         if (rb && !_mesa_base_format_has_channel(rb->_BaseFormat, GL_TEXTURE_ALPHA_TYPE))
+         {
+            srcRGB = brw_fix_xRGB_alpha(srcRGB);
+            srcA = brw_fix_xRGB_alpha(srcA);
+            dstRGB = brw_fix_xRGB_alpha(dstRGB);
+            dstA = brw_fix_xRGB_alpha(dstA);
+         }
+
+	 blend[b].blend0.dest_blend_factor = brw_translate_blend_factor(dstRGB);
+	 blend[b].blend0.source_blend_factor = brw_translate_blend_factor(srcRGB);
+	 blend[b].blend0.blend_func = brw_translate_blend_equation(eqRGB);
+
+	 blend[b].blend0.ia_dest_blend_factor = brw_translate_blend_factor(dstA);
+	 blend[b].blend0.ia_source_blend_factor = brw_translate_blend_factor(srcA);
+	 blend[b].blend0.ia_blend_func = brw_translate_blend_equation(eqA);
+
+	 blend[b].blend0.blend_enable = 1;
+	 blend[b].blend0.ia_blend_enable = (srcA != srcRGB ||
+					 dstA != dstRGB ||
+					 eqA != eqRGB);
       }
 
-      if (eqA == GL_MIN || eqA == GL_MAX) {
-	 srcA = dstA = GL_ONE;
+      /* See section 8.1.6 "Pre-Blend Color Clamping" of the
+       * SandyBridge PRM Volume 2 Part 1 for HW requirements.
+       *
+       * We do our ARB_color_buffer_float CLAMP_FRAGMENT_COLOR
+       * clamping in the fragment shader.  For its clamping of
+       * blending, the spec says:
+       *
+       *     "RESOLVED: For fixed-point color buffers, the inputs and
+       *      the result of the blending equation are clamped.  For
+       *      floating-point color buffers, no clamping occurs."
+       *
+       * So, generally, we want clamping to the render target's range.
+       * And, good news, the hardware tables for both pre- and
+       * post-blend color clamping are either ignored, or any are
+       * allowed, or clamping is required but RT range clamping is a
+       * valid option.
+       */
+      blend[b].blend1.pre_blend_clamp_enable = 1;
+      blend[b].blend1.post_blend_clamp_enable = 1;
+      blend[b].blend1.clamp_range = BRW_RENDERTARGET_CLAMPRANGE_FORMAT;
+
+      /* _NEW_COLOR */
+      if (ctx->Color.AlphaEnabled && !integer) {
+	 blend[b].blend1.alpha_test_enable = 1;
+	 blend[b].blend1.alpha_test_func =
+	    intel_translate_compare_func(ctx->Color.AlphaFunc);
+
       }
 
-      blend.blend0.dest_blend_factor = brw_translate_blend_factor(dstRGB);
-      blend.blend0.source_blend_factor = brw_translate_blend_factor(srcRGB);
-      blend.blend0.blend_func = brw_translate_blend_equation(eqRGB);
+      /* _NEW_COLOR */
+      if (ctx->Color.DitherFlag && !integer) {
+	 blend[b].blend1.dither_enable = 1;
+	 blend[b].blend1.y_dither_offset = 0;
+	 blend[b].blend1.x_dither_offset = 0;
+      }
 
-      blend.blend0.ia_dest_blend_factor = brw_translate_blend_factor(dstA);
-      blend.blend0.ia_source_blend_factor = brw_translate_blend_factor(srcA);
-      blend.blend0.ia_blend_func = brw_translate_blend_equation(eqA);
+      blend[b].blend1.write_disable_r = !ctx->Color.ColorMask[b][0];
+      blend[b].blend1.write_disable_g = !ctx->Color.ColorMask[b][1];
+      blend[b].blend1.write_disable_b = !ctx->Color.ColorMask[b][2];
+      blend[b].blend1.write_disable_a = !ctx->Color.ColorMask[b][3];
 
-      blend.blend0.blend_enable = 1;
-      blend.blend0.ia_blend_enable = (srcA != srcRGB ||
-				      dstA != dstRGB ||
-				      eqA != eqRGB);
+      /* OpenGL specification 3.3 (page 196), section 4.1.3 says:
+       * "If drawbuffer zero is not NONE and the buffer it references has an
+       * integer format, the SAMPLE_ALPHA_TO_COVERAGE and SAMPLE_ALPHA_TO_ONE
+       * operations are skipped."
+       */
+      if(!is_buffer_zero_integer_format) {
+         /* _NEW_MULTISAMPLE */
+         blend[b].blend1.alpha_to_coverage =
+            ctx->Multisample._Enabled && ctx->Multisample.SampleAlphaToCoverage;
+
+	/* From SandyBridge PRM, volume 2 Part 1, section 8.2.3, BLEND_STATE:
+	 * DWord 1, Bit 30 (AlphaToOne Enable):
+	 * "If Dual Source Blending is enabled, this bit must be disabled"
+	 */
+         WARN_ONCE(ctx->Color.Blend[b]._UsesDualSrc &&
+                   ctx->Multisample._Enabled &&
+                   ctx->Multisample.SampleAlphaToOne,
+                   "HW workaround: disabling alpha to one with dual src "
+                   "blending\n");
+	 if (ctx->Color.Blend[b]._UsesDualSrc)
+            blend[b].blend1.alpha_to_one = false;
+	 else
+	    blend[b].blend1.alpha_to_one =
+	       ctx->Multisample._Enabled && ctx->Multisample.SampleAlphaToOne;
+
+         blend[b].blend1.alpha_to_coverage_dither = (brw->gen >= 7);
+      }
+      else {
+         blend[b].blend1.alpha_to_coverage = false;
+         blend[b].blend1.alpha_to_one = false;
+      }
    }
 
-   if (key->alpha_enabled) {
-      blend.blend1.alpha_test_enable = 1;
-      blend.blend1.alpha_test_func = intel_translate_compare_func(key->alpha_func);
-
+   /* Point the GPU at the new indirect state. */
+   if (brw->gen == 6) {
+      BEGIN_BATCH(4);
+      OUT_BATCH(_3DSTATE_CC_STATE_POINTERS << 16 | (4 - 2));
+      OUT_BATCH(brw->cc.blend_state_offset | 1);
+      OUT_BATCH(0);
+      OUT_BATCH(0);
+      ADVANCE_BATCH();
+   } else {
+      BEGIN_BATCH(2);
+      OUT_BATCH(_3DSTATE_BLEND_STATE_POINTERS << 16 | (2 - 2));
+      OUT_BATCH(brw->cc.blend_state_offset | 1);
+      ADVANCE_BATCH();
    }
-
-   if (key->dither) {
-      blend.blend1.dither_enable = 1;
-      blend.blend1.y_dither_offset = 0;
-      blend.blend1.x_dither_offset = 0;
-   }
-
-   bo = brw_upload_cache(&brw->cache, BRW_BLEND_STATE,
-			 key, sizeof(*key),
-			 NULL, 0,
-			 &blend, sizeof(blend));
-
-   return bo;
-}
-
-static void
-prepare_blend_state(struct brw_context *brw)
-{
-   struct gen6_blend_state_key key;
-
-   blend_state_populate_key(brw, &key);
-
-   drm_intel_bo_unreference(brw->cc.blend_state_bo);
-   brw->cc.blend_state_bo = brw_search_cache(&brw->cache, BRW_BLEND_STATE,
-					     &key, sizeof(key),
-					     NULL, 0,
-					     NULL);
-
-   if (brw->cc.blend_state_bo == NULL)
-      brw->cc.blend_state_bo = blend_state_create_from_key(brw, &key);
 }
 
 const struct brw_tracked_state gen6_blend_state = {
    .dirty = {
-      .mesa = _NEW_COLOR,
-      .brw = 0,
+      .mesa = (_NEW_COLOR |
+               _NEW_BUFFERS |
+               _NEW_MULTISAMPLE),
+      .brw = BRW_NEW_BATCH | BRW_NEW_STATE_BASE_ADDRESS,
       .cache = 0,
    },
-   .prepare = prepare_blend_state,
-};
-
-struct gen6_color_calc_state_key {
-   GLubyte blend_constant_color[4];
-   GLclampf alpha_ref;
-   GLubyte stencil_ref[2];
+   .emit = gen6_upload_blend_state,
 };
 
 static void
-color_calc_state_populate_key(struct brw_context *brw,
-			      struct gen6_color_calc_state_key *key)
+gen6_upload_color_calc_state(struct brw_context *brw)
 {
-   GLcontext *ctx = &brw->intel.ctx;
+   struct gl_context *ctx = &brw->ctx;
+   struct gen6_color_calc_state *cc;
 
-   memset(key, 0, sizeof(*key));
-
-   /* _NEW_STENCIL */
-   if (ctx->Stencil._Enabled) {
-      const unsigned back = ctx->Stencil._BackFace;
-
-      key->stencil_ref[0] = ctx->Stencil.Ref[0];
-      if (ctx->Stencil._TestTwoSide)
-	 key->stencil_ref[1] = ctx->Stencil.Ref[back];
-   }
+   cc = brw_state_batch(brw, AUB_TRACE_CC_STATE,
+			sizeof(*cc), 64, &brw->cc.state_offset);
+   memset(cc, 0, sizeof(*cc));
 
    /* _NEW_COLOR */
-   if (ctx->Color.AlphaEnabled)
-      key->alpha_ref = ctx->Color.AlphaRef;
+   cc->cc0.alpha_test_format = BRW_ALPHATEST_FORMAT_UNORM8;
+   UNCLAMPED_FLOAT_TO_UBYTE(cc->cc1.alpha_ref_fi.ui, ctx->Color.AlphaRef);
 
-   key->blend_constant_color[0] = ctx->Color.BlendColor[0];
-   key->blend_constant_color[1] = ctx->Color.BlendColor[1];
-   key->blend_constant_color[2] = ctx->Color.BlendColor[2];
-   key->blend_constant_color[3] = ctx->Color.BlendColor[3];
-}
+   /* _NEW_STENCIL */
+   cc->cc0.stencil_ref = _mesa_get_stencil_ref(ctx, 0);
+   cc->cc0.bf_stencil_ref = _mesa_get_stencil_ref(ctx, ctx->Stencil._BackFace);
 
-/**
- * Creates the state cache entry for the given CC state key.
- */
-static drm_intel_bo *
-color_calc_state_create_from_key(struct brw_context *brw,
-				 struct gen6_color_calc_state_key *key)
-{
-   struct gen6_color_calc_state cc;
-   drm_intel_bo *bo;
+   /* _NEW_COLOR */
+   cc->constant_r = ctx->Color.BlendColorUnclamped[0];
+   cc->constant_g = ctx->Color.BlendColorUnclamped[1];
+   cc->constant_b = ctx->Color.BlendColorUnclamped[2];
+   cc->constant_a = ctx->Color.BlendColorUnclamped[3];
 
-   memset(&cc, 0, sizeof(cc));
-
-   cc.cc0.alpha_test_format = BRW_ALPHATEST_FORMAT_UNORM8;
-   UNCLAMPED_FLOAT_TO_UBYTE(cc.cc1.alpha_ref_fi.ui, key->alpha_ref);
-
-   cc.cc0.stencil_ref = key->stencil_ref[0];
-   cc.cc0.bf_stencil_ref = key->stencil_ref[1];
-
-   cc.constant_r = key->blend_constant_color[0];
-   cc.constant_g = key->blend_constant_color[1];
-   cc.constant_b = key->blend_constant_color[2];
-   cc.constant_a = key->blend_constant_color[3];
-
-   bo = brw_upload_cache(&brw->cache, BRW_COLOR_CALC_STATE,
-			 key, sizeof(*key),
-			 NULL, 0,
-			 &cc, sizeof(cc));
-
-   return bo;
-}
-
-static void
-prepare_color_calc_state(struct brw_context *brw)
-{
-   struct gen6_color_calc_state_key key;
-
-   color_calc_state_populate_key(brw, &key);
-
-   drm_intel_bo_unreference(brw->cc.state_bo);
-   brw->cc.state_bo = brw_search_cache(&brw->cache, BRW_COLOR_CALC_STATE,
-				       &key, sizeof(key),
-				       NULL, 0,
-				       NULL);
-
-   if (brw->cc.state_bo == NULL)
-      brw->cc.state_bo = color_calc_state_create_from_key(brw, &key);
+   /* Point the GPU at the new indirect state. */
+   if (brw->gen == 6) {
+      BEGIN_BATCH(4);
+      OUT_BATCH(_3DSTATE_CC_STATE_POINTERS << 16 | (4 - 2));
+      OUT_BATCH(0);
+      OUT_BATCH(0);
+      OUT_BATCH(brw->cc.state_offset | 1);
+      ADVANCE_BATCH();
+   } else {
+      BEGIN_BATCH(2);
+      OUT_BATCH(_3DSTATE_CC_STATE_POINTERS << 16 | (2 - 2));
+      OUT_BATCH(brw->cc.state_offset | 1);
+      ADVANCE_BATCH();
+   }
 }
 
 const struct brw_tracked_state gen6_color_calc_state = {
    .dirty = {
-      .mesa = _NEW_COLOR,
-      .brw = 0,
+      .mesa = _NEW_COLOR | _NEW_STENCIL,
+      .brw = BRW_NEW_BATCH | BRW_NEW_STATE_BASE_ADDRESS,
       .cache = 0,
    },
-   .prepare = prepare_color_calc_state,
-};
-
-static void upload_cc_state_pointers(struct brw_context *brw)
-{
-   struct intel_context *intel = &brw->intel;
-
-   BEGIN_BATCH(4);
-   OUT_BATCH(CMD_3D_CC_STATE_POINTERS << 16 | (4 - 2));
-   OUT_RELOC(brw->cc.state_bo, I915_GEM_DOMAIN_INSTRUCTION, 0, 1);
-   OUT_RELOC(brw->cc.blend_state_bo, I915_GEM_DOMAIN_INSTRUCTION, 0, 1);
-   OUT_RELOC(brw->cc.depth_stencil_state_bo, I915_GEM_DOMAIN_INSTRUCTION, 0, 1);
-   ADVANCE_BATCH();
-
-   intel_batchbuffer_emit_mi_flush(intel->batch);
-}
-
-
-static void prepare_cc_state_pointers(struct brw_context *brw)
-{
-   brw_add_validated_bo(brw, brw->cc.state_bo);
-   brw_add_validated_bo(brw, brw->cc.blend_state_bo);
-   brw_add_validated_bo(brw, brw->cc.depth_stencil_state_bo);
-}
-
-const struct brw_tracked_state gen6_cc_state_pointers = {
-   .dirty = {
-      .mesa = 0,
-      .brw = BRW_NEW_BATCH,
-      .cache = (CACHE_NEW_BLEND_STATE |
-		CACHE_NEW_COLOR_CALC_STATE |
-		CACHE_NEW_DEPTH_STENCIL_STATE)
-   },
-   .prepare = prepare_cc_state_pointers,
-   .emit = upload_cc_state_pointers,
+   .emit = gen6_upload_color_calc_state,
 };

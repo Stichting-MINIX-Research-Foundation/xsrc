@@ -35,15 +35,14 @@
 #include "glxextensions.h"
 #include "indirect.h"
 #include "indirect_vertex_array.h"
-#include "glapitable.h"
-#include "glapidispatch.h"
 #include "glapi.h"
-#ifdef USE_XCB
 #include <xcb/xcb.h>
 #include <xcb/glx.h>
 #include <X11/Xlib-xcb.h>
-#endif /* USE_XCB */
 
+#if !defined(__GNUC__)
+#  define __builtin_expect(x, y) x
+#endif
 
 /* Used for GL_ARB_transpose_matrix */
 static void
@@ -153,7 +152,7 @@ __indirect_glGetError(void)
  * On success \c GL_TRUE is returned.  Otherwise, \c GL_FALSE is returned.
  */
 static GLboolean
-get_client_data(__GLXcontext * gc, GLenum cap, GLintptr * data)
+get_client_data(struct glx_context * gc, GLenum cap, GLintptr * data)
 {
    GLboolean retval = GL_TRUE;
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
@@ -643,7 +642,7 @@ version_from_string(const char *ver, int *major_version, int *minor_version)
 const GLubyte *
 __indirect_glGetString(GLenum name)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    Display *dpy = gc->currentDpy;
    GLubyte *s = NULL;
 
@@ -720,7 +719,7 @@ __indirect_glGetString(GLenum name)
                 */
                const size_t size = 7 + strlen((char *) s) + 4;
 
-               gc->version = Xmalloc(size);
+               gc->version = malloc(size);
                if (gc->version == NULL) {
                   /* If we couldn't allocate memory for the new string,
                    * make a best-effort and just copy the client-side version
@@ -736,7 +735,7 @@ __indirect_glGetString(GLenum name)
                else {
                   snprintf((char *) gc->version, size, "%u.%u (%s)",
                            client_major, client_minor, s);
-                  Xfree(s);
+                  free(s);
                   s = gc->version;
                }
             }
@@ -781,7 +780,7 @@ __indirect_glGetString(GLenum name)
 #endif
 
             __glXCalculateUsableGLExtensions(gc, (char *) s, major, minor);
-            XFree(s);
+            free(s);
             s = gc->extensions;
             break;
          }
@@ -834,7 +833,7 @@ __indirect_glIsEnabled(GLenum cap)
 void
 __indirect_glGetPointerv(GLenum pname, void **params)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
    Display *dpy = gc->currentDpy;
 
@@ -882,15 +881,14 @@ GLboolean
 __indirect_glAreTexturesResident(GLsizei n, const GLuint * textures,
                                  GLboolean * residences)
 {
-   __GLXcontext *const gc = __glXGetCurrentContext();
+   struct glx_context *const gc = __glXGetCurrentContext();
    Display *const dpy = gc->currentDpy;
    GLboolean retval = (GLboolean) 0;
-   const GLuint cmdlen = 4 + __GLX_PAD((n * 4));
    if (__builtin_expect((n >= 0) && (dpy != NULL), 1)) {
-#ifdef USE_XCB
       xcb_connection_t *c = XGetXCBConnection(dpy);
+      xcb_glx_are_textures_resident_reply_t *reply;
       (void) __glXFlushRenderBuffer(gc, gc->pc);
-      xcb_glx_are_textures_resident_reply_t *reply =
+      reply =
          xcb_glx_are_textures_resident_reply(c,
                                              xcb_glx_are_textures_resident
                                              (c, gc->currentContextTag, n,
@@ -900,30 +898,6 @@ __indirect_glAreTexturesResident(GLsizei n, const GLuint * textures,
                     sizeof(GLboolean));
       retval = reply->ret_val;
       free(reply);
-#else
-      GLubyte const *pc =
-         __glXSetupSingleRequest(gc, X_GLsop_AreTexturesResident, cmdlen);
-      (void) memcpy((void *) (pc + 0), (void *) (&n), 4);
-      (void) memcpy((void *) (pc + 4), (void *) (textures), (n * 4));
-      if (n & 3) {
-         /* n is not a multiple of four.
-          * When reply_is_always_array is TRUE, __glXReadReply() will
-          * put a multiple of four bytes into the dest buffer.  If the
-          * caller's buffer is not a multiple of four in size, we'll write
-          * out of bounds.  So use a temporary buffer that's a few bytes
-          * larger.
-          */
-         GLboolean *res4 = malloc((n + 3) & ~3);
-         retval = (GLboolean) __glXReadReply(dpy, 1, res4, GL_TRUE);
-         memcpy(residences, res4, n);
-         free(res4);
-      }
-      else {
-         retval = (GLboolean) __glXReadReply(dpy, 1, residences, GL_TRUE);
-      }
-      UnlockDisplay(dpy);
-      SyncHandle();
-#endif /* USE_XCB */
    }
    return retval;
 }
@@ -938,14 +912,17 @@ GLboolean
 glAreTexturesResidentEXT(GLsizei n, const GLuint * textures,
                          GLboolean * residences)
 {
-   __GLXcontext *const gc = __glXGetCurrentContext();
+   struct glx_context *const gc = __glXGetCurrentContext();
 
    if (gc->isDirect) {
-      return CALL_AreTexturesResident(GET_DISPATCH(),
-                                      (n, textures, residences));
+      const _glapi_proc *const table = (_glapi_proc *) GET_DISPATCH();
+      PFNGLARETEXTURESRESIDENTEXTPROC p =
+         (PFNGLARETEXTURESRESIDENTEXTPROC) table[332];
+
+      return p(n, textures, residences);
    }
    else {
-      __GLXcontext *const gc = __glXGetCurrentContext();
+      struct glx_context *const gc = __glXGetCurrentContext();
       Display *const dpy = gc->currentDpy;
       GLboolean retval = (GLboolean) 0;
       const GLuint cmdlen = 4 + __GLX_PAD((n * 4));

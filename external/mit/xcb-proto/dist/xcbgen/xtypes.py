@@ -75,6 +75,18 @@ class Type(object):
 
         complex_type.fields.append(new_field)
 
+    def make_fd_of(self, module, complex_type, fd_name):
+        '''
+        Method for making a fd member of a structure.
+        '''
+        new_fd = Field(self, module.get_type_name('INT32'), fd_name, True, False, False, None, True)
+        # We dump the _placeholder_byte if any fields are added.
+        for (idx, field) in enumerate(complex_type.fields):
+            if field == _placeholder_byte:
+                complex_type.fields[idx] = new_fd
+                return
+
+        complex_type.fields.append(new_fd)
 
 class SimpleType(Type):
     '''
@@ -103,9 +115,11 @@ class SimpleType(Type):
 tcard8 = SimpleType(('uint8_t',), 1)
 tcard16 = SimpleType(('uint16_t',), 2)
 tcard32 = SimpleType(('uint32_t',), 4)
+tcard64 = SimpleType(('uint64_t',), 8)
 tint8 =  SimpleType(('int8_t',), 1)
 tint16 = SimpleType(('int16_t',), 2)
 tint32 = SimpleType(('int32_t',), 4)
+tint64 = SimpleType(('int64_t',), 8)
 tchar =  SimpleType(('char',), 1)
 tfloat = SimpleType(('float',), 4)
 tdouble = SimpleType(('double',), 8)
@@ -253,13 +267,17 @@ class PadType(Type):
         Type.__init__(self, tcard8.name)
         self.is_pad = True
         self.size = 1
-        self.nmemb = 1 if (elt == None) else int(elt.get('bytes'), 0)
+        self.nmemb = 1
+        self.align = 1
+        if elt != None:
+            self.nmemb = int(elt.get('bytes', "1"), 0)
+            self.align = int(elt.get('align', "1"), 0)
 
     def resolve(self, module):
         self.resolved = True
 
     def fixed_size(self):
-        return True
+        return self.align <= 1
 
     
 class ComplexType(Type):
@@ -277,20 +295,20 @@ class ComplexType(Type):
         self.nmemb = 1
         self.size = 0
         self.lenfield_parent = [self]
+        self.fds = []
 
     def resolve(self, module):
         if self.resolved:
             return
-        pads = 0
         enum = None
 
         # Resolve all of our field datatypes.
         for child in list(self.elt):
             if child.tag == 'pad':
-                field_name = 'pad' + str(pads)
+                field_name = 'pad' + str(module.pads)
                 fkey = 'CARD8'
                 type = PadType(child)
-                pads = pads + 1
+                module.pads = module.pads + 1
                 visible = False
             elif child.tag == 'field':
                 field_name = child.get('name')
@@ -322,9 +340,14 @@ class ComplexType(Type):
                 type.make_member_of(module, self, field_type, field_name, visible, True, False)
                 type.resolve(module)
                 continue
+            elif child.tag == 'fd':
+                fd_name = child.get('name')
+                type = module.get_type('INT32')
+                type.make_fd_of(module, self, fd_name)
+                continue
             else:
                 # Hit this on Reply
-                continue 
+                continue
 
             # Get the full type name for the field
             field_type = module.get_type_name(fkey)
@@ -377,7 +400,6 @@ class SwitchType(ComplexType):
     def resolve(self, module):
         if self.resolved:
             return
-#        pads = 0
 
         parents = list(self.parents) + [self]
 
@@ -481,8 +503,14 @@ class BitcaseType(ComplexType):
     '''
     def __init__(self, index, name, elt, *parent):
         elts = list(elt)
-        self.expr = Expression(elts[0] if len(elts) else elt, self)
-        ComplexType.__init__(self, name, elts[1:])        
+        self.expr = []
+        fields = []
+        for elt in elts:
+            if elt.tag == 'enumref':
+                self.expr.append(Expression(elt, self))
+            else:
+                fields.append(elt)
+        ComplexType.__init__(self, name, fields)
         self.has_name = True
         self.index = 1
         self.lenfield_parent = list(parent) + [self]
@@ -510,8 +538,9 @@ class BitcaseType(ComplexType):
     def resolve(self, module):
         if self.resolved:
             return
-        
-        self.expr.resolve(module, self.parents+[self])
+
+        for e in self.expr:
+            e.resolve(module, self.parents+[self])
 
         # Resolve the bitcase expression
         ComplexType.resolve(self, module)
@@ -533,6 +562,8 @@ class Reply(ComplexType):
     def resolve(self, module):
         if self.resolved:
             return
+        # Reset pads count
+        module.pads = 0
         # Add the automatic protocol fields
         self.fields.append(Field(tcard8, tcard8.name, 'response_type', False, True, True))
         self.fields.append(_placeholder_byte)
@@ -593,28 +624,43 @@ class Event(ComplexType):
         ComplexType.__init__(self, name, elt)
         self.opcodes = {}
 
-        tmp = elt.get('no-sequence-number')
-        self.has_seq = (tmp == None or tmp.lower() == 'false' or tmp == '0')
+        self.has_seq = not bool(elt.get('no-sequence-number'))
+
+        self.is_ge_event = bool(elt.get('xge'))
 
         self.doc = None
         for item in list(elt):
             if item.tag == 'doc':
                 self.doc = Doc(name, item)
-            
+
     def add_opcode(self, opcode, name, main):
         self.opcodes[name] = opcode
         if main:
             self.name = name
 
     def resolve(self, module):
+        def add_event_header():
+            self.fields.append(Field(tcard8, tcard8.name, 'response_type', False, True, True))
+            if self.has_seq:
+                self.fields.append(_placeholder_byte)
+                self.fields.append(Field(tcard16, tcard16.name, 'sequence', False, True, True))
+
+        def add_ge_event_header():
+            self.fields.append(Field(tcard8,  tcard8.name,  'response_type', False, True, True))
+            self.fields.append(Field(tcard8,  tcard8.name,  'extension', False, True, True))
+            self.fields.append(Field(tcard16, tcard16.name, 'sequence', False, True, True))
+            self.fields.append(Field(tcard32, tcard32.name, 'length', False, True, True))
+            self.fields.append(Field(tcard16, tcard16.name, 'event_type', False, True, True))
+
         if self.resolved:
             return
 
         # Add the automatic protocol fields
-        self.fields.append(Field(tcard8, tcard8.name, 'response_type', False, True, True))
-        if self.has_seq:
-            self.fields.append(_placeholder_byte)
-            self.fields.append(Field(tcard16, tcard16.name, 'sequence', False, True, True))
+        if self.is_ge_event:
+            add_ge_event_header()
+        else:
+            add_event_header()
+
         ComplexType.resolve(self, module)
 
     out = __main__.output['event']

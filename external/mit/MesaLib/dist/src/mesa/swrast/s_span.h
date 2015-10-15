@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -28,7 +28,15 @@
 #define S_SPAN_H
 
 
-#include "swrast.h"
+#include "main/config.h"
+#include "main/glheader.h"
+#include "main/mtypes.h"
+#include "swrast/s_chan.h"
+#include "swrast/swrast.h"
+
+
+struct gl_context;
+struct gl_renderbuffer;
 
 
 /**
@@ -60,28 +68,28 @@
  */
 typedef struct sw_span_arrays
 {
-   /** Per-fragment attributes (indexed by FRAG_ATTRIB_* tokens) */
+   /** Per-fragment attributes (indexed by VARYING_SLOT_* tokens) */
    /* XXX someday look at transposing first two indexes for better memory
     * access pattern.
     */
-   GLfloat attribs[FRAG_ATTRIB_MAX][MAX_WIDTH][4];
+   GLfloat attribs[VARYING_SLOT_MAX][SWRAST_MAX_WIDTH][4];
 
    /** This mask indicates which fragments are alive or culled */
-   GLubyte mask[MAX_WIDTH];
+   GLubyte mask[SWRAST_MAX_WIDTH];
 
    GLenum ChanType; /**< Color channel type, GL_UNSIGNED_BYTE, GL_FLOAT */
 
    /** Attribute arrays that don't fit into attribs[] array above */
    /*@{*/
-   GLubyte rgba8[MAX_WIDTH][4];
-   GLushort rgba16[MAX_WIDTH][4];
+   GLubyte rgba8[SWRAST_MAX_WIDTH][4];
+   GLushort rgba16[SWRAST_MAX_WIDTH][4];
    GLchan (*rgba)[4];  /** either == rgba8 or rgba16 */
-   GLint   x[MAX_WIDTH];  /**< fragment X coords */
-   GLint   y[MAX_WIDTH];  /**< fragment Y coords */
-   GLuint  z[MAX_WIDTH];  /**< fragment Z coords */
-   GLuint  index[MAX_WIDTH];  /**< Color indexes */
-   GLfloat lambda[MAX_TEXTURE_COORD_UNITS][MAX_WIDTH]; /**< Texture LOD */
-   GLfloat coverage[MAX_WIDTH];  /**< Fragment coverage for AA/smoothing */
+   GLint   x[SWRAST_MAX_WIDTH];  /**< fragment X coords */
+   GLint   y[SWRAST_MAX_WIDTH];  /**< fragment Y coords */
+   GLuint  z[SWRAST_MAX_WIDTH];  /**< fragment Z coords */
+   GLuint  index[SWRAST_MAX_WIDTH];  /**< Color indexes */
+   GLfloat lambda[MAX_TEXTURE_COORD_UNITS][SWRAST_MAX_WIDTH]; /**< Texture LOD */
+   GLfloat coverage[SWRAST_MAX_WIDTH];  /**< Fragment coverage for AA/smoothing */
    /*@}*/
 } SWspanarrays;
 
@@ -125,9 +133,9 @@ typedef struct sw_span
    GLbitfield interpMask;
 
    /** Fragment attribute interpolants */
-   GLfloat attrStart[FRAG_ATTRIB_MAX][4];   /**< initial value */
-   GLfloat attrStepX[FRAG_ATTRIB_MAX][4];   /**< dvalue/dx */
-   GLfloat attrStepY[FRAG_ATTRIB_MAX][4];   /**< dvalue/dy */
+   GLfloat attrStart[VARYING_SLOT_MAX][4];   /**< initial value */
+   GLfloat attrStepX[VARYING_SLOT_MAX][4];   /**< dvalue/dx */
+   GLfloat attrStepY[VARYING_SLOT_MAX][4];   /**< dvalue/dy */
 
    /* XXX the rest of these will go away eventually... */
 
@@ -148,7 +156,8 @@ typedef struct sw_span
     */
    GLbitfield arrayMask;
 
-   GLbitfield arrayAttribs;
+   /** Mask of VARYING_BIT_x bits */
+   GLbitfield64 arrayAttribs;
 
    /**
     * We store the arrays of fragment values in a separate struct so
@@ -176,10 +185,10 @@ do {						\
 
 
 extern void
-_swrast_span_default_attribs(GLcontext *ctx, SWspan *span);
+_swrast_span_default_attribs(struct gl_context *ctx, SWspan *span);
 
 extern void
-_swrast_span_interpolate_z( const GLcontext *ctx, SWspan *span );
+_swrast_span_interpolate_z( const struct gl_context *ctx, SWspan *span );
 
 extern GLfloat
 _swrast_compute_lambda(GLfloat dsdx, GLfloat dsdy, GLfloat dtdx, GLfloat dtdy,
@@ -188,31 +197,21 @@ _swrast_compute_lambda(GLfloat dsdx, GLfloat dsdy, GLfloat dtdx, GLfloat dtdy,
 
 
 extern void
-_swrast_write_rgba_span( GLcontext *ctx, SWspan *span);
+_swrast_write_rgba_span( struct gl_context *ctx, SWspan *span);
 
 
 extern void
-_swrast_read_rgba_span(GLcontext *ctx, struct gl_renderbuffer *rb,
-                       GLuint n, GLint x, GLint y, GLenum type, GLvoid *rgba);
+_swrast_read_rgba_span(struct gl_context *ctx, struct gl_renderbuffer *rb,
+                       GLuint n, GLint x, GLint y, GLvoid *rgba);
 
 extern void
-_swrast_get_values(GLcontext *ctx, struct gl_renderbuffer *rb,
-                   GLuint count, const GLint x[], const GLint y[],
-                   void *values, GLuint valueSize);
-
-extern void
-_swrast_put_row(GLcontext *ctx, struct gl_renderbuffer *rb,
+_swrast_put_row(struct gl_context *ctx, struct gl_renderbuffer *rb,
+                GLenum datatype,
                 GLuint count, GLint x, GLint y,
-                const GLvoid *values, GLuint valueSize);
-
-extern void
-_swrast_get_row(GLcontext *ctx, struct gl_renderbuffer *rb,
-                GLuint count, GLint x, GLint y,
-                GLvoid *values, GLuint valueSize);
-
+                const void *values, const GLubyte *mask);
 
 extern void *
-_swrast_get_dest_rgba(GLcontext *ctx, struct gl_renderbuffer *rb,
+_swrast_get_dest_rgba(struct gl_context *ctx, struct gl_renderbuffer *rb,
                       SWspan *span);
 
 #endif

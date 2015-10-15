@@ -30,18 +30,55 @@
 #define LP_BLD_INIT_H
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "pipe/p_compiler.h"
+#include "util/u_pointer.h" // for func_pointer
+#include "lp_bld.h"
+#include <llvm-c/ExecutionEngine.h>
+
+
+struct gallivm_state
+{
+   LLVMModuleRef module;
+   LLVMExecutionEngineRef engine;
+   LLVMTargetDataRef target;
+   LLVMPassManagerRef passmgr;
+   LLVMContextRef context;
+   LLVMBuilderRef builder;
+   struct lp_generated_code *code;
+   unsigned compiled;
+};
 
 
 void
 lp_build_init(void);
 
 
-#ifdef __cplusplus
-}
-#endif
+struct gallivm_state *
+gallivm_create(const char *name);
 
+void
+gallivm_destroy(struct gallivm_state *gallivm);
+
+void
+gallivm_free_ir(struct gallivm_state *gallivm);
+
+void
+gallivm_verify_function(struct gallivm_state *gallivm,
+                        LLVMValueRef func);
+
+void
+gallivm_compile_module(struct gallivm_state *gallivm);
+
+func_pointer
+gallivm_jit_function(struct gallivm_state *gallivm,
+                     LLVMValueRef func);
+
+void
+lp_set_load_alignment(LLVMValueRef Inst,
+                       unsigned Align);
+
+void
+lp_set_store_alignment(LLVMValueRef Inst,
+		       unsigned Align);
 
 #endif /* !LP_BLD_INIT_H */

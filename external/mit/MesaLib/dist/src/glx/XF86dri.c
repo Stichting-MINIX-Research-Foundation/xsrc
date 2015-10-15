@@ -29,7 +29,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*
  * Authors:
  *   Kevin E. Martin <martin@valinux.com>
- *   Jens Owen <jens@tungstengraphics.com>
+ *   Jens Owen <jowen@vmware.com>
  *   Rickard E. (Rik) Faith <faith@valinux.com>
  *
  */
@@ -38,23 +38,12 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
 
-#define NEED_REPLIES
 #include <X11/Xlibint.h>
+#include <X11/Xfuncproto.h>
 #include <X11/extensions/Xext.h>
 #include <X11/extensions/extutil.h>
 #include "xf86dristr.h"
 #include <limits.h>
-
-
-#if defined(__GNUC__)
-#  define PUBLIC __attribute__((visibility("default")))
-#  define USED __attribute__((used))
-#else
-#  define PUBLIC
-#  define USED
-#endif
-
-
 
 static XExtensionInfo _xf86dri_info_data;
 static XExtensionInfo *xf86dri_info = &_xf86dri_info_data;
@@ -214,7 +203,7 @@ XF86DRIOpenConnection(Display * dpy, int screen, drm_handle_t * hSAREA,
 
    if (rep.length) {
       if (rep.busIdStringLength < INT_MAX)
-         *busIdString = (char *) Xcalloc(rep.busIdStringLength + 1, 1);
+         *busIdString = calloc(rep.busIdStringLength + 1, 1);
       else
          *busIdString = NULL;
       if (*busIdString == NULL) {
@@ -317,7 +306,7 @@ XF86DRIGetClientDriverName(Display * dpy, int screen,
 
    if (rep.length) {
       if (rep.clientDriverNameLength < INT_MAX)
-         *clientDriverName = (char *) Xcalloc(rep.clientDriverNameLength + 1, 1);
+         *clientDriverName = calloc(rep.clientDriverNameLength + 1, 1);
       else
          *clientDriverName = NULL;
       if (*clientDriverName == NULL) {
@@ -539,7 +528,7 @@ XF86DRIGetDrawableInfo(Display * dpy, int screen, Drawable drawable,
    if (*numClipRects) {
       int len = sizeof(drm_clip_rect_t) * (*numClipRects);
 
-      *pClipRects = (drm_clip_rect_t *) Xcalloc(len, 1);
+      *pClipRects = calloc(len, 1);
       if (*pClipRects)
          _XRead(dpy, (char *) *pClipRects, len);
    }
@@ -550,7 +539,7 @@ XF86DRIGetDrawableInfo(Display * dpy, int screen, Drawable drawable,
    if (*numBackClipRects) {
       int len = sizeof(drm_clip_rect_t) * (*numBackClipRects);
 
-      *pBackClipRects = (drm_clip_rect_t *) Xcalloc(len, 1);
+      *pBackClipRects = calloc(len, 1);
       if (*pBackClipRects)
          _XRead(dpy, (char *) *pBackClipRects, len);
    }
@@ -600,7 +589,7 @@ XF86DRIGetDeviceInfo(Display * dpy, int screen, drm_handle_t * hFrameBuffer,
    *devPrivateSize = rep.devPrivateSize;
 
    if (rep.length) {
-      if (!(*pDevPrivate = (void *) Xcalloc(rep.devPrivateSize, 1))) {
+      if (!(*pDevPrivate = calloc(rep.devPrivateSize, 1))) {
          _XEatData(dpy, ((rep.devPrivateSize + 3) & ~3));
          UnlockDisplay(dpy);
          SyncHandle();

@@ -177,6 +177,11 @@ FontFileAddEntry(FontTablePtr table, FontEntryPtr prototype)
     if (table->sorted)
 	return (FontEntryPtr) 0;    /* "cannot" happen */
     if (table->used == table->size) {
+	if (table->size >= ((INT32_MAX / sizeof(FontEntryRec)) - 100))
+	    /* If we've read so many entries we're going to ask for 2gb
+	       or more of memory, something is so wrong with this font
+	       directory that we should just give up before we overflow. */
+	    return NULL;
 	newsize = table->size + 100;
 	entry = realloc(table->entries, newsize * sizeof(FontEntryRec));
 	if (!entry)
@@ -425,17 +430,13 @@ FontFileCountDashes (char *name, int namelen)
     return ndashes;
 }
 
+/* exported in public API in <X11/fonts/fntfil.h> */
 char *
 FontFileSaveString (char *s)
 {
-    char    *n;
-
-    n = malloc (strlen (s) + 1);
-    if (!n)
-	return 0;
-    strcpy (n, s);
-    return n;
+    return strdup(s);
 }
+#define FontFileSaveString(s) strdup(s)
 
 FontEntryPtr
 FontFileFindNameInScalableDir(FontTablePtr table, FontNamePtr pat,

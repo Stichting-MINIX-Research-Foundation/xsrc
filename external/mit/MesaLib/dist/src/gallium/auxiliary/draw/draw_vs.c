@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   */
 
@@ -46,65 +46,34 @@
 #include "tgsi/tgsi_dump.h"
 #include "tgsi/tgsi_exec.h"
 
-
-
-void
-draw_vs_set_constants(struct draw_context *draw,
-                      unsigned slot,
-                      const void *constants,
-                      unsigned size)
-{
-   if (((uintptr_t)constants) & 0xf) {
-      if (size > draw->vs.const_storage_size[slot]) {
-         if (draw->vs.aligned_constant_storage[slot]) {
-            align_free((void *)draw->vs.aligned_constant_storage[slot]);
-         }
-         draw->vs.aligned_constant_storage[slot] = align_malloc(size, 16);
-      }
-      assert(constants);
-      memcpy((void *)draw->vs.aligned_constant_storage[slot],
-             constants,
-             size);
-      constants = draw->vs.aligned_constant_storage[slot];
-   }
-
-   draw->vs.aligned_constants[slot] = constants;
-   draw_vs_aos_machine_constants(draw->vs.aos_machine, slot, constants);
-}
-
-
-void draw_vs_set_viewport( struct draw_context *draw,
-                           const struct pipe_viewport_state *viewport )
-{
-   draw_vs_aos_machine_viewport( draw->vs.aos_machine, viewport );
-}
-
+DEBUG_GET_ONCE_BOOL_OPTION(gallium_dump_vs, "GALLIUM_DUMP_VS", FALSE)
 
 
 struct draw_vertex_shader *
 draw_create_vertex_shader(struct draw_context *draw,
                           const struct pipe_shader_state *shader)
 {
-   struct draw_vertex_shader *vs;
+   struct draw_vertex_shader *vs = NULL;
 
    if (draw->dump_vs) {
       tgsi_dump(shader->tokens, 0);
    }
 
-   vs = draw_create_vs_llvm( draw, shader );
+#if HAVE_LLVM
+   if (draw->pt.middle.llvm) {
+      vs = draw_create_vs_llvm(draw, shader);
+   }
+#endif
+
    if (!vs) {
-      vs = draw_create_vs_sse( draw, shader );
-      if (!vs) {
-         vs = draw_create_vs_ppc( draw, shader );
-         if (!vs) {
-            vs = draw_create_vs_exec( draw, shader );
-         }
-      }
+      vs = draw_create_vs_exec( draw, shader );
    }
 
    if (vs)
    {
       uint i;
+      bool found_clipvertex = FALSE;
+      vs->position_output = -1;
       for (i = 0; i < vs->info.num_outputs; i++) {
          if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_POSITION &&
              vs->info.output_semantic_index[i] == 0)
@@ -112,7 +81,22 @@ draw_create_vertex_shader(struct draw_context *draw,
          else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_EDGEFLAG &&
              vs->info.output_semantic_index[i] == 0)
             vs->edgeflag_output = i;
+         else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_CLIPVERTEX &&
+                  vs->info.output_semantic_index[i] == 0) {
+            found_clipvertex = TRUE;
+            vs->clipvertex_output = i;
+         } else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_CLIPDIST) {
+            debug_assert(vs->info.output_semantic_index[i] <
+                         PIPE_MAX_CLIP_OR_CULL_DISTANCE_ELEMENT_COUNT);
+            vs->clipdistance_output[vs->info.output_semantic_index[i]] = i;
+         } else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_CULLDIST) {
+            debug_assert(vs->info.output_semantic_index[i] <
+                         PIPE_MAX_CLIP_OR_CULL_DISTANCE_ELEMENT_COUNT);
+            vs->culldistance_output[vs->info.output_semantic_index[i]] = i;
+         }
       }
+      if (!found_clipvertex)
+         vs->clipvertex_output = vs->position_output;
    }
 
    assert(vs);
@@ -132,6 +116,9 @@ draw_bind_vertex_shader(struct draw_context *draw,
       draw->vs.num_vs_outputs = dvs->info.num_outputs;
       draw->vs.position_output = dvs->position_output;
       draw->vs.edgeflag_output = dvs->edgeflag_output;
+      draw->vs.clipvertex_output = dvs->clipvertex_output;
+      draw->vs.clipdistance_output[0] = dvs->clipdistance_output[0];
+      draw->vs.clipdistance_output[1] = dvs->clipdistance_output[1];
       dvs->prepare( dvs, draw );
    }
    else {
@@ -147,10 +134,10 @@ draw_delete_vertex_shader(struct draw_context *draw,
 {
    unsigned i;
 
-   for (i = 0; i < dvs->nr_varients; i++) 
-      dvs->varient[i]->destroy( dvs->varient[i] );
+   for (i = 0; i < dvs->nr_variants; i++) 
+      dvs->variant[i]->destroy( dvs->variant[i] );
 
-   dvs->nr_varients = 0;
+   dvs->nr_variants = 0;
 
    dvs->delete( dvs );
 }
@@ -160,11 +147,13 @@ draw_delete_vertex_shader(struct draw_context *draw,
 boolean 
 draw_vs_init( struct draw_context *draw )
 {
-   draw->dump_vs = debug_get_bool_option("GALLIUM_DUMP_VS", FALSE);
+   draw->dump_vs = debug_get_option_gallium_dump_vs();
 
-   draw->vs.machine = tgsi_exec_machine_create();
-   if (!draw->vs.machine)
-      return FALSE;
+   if (!draw->llvm) {
+      draw->vs.tgsi.machine = tgsi_exec_machine_create();
+      if (!draw->vs.tgsi.machine)
+         return FALSE;
+   }
 
    draw->vs.emit_cache = translate_cache_create();
    if (!draw->vs.emit_cache) 
@@ -174,73 +163,57 @@ draw_vs_init( struct draw_context *draw )
    if (!draw->vs.fetch_cache) 
       return FALSE;
 
-   draw->vs.aos_machine = draw_vs_aos_machine();
-#ifdef PIPE_ARCH_X86
-   if (!draw->vs.aos_machine)
-      return FALSE;
-#endif
-      
    return TRUE;
 }
 
 void
 draw_vs_destroy( struct draw_context *draw )
 {
-   uint i;
-
    if (draw->vs.fetch_cache)
       translate_cache_destroy(draw->vs.fetch_cache);
 
    if (draw->vs.emit_cache)
       translate_cache_destroy(draw->vs.emit_cache);
 
-   if (draw->vs.aos_machine)
-      draw_vs_aos_machine_destroy(draw->vs.aos_machine);
-
-   for (i = 0; i < PIPE_MAX_CONSTANT_BUFFERS; i++) {
-      if (draw->vs.aligned_constant_storage[i]) {
-         align_free((void *)draw->vs.aligned_constant_storage[i]);
-      }
-   }
-
-   tgsi_exec_machine_destroy(draw->vs.machine);
+   if (!draw->llvm)
+      tgsi_exec_machine_destroy(draw->vs.tgsi.machine);
 }
 
 
-struct draw_vs_varient *
-draw_vs_lookup_varient( struct draw_vertex_shader *vs,
-                        const struct draw_vs_varient_key *key )
+struct draw_vs_variant *
+draw_vs_lookup_variant( struct draw_vertex_shader *vs,
+                        const struct draw_vs_variant_key *key )
 {
-   struct draw_vs_varient *varient;
+   struct draw_vs_variant *variant;
    unsigned i;
 
-   /* Lookup existing varient: 
+   /* Lookup existing variant: 
     */
-   for (i = 0; i < vs->nr_varients; i++)
-      if (draw_vs_varient_key_compare(key, &vs->varient[i]->key) == 0)
-         return vs->varient[i];
+   for (i = 0; i < vs->nr_variants; i++)
+      if (draw_vs_variant_key_compare(key, &vs->variant[i]->key) == 0)
+         return vs->variant[i];
    
    /* Else have to create a new one: 
     */
-   varient = vs->create_varient( vs, key );
-   if (varient == NULL)
+   variant = vs->create_variant( vs, key );
+   if (variant == NULL)
       return NULL;
 
    /* Add it to our list, could be smarter: 
     */
-   if (vs->nr_varients < Elements(vs->varient)) {
-      vs->varient[vs->nr_varients++] = varient;
+   if (vs->nr_variants < Elements(vs->variant)) {
+      vs->variant[vs->nr_variants++] = variant;
    }
    else {
-      vs->last_varient++;
-      vs->last_varient %= Elements(vs->varient);
-      vs->varient[vs->last_varient]->destroy(vs->varient[vs->last_varient]);
-      vs->varient[vs->last_varient] = varient;
+      vs->last_variant++;
+      vs->last_variant %= Elements(vs->variant);
+      vs->variant[vs->last_variant]->destroy(vs->variant[vs->last_variant]);
+      vs->variant[vs->last_variant] = variant;
    }
 
    /* Done 
     */
-   return varient;
+   return variant;
 }
 
 
@@ -270,4 +243,17 @@ draw_vs_get_emit( struct draw_context *draw,
    }
    
    return draw->vs.emit;
+}
+
+void
+draw_vs_attach_so(struct draw_vertex_shader *dvs,
+                  const struct pipe_stream_output_info *info)
+{
+   dvs->state.stream_output = *info;
+}
+
+void
+draw_vs_reset_so(struct draw_vertex_shader *dvs)
+{
+   memset(&dvs->state.stream_output, 0, sizeof(dvs->state.stream_output));
 }

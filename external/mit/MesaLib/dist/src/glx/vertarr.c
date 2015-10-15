@@ -32,6 +32,7 @@
 #include "indirect.h"
 #include "indirect_vertex_array.h"
 
+#ifndef GLX_USE_APPLEGL
 
 /*****************************************************************************/
 
@@ -101,7 +102,7 @@ void
 __indirect_glInterleavedArrays(GLenum format, GLsizei stride,
                                const GLvoid * pointer)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
 
 #define NONE  {0, 0, 0}
@@ -210,3 +211,5 @@ __indirect_glInterleavedArrays(GLenum format, GLsizei stride,
                               trueStride,
                               (const char *) pointer + offsets[3]);
 }
+
+#endif

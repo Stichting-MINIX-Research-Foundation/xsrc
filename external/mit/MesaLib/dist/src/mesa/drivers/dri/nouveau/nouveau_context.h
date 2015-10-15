@@ -29,7 +29,7 @@
 
 #include "nouveau_screen.h"
 #include "nouveau_state.h"
-#include "nouveau_bo_state.h"
+#include "nouveau_scratch.h"
 #include "nouveau_render.h"
 
 #include "main/bitset.h"
@@ -40,33 +40,48 @@ enum nouveau_fallback {
 	SWRAST,
 };
 
-struct nouveau_hw_state {
-	struct nouveau_channel *chan;
+#define BUFCTX_FB      0
+#define BUFCTX_VTX     1
+#define BUFCTX_TEX(i) (2 + (i))
 
-	struct nouveau_notifier *ntfy;
-	struct nouveau_grobj *eng3d;
-	struct nouveau_grobj *eng3dm;
-	struct nouveau_grobj *surf3d;
-	struct nouveau_grobj *m2mf;
-	struct nouveau_grobj *surf2d;
-	struct nouveau_grobj *rop;
-	struct nouveau_grobj *patt;
-	struct nouveau_grobj *rect;
-	struct nouveau_grobj *swzsurf;
-	struct nouveau_grobj *sifm;
+struct nouveau_hw_state {
+	struct nouveau_object *chan;
+	struct nouveau_client *client;
+	struct nouveau_pushbuf *pushbuf;
+	struct nouveau_bufctx *bufctx;
+
+	struct nouveau_object *null;
+	struct nouveau_object *ntfy;
+	struct nouveau_object *eng3d;
+	struct nouveau_object *eng3dm;
+	struct nouveau_object *surf3d;
+	struct nouveau_object *m2mf;
+	struct nouveau_object *surf2d;
+	struct nouveau_object *rop;
+	struct nouveau_object *patt;
+	struct nouveau_object *rect;
+	struct nouveau_object *swzsurf;
+	struct nouveau_object *sifm;
 };
 
 struct nouveau_context {
-	GLcontext base;
+	struct gl_context base;
 	__DRIcontext *dri_context;
 	struct nouveau_screen *screen;
 
 	BITSET_DECLARE(dirty, MAX_NOUVEAU_STATE);
 	enum nouveau_fallback fallback;
 
+	struct nouveau_bo *fence;
+
 	struct nouveau_hw_state hw;
-	struct nouveau_bo_state bo;
 	struct nouveau_render_state render;
+	struct nouveau_scratch_state scratch;
+
+	struct {
+		GLboolean clear_blocked;
+		int clear_seq;
+	} hierz;
 };
 
 #define to_nouveau_context(ctx)	((struct nouveau_context *)(ctx))
@@ -77,6 +92,10 @@ struct nouveau_context {
 	(context_dev(ctx)->chipset)
 #define context_chan(ctx) \
 	(to_nouveau_context(ctx)->hw.chan)
+#define context_client(ctx) \
+	(to_nouveau_context(ctx)->hw.client)
+#define context_push(ctx) \
+	(to_nouveau_context(ctx)->hw.pushbuf)
 #define context_eng3d(ctx) \
 	(to_nouveau_context(ctx)->hw.eng3d)
 #define context_drv(ctx) \
@@ -85,17 +104,23 @@ struct nouveau_context {
 	BITSET_SET(to_nouveau_context(ctx)->dirty, NOUVEAU_STATE_##s)
 #define context_dirty_i(ctx, s, i) \
 	BITSET_SET(to_nouveau_context(ctx)->dirty, NOUVEAU_STATE_##s##0 + i)
+#define context_emit(ctx, s) \
+	context_drv(ctx)->emit[NOUVEAU_STATE_##s](ctx, NOUVEAU_STATE_##s)
 
 GLboolean
-nouveau_context_create(const __GLcontextModes *visual, __DRIcontext *dri_ctx,
+nouveau_context_create(gl_api api,
+		       const struct gl_config *visual, __DRIcontext *dri_ctx,
+		       unsigned major_version, unsigned minor_version,
+		       uint32_t flags, bool notify_reset, unsigned *error,
 		       void *share_ctx);
 
 GLboolean
-nouveau_context_init(GLcontext *ctx, struct nouveau_screen *screen,
-		     const GLvisual *visual, GLcontext *share_ctx);
+nouveau_context_init(struct gl_context *ctx, gl_api api,
+		     struct nouveau_screen *screen,
+		     const struct gl_config *visual, struct gl_context *share_ctx);
 
 void
-nouveau_context_deinit(GLcontext *ctx);
+nouveau_context_deinit(struct gl_context *ctx);
 
 void
 nouveau_context_destroy(__DRIcontext *dri_ctx);
@@ -111,10 +136,10 @@ GLboolean
 nouveau_context_unbind(__DRIcontext *dri_ctx);
 
 void
-nouveau_fallback(GLcontext *ctx, enum nouveau_fallback mode);
+nouveau_fallback(struct gl_context *ctx, enum nouveau_fallback mode);
 
 void
-nouveau_validate_framebuffer(GLcontext *ctx);
+nouveau_validate_framebuffer(struct gl_context *ctx);
 
 #endif
 

@@ -10,7 +10,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  4.1
  *
  * Copyright (C) 1999-2002  Brian Paul   All Rights Reserved.
  *
@@ -27,31 +26,24 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef HINT_H
 #define HINT_H
 
+#include "glheader.h"
 
-#include "mtypes.h"
-
-#if _HAVE_FULL_GL
+struct gl_context;
 
 extern void GLAPIENTRY
 _mesa_Hint( GLenum target, GLenum mode );
 
 extern void 
-_mesa_init_hint( GLcontext * ctx );
-
-#else
-
-/** No-op */
-#define _mesa_init_hint( c ) ((void) 0)
-
-#endif
+_mesa_init_hint( struct gl_context * ctx );
 
 #endif

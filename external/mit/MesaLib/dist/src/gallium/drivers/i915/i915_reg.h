@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -148,6 +148,7 @@
 /* p161 */
 #define _3DSTATE_DST_BUF_VARS_CMD	(CMD_3D | (0x1d<<24) | (0x85<<16))
 /* Dword 1 */
+#define CLASSIC_EARLY_DEPTH             (1<<31)
 #define TEX_DEFAULT_COLOR_OGL           (0<<30)
 #define TEX_DEFAULT_COLOR_D3D           (1<<30)
 #define ZR_EARLY_DEPTH                  (1<<29)
@@ -169,6 +170,13 @@
 #define COLOR_BUF_RGB555 		(1<<8)
 #define COLOR_BUF_RGB565 		(2<<8)
 #define COLOR_BUF_ARGB8888		(3<<8)
+#define COLOR_BUF_YCRCB_SWAP		(4<<8)
+#define COLOR_BUF_YCRCB_NORMAL		(5<<8)
+#define COLOR_BUF_YCRCB_SWAPUV		(6<<8)
+#define COLOR_BUF_YCRCB_SWAPUVY		(7<<8)
+#define COLOR_BUF_ARGB4444		(8<<8)
+#define COLOR_BUF_ARGB1555		(9<<8)
+#define COLOR_BUF_ARGB2101010		(10<<8)
 #define DEPTH_FRMT_16_FIXED		0
 #define DEPTH_FRMT_16_FLOAT		(1<<2)
 #define DEPTH_FRMT_24_FIXED_8_OTHER	(2<<2)
@@ -712,9 +720,11 @@
 #define    MAPSURF_4BIT_INDEXED		   (7<<7)
 #define MS3_MT_FORMAT_MASK         (0x7 << 3)
 #define MS3_MT_FORMAT_SHIFT        3
-#define    MT_4BIT_IDX_ARGB8888	           (7<<3)       /* SURFACE_4BIT_INDEXED */
+#define    MT_4BIT_P4		           (7<<3)       /* SURFACE_4BIT_INDEXED */
 #define    MT_8BIT_I8		           (0<<3)       /* SURFACE_8BIT */
 #define    MT_8BIT_L8		           (1<<3)
+#define    MT_8BIT_A4P4		           (2<<3)
+#define    MT_8BIT_P4A4		           (3<<3)
 #define    MT_8BIT_A8		           (4<<3)
 #define    MT_8BIT_MONO8	           (5<<3)
 #define    MT_16BIT_RGB565 		   (0<<3)       /* SURFACE_16BIT */
@@ -753,7 +763,7 @@
 #define    MT_COMPRESS_DXT1_RGB		   (4<<3)
 #define MS3_USE_FENCE_REGS              (1<<2)
 #define MS3_TILED_SURFACE             (1<<1)
-#define MS3_TILE_WALK                 (1<<0)
+#define MS3_TILE_WALK_Y                (1<<0)
 
 #define MS4_PITCH_SHIFT                 21
 #define MS4_CUBE_FACE_ENA_NEGX          (1<<20)
@@ -851,6 +861,7 @@
 #define MI_FLUSH                   ((0<<29)|(4<<23))
 #define FLUSH_MAP_CACHE            (1<<0)
 #define INHIBIT_FLUSH_RENDER_CACHE (1<<2)
+#define MI_NOOP                    0
 
 
 #define CMD_3D (0x3<<29)
@@ -973,6 +984,8 @@
 #define PCI_CHIP_G33_G			0x29C2
 #define PCI_CHIP_Q35_G			0x29B2
 #define PCI_CHIP_Q33_G			0x29D2
+#define PCI_CHIP_PINEVIEW_G		0xA001
+#define PCI_CHIP_PINEVIEW_M		0xA011
 
 
 #endif

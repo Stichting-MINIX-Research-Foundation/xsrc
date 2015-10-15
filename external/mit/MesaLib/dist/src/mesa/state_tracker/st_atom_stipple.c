@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,6 +32,8 @@
   *   Brian Paul
   */
  
+
+#include <assert.h>
 
 #include "st_context.h"
 #include "st_atom.h"
@@ -62,17 +64,18 @@ invert_stipple(GLuint dest[32], const GLuint src[32], GLuint winHeight)
 static void 
 update_stipple( struct st_context *st )
 {
+   const struct gl_context *ctx = st->ctx;
    const GLuint sz = sizeof(st->state.poly_stipple);
-   assert(sz == sizeof(st->ctx->PolygonStipple));
+   assert(sz == sizeof(ctx->PolygonStipple));
 
-   if (memcmp(st->state.poly_stipple, st->ctx->PolygonStipple, sz)) {
+   if (memcmp(st->state.poly_stipple, ctx->PolygonStipple, sz)) {
       /* state has changed */
       struct pipe_poly_stipple newStipple;
 
-      memcpy(st->state.poly_stipple, st->ctx->PolygonStipple, sz);
+      memcpy(st->state.poly_stipple, ctx->PolygonStipple, sz);
 
-      invert_stipple(newStipple.stipple, st->ctx->PolygonStipple,
-                     st->ctx->DrawBuffer->Height);
+      invert_stipple(newStipple.stipple, ctx->PolygonStipple,
+                     ctx->DrawBuffer->Height);
 
       st->pipe->set_polygon_stipple(st->pipe, &newStipple);
    }

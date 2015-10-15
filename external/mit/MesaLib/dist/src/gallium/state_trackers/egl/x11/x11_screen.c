@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.8
  *
  * Copyright (C) 2009-2010 Chia-I Wu <olv@0xlab.org>
  *
@@ -14,24 +13,24 @@
  * The above copyright notice and this permission notice shall be included
  * in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  */
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <xf86drm.h>
 #include <X11/Xlibint.h>
 #include <X11/extensions/XShm.h>
+
 #include "util/u_memory.h"
-#include "util/u_math.h"
-#include "util/u_format.h"
-#include "xf86drm.h"
 #include "egllog.h"
 
 #include "x11_screen.h"
@@ -39,9 +38,6 @@
 #include "glxinit.h"
 
 struct x11_screen {
-   /* dummy base class */
-   struct __GLXDRIdisplayRec base;
-
    Display *dpy;
    int number;
 
@@ -98,19 +94,20 @@ x11_screen_destroy(struct x11_screen *xscr)
 {
    if (xscr->dri_fd >= 0)
       close(xscr->dri_fd);
-   if (xscr->dri_driver)
-      Xfree(xscr->dri_driver);
-   if (xscr->dri_device)
-      Xfree(xscr->dri_device);
+   free(xscr->dri_driver);
+   free(xscr->dri_device);
 
+#ifdef GLX_DIRECT_RENDERING
    /* xscr->glx_dpy will be destroyed with the X display */
    if (xscr->glx_dpy)
-      xscr->glx_dpy->dri2Display = NULL;
+      xscr->glx_dpy->xscr = NULL;
+#endif
 
-   if (xscr->visuals)
-      XFree(xscr->visuals);
-   free(xscr);
+   free(xscr->visuals);
+   FREE(xscr);
 }
+
+#ifdef GLX_DIRECT_RENDERING
 
 static boolean
 x11_screen_init_dri2(struct x11_screen *xscr)
@@ -133,6 +130,8 @@ x11_screen_init_glx(struct x11_screen *xscr)
    return (xscr->glx_dpy != NULL);
 }
 
+#endif /* GLX_DIRECT_RENDERING */
+
 /**
  * Return true if the screen supports the extension.
  */
@@ -145,12 +144,14 @@ x11_screen_support(struct x11_screen *xscr, enum x11_screen_extension ext)
    case X11_SCREEN_EXTENSION_XSHM:
       supported = XShmQueryExtension(xscr->dpy);
       break;
+#ifdef GLX_DIRECT_RENDERING
    case X11_SCREEN_EXTENSION_GLX:
       supported = x11_screen_init_glx(xscr);
       break;
    case X11_SCREEN_EXTENSION_DRI2:
       supported = x11_screen_init_dri2(xscr);
       break;
+#endif
    default:
       break;
    }
@@ -176,62 +177,38 @@ x11_screen_get_visuals(struct x11_screen *xscr, int *num_visuals)
    return xscr->visuals;
 }
 
-void
-x11_screen_convert_visual(struct x11_screen *xscr, const XVisualInfo *visual,
-                          __GLcontextModes *mode)
+/**
+ * Return the depth of a drawable.
+ *
+ * Unlike other drawable functions, the drawable needs not be a DRI2 drawable.
+ */
+uint
+x11_drawable_get_depth(struct x11_screen *xscr, Drawable drawable)
 {
-   int r, g, b, a;
-   int visual_type;
+   unsigned int depth;
 
-   r = util_bitcount(visual->red_mask);
-   g = util_bitcount(visual->green_mask);
-   b = util_bitcount(visual->blue_mask);
-   a = visual->depth - (r + g + b);
-#if defined(__cplusplus) || defined(c_plusplus)
-   visual_type = visual->c_class;
-#else
-   visual_type = visual->class;
-#endif
+   if (drawable != xscr->last_drawable) {
+      Window root;
+      int x, y;
+      unsigned int w, h, border;
+      Status ok;
 
-   /* convert to GLX visual type */
-   switch (visual_type) {
-   case TrueColor:
-      visual_type = GLX_TRUE_COLOR;
-      break;
-   case DirectColor:
-      visual_type = GLX_DIRECT_COLOR;
-      break;
-   case PseudoColor:
-      visual_type = GLX_PSEUDO_COLOR;
-      break;
-   case StaticColor:
-      visual_type = GLX_STATIC_COLOR;
-      break;
-   case GrayScale:
-      visual_type = GLX_GRAY_SCALE;
-      break;
-   case StaticGray:
-      visual_type = GLX_STATIC_GRAY;
-      break;
-   default:
-      visual_type = GLX_NONE;
-      break;
+      ok = XGetGeometry(xscr->dpy, drawable, &root,
+            &x, &y, &w, &h, &border, &depth);
+      if (!ok)
+         depth = 0;
+
+      xscr->last_drawable = drawable;
+      xscr->last_depth = depth;
+   }
+   else {
+      depth = xscr->last_depth;
    }
 
-   mode->rgbBits = r + g + b + a;
-   mode->redBits = r;
-   mode->greenBits = g;
-   mode->blueBits = b;
-   mode->alphaBits = a;
-   mode->visualID = visual->visualid;
-   mode->visualType = visual_type;
-
-   /* sane defaults */
-   mode->renderType = GLX_RGBA_BIT;
-   mode->rgbMode = TRUE;
-   mode->visualRating = GLX_SLOW_CONFIG;
-   mode->xRenderable = TRUE;
+   return depth;
 }
+
+#ifdef GLX_DIRECT_RENDERING
 
 /**
  * Return the GLX fbconfigs.
@@ -240,18 +217,7 @@ const __GLcontextModes *
 x11_screen_get_glx_configs(struct x11_screen *xscr)
 {
    return (x11_screen_init_glx(xscr))
-      ? xscr->glx_dpy->screenConfigs[xscr->number].configs
-      : NULL;
-}
-
-/**
- * Return the GLX visuals.
- */
-const __GLcontextModes *
-x11_screen_get_glx_visuals(struct x11_screen *xscr)
-{
-   return (x11_screen_init_glx(xscr))
-      ? xscr->glx_dpy->screenConfigs[xscr->number].visuals
+      ? xscr->glx_dpy->screenConfigs[xscr->number]->configs
       : NULL;
 }
 
@@ -295,7 +261,15 @@ x11_screen_enable_dri2(struct x11_screen *xscr,
       if (!x11_screen_probe_dri2(xscr, NULL, NULL))
          return -1;
 
-      fd = open(xscr->dri_device, O_RDWR);
+#ifdef O_CLOEXEC
+      fd = open(xscr->dri_device, O_RDWR | O_CLOEXEC);
+      if (fd == -1 && errno == EINVAL)
+#endif
+      {
+         fd = open(xscr->dri_device, O_RDWR);
+         if (fd != -1)
+            fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+      }
       if (fd < 0) {
          _eglLog(_EGL_WARNING, "failed to open %s", xscr->dri_device);
          return -1;
@@ -320,14 +294,14 @@ x11_screen_enable_dri2(struct x11_screen *xscr,
          close(fd);
          return -1;
       }
-      if (xscr->glx_dpy->dri2Display) {
+      if (xscr->glx_dpy->xscr) {
          _eglLog(_EGL_WARNING,
                "display is already managed by another x11 screen");
          close(fd);
          return -1;
       }
 
-      xscr->glx_dpy->dri2Display = (__GLXDRIdisplay *) xscr;
+      xscr->glx_dpy->xscr = xscr;
       xscr->dri_invalidate_buffers = invalidate_buffers;
       xscr->dri_user_data = user_data;
 
@@ -335,6 +309,23 @@ x11_screen_enable_dri2(struct x11_screen *xscr,
    }
 
    return xscr->dri_fd;
+}
+
+char *
+x11_screen_get_device_name(struct x11_screen *xscr)
+{
+   return xscr->dri_device;
+}
+
+int
+x11_screen_authenticate(struct x11_screen *xscr, uint32_t id)
+{
+   boolean authenticated;
+
+   authenticated = DRI2Authenticate(xscr->dpy,
+         RootWindow(xscr->dpy, xscr->number), id);
+   
+   return authenticated ? 0 : -1;
 }
 
 /**
@@ -354,21 +345,24 @@ x11_drawable_enable_dri2(struct x11_screen *xscr,
  * Copy between buffers of the DRI2 drawable.
  */
 void
-x11_drawable_copy_buffers(struct x11_screen *xscr, Drawable drawable,
-                          int x, int y, int width, int height,
-                          int src_buf, int dst_buf)
+x11_drawable_copy_buffers_region(struct x11_screen *xscr, Drawable drawable,
+                                 int num_rects, const int *rects,
+                                 int src_buf, int dst_buf)
 {
-   XRectangle rect;
    XserverRegion region;
+   XRectangle *rectangles = CALLOC(num_rects, sizeof(XRectangle));
 
-   rect.x = x;
-   rect.y = y;
-   rect.width = width;
-   rect.height = height;
+   for (int i = 0; i < num_rects; i++) {
+      rectangles[i].x = rects[i * 4 + 0];
+      rectangles[i].y = rects[i * 4 + 1];
+      rectangles[i].width = rects[i * 4 + 2];
+      rectangles[i].height = rects[i * 4 + 3];
+   }
 
-   region = XFixesCreateRegion(xscr->dpy, &rect, 1);
+   region = XFixesCreateRegion(xscr->dpy, rectangles, num_rects);
    DRI2CopyRegion(xscr->dpy, drawable, region, dst_buf, src_buf);
    XFixesDestroyRegion(xscr->dpy, region);
+   FREE(rectangles);
 }
 
 /**
@@ -392,37 +386,6 @@ x11_drawable_get_buffers(struct x11_screen *xscr, Drawable drawable,
 }
 
 /**
- * Return the depth of a drawable.
- *
- * Unlike other drawable functions, the drawable needs not be a DRI2 drawable.
- */
-uint
-x11_drawable_get_depth(struct x11_screen *xscr, Drawable drawable)
-{
-   unsigned int depth;
-
-   if (drawable != xscr->last_drawable) {
-      Window root;
-      int x, y;
-      unsigned int w, h, border;
-      Status ok;
-
-      ok = XGetGeometry(xscr->dpy, drawable, &root,
-            &x, &y, &w, &h, &border, &depth);
-      if (!ok)
-         depth = 0;
-
-      xscr->last_drawable = drawable;
-      xscr->last_depth = depth;
-   }
-   else {
-      depth = xscr->last_depth;
-   }
-
-   return depth;
-}
-
-/**
  * Create a mode list of the given size.
  */
 __GLcontextModes *
@@ -435,7 +398,7 @@ x11_context_modes_create(unsigned count)
 
    next = &base;
    for (i = 0; i < count; i++) {
-      *next = (__GLcontextModes *) calloc(1, size);
+      *next = (__GLcontextModes *) CALLOC(1, size);
       if (*next == NULL) {
          x11_context_modes_destroy(base);
          base = NULL;
@@ -455,7 +418,7 @@ x11_context_modes_destroy(__GLcontextModes *modes)
 {
    while (modes != NULL) {
       __GLcontextModes *next = modes->next;
-      free(modes);
+      FREE(modes);
       modes = next;
    }
 }
@@ -473,6 +436,9 @@ x11_context_modes_count(const __GLcontextModes *modes)
    return count;
 }
 
+extern void
+dri2InvalidateBuffers(Display *dpy, XID drawable);
+
 /**
  * This is called from src/glx/dri2.c.
  */
@@ -482,10 +448,41 @@ dri2InvalidateBuffers(Display *dpy, XID drawable)
    __GLXdisplayPrivate *priv = __glXInitialize(dpy);
    struct x11_screen *xscr = NULL;
 
-   if (priv && priv->dri2Display)
-      xscr = (struct x11_screen *) priv->dri2Display;
+   if (priv && priv->xscr)
+      xscr = priv->xscr;
    if (!xscr || !xscr->dri_invalidate_buffers)
       return;
 
    xscr->dri_invalidate_buffers(xscr, drawable, xscr->dri_user_data);
 }
+
+extern unsigned
+dri2GetSwapEventType(Display *dpy, XID drawable);
+
+extern void *
+dri2GetGlxDrawableFromXDrawableId(Display *dpy, XID id);
+
+extern void *
+GetGLXDrawable(Display *dpy, XID drawable);
+
+/**
+ * This is also called from src/glx/dri2.c.
+ */
+unsigned dri2GetSwapEventType(Display *dpy, XID drawable)
+{
+   return 0;
+}
+
+void *
+dri2GetGlxDrawableFromXDrawableId(Display *dpy, XID id)
+{
+   return NULL;
+}
+
+void *
+GetGLXDrawable(Display *dpy, XID drawable)
+{
+   return NULL;
+}
+
+#endif /* GLX_DIRECT_RENDERING */

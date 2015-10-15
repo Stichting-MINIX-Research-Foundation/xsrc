@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,19 +16,21 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef TEXCOMPRESS_S3TC_H
 #define TEXCOMPRESS_S3TC_H
 
-#include "main/mtypes.h"
+#include "compiler.h"
+#include "glheader.h"
 #include "texstore.h"
+#include "texcompress.h"
 
-
-#if FEATURE_texture_s3tc
+struct gl_context;
 
 extern GLboolean
 _mesa_texstore_rgb_dxt1(TEXSTORE_PARAMS);
@@ -43,64 +44,12 @@ _mesa_texstore_rgba_dxt3(TEXSTORE_PARAMS);
 extern GLboolean
 _mesa_texstore_rgba_dxt5(TEXSTORE_PARAMS);
 
-extern void
-_mesa_fetch_texel_2d_f_rgb_dxt1(const struct gl_texture_image *texImage,
-                                GLint i, GLint j, GLint k, GLfloat *texel);
 
 extern void
-_mesa_fetch_texel_2d_f_rgba_dxt1(const struct gl_texture_image *texImage,
-                                 GLint i, GLint j, GLint k, GLfloat *texel);
+_mesa_init_texture_s3tc(struct gl_context *ctx);
 
-extern void
-_mesa_fetch_texel_2d_f_rgba_dxt3(const struct gl_texture_image *texImage,
-                                 GLint i, GLint j, GLint k, GLfloat *texel);
+extern compressed_fetch_func
+_mesa_get_dxt_fetch_func(mesa_format format);
 
-extern void
-_mesa_fetch_texel_2d_f_rgba_dxt5(const struct gl_texture_image *texImage,
-                                 GLint i, GLint j, GLint k, GLfloat *texel);
-
-extern void
-_mesa_fetch_texel_2d_f_srgb_dxt1(const struct gl_texture_image *texImage,
-                                 GLint i, GLint j, GLint k, GLfloat *texel);
-
-extern void
-_mesa_fetch_texel_2d_f_srgba_dxt1(const struct gl_texture_image *texImage,
-                                  GLint i, GLint j, GLint k, GLfloat *texel);
-
-extern void
-_mesa_fetch_texel_2d_f_srgba_dxt3(const struct gl_texture_image *texImage,
-                                  GLint i, GLint j, GLint k, GLfloat *texel);
-
-extern void
-_mesa_fetch_texel_2d_f_srgba_dxt5(const struct gl_texture_image *texImage,
-                                  GLint i, GLint j, GLint k, GLfloat *texel);
-
-extern void
-_mesa_init_texture_s3tc(GLcontext *ctx);
-
-#else /* FEATURE_texture_s3tc */
-
-/* these are used only in texstore_funcs[] */
-#define _mesa_texstore_rgb_dxt1 NULL
-#define _mesa_texstore_rgba_dxt1 NULL
-#define _mesa_texstore_rgba_dxt3 NULL
-#define _mesa_texstore_rgba_dxt5 NULL
-
-/* these are used only in texfetch_funcs[] */
-#define _mesa_fetch_texel_2d_f_rgb_dxt1 NULL
-#define _mesa_fetch_texel_2d_f_rgba_dxt1 NULL
-#define _mesa_fetch_texel_2d_f_rgba_dxt3 NULL
-#define _mesa_fetch_texel_2d_f_rgba_dxt5 NULL
-#define _mesa_fetch_texel_2d_f_srgb_dxt1 NULL
-#define _mesa_fetch_texel_2d_f_srgba_dxt1 NULL
-#define _mesa_fetch_texel_2d_f_srgba_dxt3 NULL
-#define _mesa_fetch_texel_2d_f_srgba_dxt5 NULL
-
-static INLINE void
-_mesa_init_texture_s3tc(GLcontext *ctx)
-{
-}
-
-#endif /* FEATURE_texture_s3tc */
 
 #endif /* TEXCOMPRESS_S3TC_H */

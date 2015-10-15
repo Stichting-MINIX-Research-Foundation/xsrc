@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -38,6 +38,7 @@
 #include "main/texobj.h"
 #include "main/state.h"
 #include "main/dd.h"
+#include "main/fbobject.h"
 
 #include "swrast/swrast.h"
 #include "swrast_setup/swrast_setup.h"
@@ -51,33 +52,33 @@
 #include "intel_batchbuffer.h"
 #include "intel_buffers.h"
 #include "intel_reg.h"
-#include "intel_span.h"
 #include "i830_context.h"
 #include "i830_reg.h"
+#include "i915_context.h"
 
-static void intelRenderPrimitive(GLcontext * ctx, GLenum prim);
-static void intelRasterPrimitive(GLcontext * ctx, GLenum rprim,
+static void intelRenderPrimitive(struct gl_context * ctx, GLenum prim);
+static void intelRasterPrimitive(struct gl_context * ctx, GLenum rprim,
                                  GLuint hwprim);
 
 static void
 intel_flush_inline_primitive(struct intel_context *intel)
 {
-   GLuint used = intel->batch->ptr - intel->prim.start_ptr;
+   GLuint used = intel->batch.used - intel->prim.start_ptr;
 
    assert(intel->prim.primitive != ~0);
 
 /*    printf("/\n"); */
 
-   if (used < 8)
+   if (used < 2)
       goto do_discard;
 
-   *(int *) intel->prim.start_ptr = (_3DPRIMITIVE |
-                                     intel->prim.primitive | (used / 4 - 2));
+   intel->batch.map[intel->prim.start_ptr] =
+      _3DPRIMITIVE | intel->prim.primitive | (used - 2);
 
    goto finished;
 
  do_discard:
-   intel->batch->ptr -= used;
+   intel->batch.used = intel->prim.start_ptr;
 
  finished:
    intel->prim.primitive = ~0;
@@ -91,25 +92,21 @@ static void intel_start_inline(struct intel_context *intel, uint32_t prim)
 
    intel->vtbl.emit_state(intel);
 
-   intel->no_batch_wrap = GL_TRUE;
-
-   /*printf("%s *", __progname);*/
+   intel->no_batch_wrap = true;
 
    /* Emit a slot which will be filled with the inline primitive
     * command later.
     */
    BEGIN_BATCH(1);
 
-   assert((intel->batch->dirty_state & (1<<1)) == 0);
-
-   intel->prim.start_ptr = intel->batch->ptr;
+   intel->prim.start_ptr = intel->batch.used;
    intel->prim.primitive = prim;
    intel->prim.flush = intel_flush_inline_primitive;
 
    OUT_BATCH(0);
    ADVANCE_BATCH();
 
-   intel->no_batch_wrap = GL_FALSE;
+   intel->no_batch_wrap = false;
 /*    printf(">"); */
 }
 
@@ -118,26 +115,25 @@ static void intel_wrap_inline(struct intel_context *intel)
    GLuint prim = intel->prim.primitive;
 
    intel_flush_inline_primitive(intel);
-   intel_batchbuffer_flush(intel->batch);
+   intel_batchbuffer_flush(intel);
    intel_start_inline(intel, prim);  /* ??? */
 }
 
 static GLuint *intel_extend_inline(struct intel_context *intel, GLuint dwords)
 {
-   GLuint sz = dwords * sizeof(GLuint);
    GLuint *ptr;
 
    assert(intel->prim.flush == intel_flush_inline_primitive);
 
-   if (intel_batchbuffer_space(intel->batch) < sz)
+   if (intel_batchbuffer_space(intel) < dwords * sizeof(GLuint))
       intel_wrap_inline(intel);
 
 /*    printf("."); */
 
    intel->vtbl.assert_not_dirty(intel);
 
-   ptr = (GLuint *) intel->batch->ptr;
-   intel->batch->ptr += sz;
+   ptr = intel->batch.map + intel->batch.used;
+   intel->batch.used += dwords;
 
    return ptr;
 }
@@ -179,8 +175,8 @@ uint32_t *intel_get_prim_space(struct intel_context *intel, unsigned int count)
       /* Start a new VB */
       if (intel->prim.vb == NULL)
 	 intel->prim.vb = malloc(INTEL_VB_SIZE);
-      intel->prim.vb_bo = dri_bo_alloc(intel->bufmgr, "vb",
-				       INTEL_VB_SIZE, 4);
+      intel->prim.vb_bo = drm_intel_bo_alloc(intel->bufmgr, "vb",
+					     INTEL_VB_SIZE, 4);
       intel->prim.start_offset = 0;
       intel->prim.current_offset = 0;
    }
@@ -197,8 +193,8 @@ uint32_t *intel_get_prim_space(struct intel_context *intel, unsigned int count)
 /** Dispatches the accumulated primitive to the batchbuffer. */
 void intel_flush_prim(struct intel_context *intel)
 {
-   dri_bo *aper_array[2];
-   dri_bo *vb_bo;
+   drm_intel_bo *aper_array[2];
+   drm_intel_bo *vb_bo;
    unsigned int offset, count;
    BATCH_LOCALS;
 
@@ -212,21 +208,21 @@ void intel_flush_prim(struct intel_context *intel)
     * flush triggered by emit_state doesn't loop back to flush_prim again.
     */
    vb_bo = intel->prim.vb_bo;
-   dri_bo_reference(vb_bo);
+   drm_intel_bo_reference(vb_bo);
    count = intel->prim.count;
    intel->prim.count = 0;
    offset = intel->prim.start_offset;
    intel->prim.start_offset = intel->prim.current_offset;
    if (intel->gen < 3)
-      intel->prim.start_offset = ALIGN(intel->prim.start_offset, 128);
+      intel->prim.current_offset = intel->prim.start_offset = ALIGN(intel->prim.start_offset, 128);
    intel->prim.flush = NULL;
 
    intel->vtbl.emit_state(intel);
 
-   aper_array[0] = intel->batch->buf;
+   aper_array[0] = intel->batch.bo;
    aper_array[1] = vb_bo;
    if (dri_bufmgr_check_aperture_space(aper_array, 2)) {
-      intel_batchbuffer_flush(intel->batch);
+      intel_batchbuffer_flush(intel);
       intel->vtbl.emit_state(intel);
    }
 
@@ -234,12 +230,11 @@ void intel_flush_prim(struct intel_context *intel)
     * depends on the state just emitted. emit_state should be making sure we
     * have the space for this.
     */
-   intel->no_batch_wrap = GL_TRUE;
+   intel->no_batch_wrap = true;
 
-   /* Check that we actually emitted the state into this batch, using the
-    * UPLOAD_CTX bit as the signal.
-    */
-   assert((intel->batch->dirty_state & (1<<1)) == 0);
+   if (intel->always_flush_cache) {
+      intel_batchbuffer_emit_mi_flush(intel);
+   }
 
 #if 0
    printf("emitting %d..%d=%d vertices size %d\n", offset,
@@ -248,20 +243,39 @@ void intel_flush_prim(struct intel_context *intel)
 #endif
 
    if (intel->gen >= 3) {
-      BEGIN_BATCH(5);
-      OUT_BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
-		I1_LOAD_S(0) | I1_LOAD_S(1) | 1);
-      assert((offset & ~S0_VB_OFFSET_MASK) == 0);
-      OUT_RELOC(vb_bo, I915_GEM_DOMAIN_VERTEX, 0, offset);
-      OUT_BATCH((intel->vertex_size << S1_VERTEX_WIDTH_SHIFT) |
-		(intel->vertex_size << S1_VERTEX_PITCH_SHIFT));
+      struct i915_context *i915 = i915_context(&intel->ctx);
+      unsigned int cmd = 0, len = 0;
 
+      if (vb_bo != i915->current_vb_bo) {
+	 cmd |= I1_LOAD_S(0);
+	 len++;
+      }
+
+      if (intel->vertex_size != i915->current_vertex_size) {
+	 cmd |= I1_LOAD_S(1);
+	 len++;
+      }
+      if (len)
+	 len++;
+
+      BEGIN_BATCH(2+len);
+      if (cmd)
+	 OUT_BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 | cmd | (len - 2));
+      if (vb_bo != i915->current_vb_bo) {
+	 OUT_RELOC(vb_bo, I915_GEM_DOMAIN_VERTEX, 0, 0);
+	 i915->current_vb_bo = vb_bo;
+      }
+      if (intel->vertex_size != i915->current_vertex_size) {
+	 OUT_BATCH((intel->vertex_size << S1_VERTEX_WIDTH_SHIFT) |
+		   (intel->vertex_size << S1_VERTEX_PITCH_SHIFT));
+	 i915->current_vertex_size = intel->vertex_size;
+      }
       OUT_BATCH(_3DPRIMITIVE |
 		PRIM_INDIRECT |
 		PRIM_INDIRECT_SEQUENTIAL |
 		intel->prim.primitive |
 		count);
-      OUT_BATCH(0); /* Beginning vertex index */
+      OUT_BATCH(offset / (intel->vertex_size * 4));
       ADVANCE_BATCH();
    } else {
       struct i830_context *i830 = i830_context(&intel->ctx);
@@ -294,9 +308,13 @@ void intel_flush_prim(struct intel_context *intel)
       ADVANCE_BATCH();
    }
 
-   intel->no_batch_wrap = GL_FALSE;
+   if (intel->always_flush_cache) {
+      intel_batchbuffer_emit_mi_flush(intel);
+   }
 
-   dri_bo_unreference(vb_bo);
+   intel->no_batch_wrap = false;
+
+   drm_intel_bo_unreference(vb_bo);
 }
 
 /**
@@ -315,9 +333,9 @@ void intel_finish_vb(struct intel_context *intel)
    if (intel->prim.vb_bo == NULL)
       return;
 
-   dri_bo_subdata(intel->prim.vb_bo, 0, intel->prim.start_offset,
-		  intel->prim.vb);
-   dri_bo_unreference(intel->prim.vb_bo);
+   drm_intel_bo_subdata(intel->prim.vb_bo, 0, intel->prim.start_offset,
+			intel->prim.vb);
+   drm_intel_bo_unreference(intel->prim.vb_bo);
    intel->prim.vb_bo = NULL;
 }
 
@@ -427,7 +445,7 @@ intel_draw_point(struct intel_context *intel, intelVertexPtr v0)
 static void
 intel_atten_point(struct intel_context *intel, intelVertexPtr v0)
 {
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
    GLfloat psz[4], col[4], restore_psz, restore_alpha;
 
    _tnl_get_attr(ctx, v0, _TNL_ATTRIB_POINTSIZE, psz);
@@ -472,26 +490,33 @@ intel_atten_point(struct intel_context *intel, intelVertexPtr v0)
  *                Fixup for I915 WPOS texture coordinate                *
  ***********************************************************************/
 
+static void
+intel_emit_fragcoord(struct intel_context *intel, intelVertexPtr v)
+{
+   struct gl_context *ctx = &intel->ctx;
+   struct gl_framebuffer *fb = ctx->DrawBuffer;
+   GLuint offset = intel->wpos_offset;
+   float *vertex_position = (float *)v;
+   float *fragcoord = (float *)((char *)v + offset);
 
+   fragcoord[0] = vertex_position[0];
+
+   if (_mesa_is_user_fbo(fb))
+      fragcoord[1] = vertex_position[1];
+   else
+      fragcoord[1] = fb->Height - vertex_position[1];
+
+   fragcoord[2] = vertex_position[2];
+   fragcoord[3] = vertex_position[3];
+}
 
 static void
 intel_wpos_triangle(struct intel_context *intel,
                     intelVertexPtr v0, intelVertexPtr v1, intelVertexPtr v2)
 {
-   GLuint offset = intel->wpos_offset;
-   GLuint size = intel->wpos_size;
-   GLfloat *v0_wpos = (GLfloat *)((char *)v0 + offset);
-   GLfloat *v1_wpos = (GLfloat *)((char *)v1 + offset);
-   GLfloat *v2_wpos = (GLfloat *)((char *)v2 + offset);
-
-   __memcpy(v0_wpos, v0, size);
-   __memcpy(v1_wpos, v1, size);
-   __memcpy(v2_wpos, v2, size);
-
-   v0_wpos[1] = -v0_wpos[1] + intel->driDrawable->h;
-   v1_wpos[1] = -v1_wpos[1] + intel->driDrawable->h;
-   v2_wpos[1] = -v2_wpos[1] + intel->driDrawable->h;
-
+   intel_emit_fragcoord(intel, v0);
+   intel_emit_fragcoord(intel, v1);
+   intel_emit_fragcoord(intel, v2);
 
    intel_draw_triangle(intel, v0, v1, v2);
 }
@@ -501,17 +526,8 @@ static void
 intel_wpos_line(struct intel_context *intel,
                 intelVertexPtr v0, intelVertexPtr v1)
 {
-   GLuint offset = intel->wpos_offset;
-   GLuint size = intel->wpos_size;
-   GLfloat *v0_wpos = (GLfloat *)((char *)v0 + offset);
-   GLfloat *v1_wpos = (GLfloat *)((char *)v1 + offset);
-
-   __memcpy(v0_wpos, v0, size);
-   __memcpy(v1_wpos, v1, size);
-
-   v0_wpos[1] = -v0_wpos[1] + intel->driDrawable->h;
-   v1_wpos[1] = -v1_wpos[1] + intel->driDrawable->h;
-
+   intel_emit_fragcoord(intel, v0);
+   intel_emit_fragcoord(intel, v1);
    intel_draw_line(intel, v0, v1);
 }
 
@@ -519,13 +535,7 @@ intel_wpos_line(struct intel_context *intel,
 static void
 intel_wpos_point(struct intel_context *intel, intelVertexPtr v0)
 {
-   GLuint offset = intel->wpos_offset;
-   GLuint size = intel->wpos_size;
-   GLfloat *v0_wpos = (GLfloat *)((char *)v0 + offset);
-
-   __memcpy(v0_wpos, v0, size);
-   v0_wpos[1] = -v0_wpos[1] + intel->driDrawable->h;
-
+   intel_emit_fragcoord(intel, v0);
    intel_draw_point(intel, v0);
 }
 
@@ -592,10 +602,10 @@ static struct
 } rast_tab[INTEL_MAX_TRIFUNC];
 
 
-#define DO_FALLBACK (IND & INTEL_FALLBACK_BIT)
-#define DO_OFFSET   (IND & INTEL_OFFSET_BIT)
-#define DO_UNFILLED (IND & INTEL_UNFILLED_BIT)
-#define DO_TWOSIDE  (IND & INTEL_TWOSIDE_BIT)
+#define DO_FALLBACK ((IND & INTEL_FALLBACK_BIT) != 0)
+#define DO_OFFSET   ((IND & INTEL_OFFSET_BIT) != 0)
+#define DO_UNFILLED ((IND & INTEL_UNFILLED_BIT) != 0)
+#define DO_TWOSIDE  ((IND & INTEL_TWOSIDE_BIT) != 0)
 #define DO_FLAT      0
 #define DO_TRI       1
 #define DO_QUAD      1
@@ -628,7 +638,7 @@ do {							\
 } while (0)
 
 
-#define DEPTH_SCALE intel->polygon_offset_scale
+#define DEPTH_SCALE (ctx->DrawBuffer->Visual.depthBits == 16 ? 1.0 : 2.0)
 #define UNFILLED_TRI unfilled_tri
 #define UNFILLED_QUAD unfilled_quad
 #define VERT_X(_v) _v->v.x
@@ -651,7 +661,7 @@ do {							\
    struct intel_context *intel = intel_context(ctx);			\
    GLuint color[n] = { 0, }, spec[n] = { 0, };				\
    GLuint coloroffset = intel->coloroffset;				\
-   GLboolean specoffset = intel->specoffset;				\
+   GLuint specoffset = intel->specoffset;				\
    (void) color; (void) spec; (void) coloroffset; (void) specoffset;
 
 
@@ -784,7 +794,7 @@ static void
 intel_fallback_tri(struct intel_context *intel,
                    intelVertex * v0, intelVertex * v1, intelVertex * v2)
 {
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
    SWvertex v[3];
 
    if (0)
@@ -795,9 +805,9 @@ intel_fallback_tri(struct intel_context *intel,
    _swsetup_Translate(ctx, v0, &v[0]);
    _swsetup_Translate(ctx, v1, &v[1]);
    _swsetup_Translate(ctx, v2, &v[2]);
-   intelSpanRenderStart(ctx);
+   _swrast_render_start(ctx);
    _swrast_Triangle(ctx, &v[0], &v[1], &v[2]);
-   intelSpanRenderFinish(ctx);
+   _swrast_render_finish(ctx);
 }
 
 
@@ -805,7 +815,7 @@ static void
 intel_fallback_line(struct intel_context *intel,
                     intelVertex * v0, intelVertex * v1)
 {
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
    SWvertex v[2];
 
    if (0)
@@ -815,16 +825,16 @@ intel_fallback_line(struct intel_context *intel,
 
    _swsetup_Translate(ctx, v0, &v[0]);
    _swsetup_Translate(ctx, v1, &v[1]);
-   intelSpanRenderStart(ctx);
+   _swrast_render_start(ctx);
    _swrast_Line(ctx, &v[0], &v[1]);
-   intelSpanRenderFinish(ctx);
+   _swrast_render_finish(ctx);
 }
 
 static void
 intel_fallback_point(struct intel_context *intel,
 		     intelVertex * v0)
 {
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
    SWvertex v[1];
 
    if (0)
@@ -833,9 +843,9 @@ intel_fallback_point(struct intel_context *intel,
    INTEL_FIREVERTICES(intel);
 
    _swsetup_Translate(ctx, v0, &v[0]);
-   intelSpanRenderStart(ctx);
+   _swrast_render_start(ctx);
    _swrast_Point(ctx, &v[0]);
-   intelSpanRenderFinish(ctx);
+   _swrast_render_finish(ctx);
 }
 
 
@@ -877,7 +887,7 @@ intel_fallback_point(struct intel_context *intel,
 
 
 static void
-intelRenderClippedPoly(GLcontext * ctx, const GLuint * elts, GLuint n)
+intelRenderClippedPoly(struct gl_context * ctx, const GLuint * elts, GLuint n)
 {
    struct intel_context *intel = intel_context(ctx);
    TNLcontext *tnl = TNL_CONTEXT(ctx);
@@ -901,7 +911,7 @@ intelRenderClippedPoly(GLcontext * ctx, const GLuint * elts, GLuint n)
 }
 
 static void
-intelRenderClippedLine(GLcontext * ctx, GLuint ii, GLuint jj)
+intelRenderClippedLine(struct gl_context * ctx, GLuint ii, GLuint jj)
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
 
@@ -909,7 +919,7 @@ intelRenderClippedLine(GLcontext * ctx, GLuint ii, GLuint jj)
 }
 
 static void
-intelFastRenderClippedPoly(GLcontext * ctx, const GLuint * elts, GLuint n)
+intelFastRenderClippedPoly(struct gl_context * ctx, const GLuint * elts, GLuint n)
 {
    struct intel_context *intel = intel_context(ctx);
    const GLuint vertsize = intel->vertex_size;
@@ -930,19 +940,34 @@ intelFastRenderClippedPoly(GLcontext * ctx, const GLuint * elts, GLuint n)
 /**********************************************************************/
 
 
+#define DD_TRI_LIGHT_TWOSIDE (1 << 1)
+#define DD_TRI_UNFILLED (1 << 2)
+#define DD_TRI_STIPPLE  (1 << 4)
+#define DD_TRI_OFFSET   (1 << 5)
+#define DD_LINE_STIPPLE (1 << 7)
+#define DD_POINT_ATTEN  (1 << 9)
 
-
-#define ANY_FALLBACK_FLAGS (DD_LINE_STIPPLE | DD_TRI_STIPPLE | DD_POINT_ATTEN | DD_POINT_SMOOTH | DD_TRI_SMOOTH)
+#define ANY_FALLBACK_FLAGS (DD_LINE_STIPPLE | DD_TRI_STIPPLE | DD_POINT_ATTEN)
 #define ANY_RASTER_FLAGS (DD_TRI_LIGHT_TWOSIDE | DD_TRI_OFFSET | DD_TRI_UNFILLED)
 
 void
-intelChooseRenderState(GLcontext * ctx)
+intelChooseRenderState(struct gl_context * ctx)
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    struct intel_context *intel = intel_context(ctx);
-   GLuint flags = ctx->_TriangleCaps;
+   GLuint flags =
+      ((ctx->Light.Enabled &&
+        ctx->Light.Model.TwoSide) ? DD_TRI_LIGHT_TWOSIDE : 0) |
+      ((ctx->Polygon.FrontMode != GL_FILL ||
+        ctx->Polygon.BackMode != GL_FILL) ? DD_TRI_UNFILLED : 0) |
+      (ctx->Polygon.StippleFlag ? DD_TRI_STIPPLE : 0) |
+      ((ctx->Polygon.OffsetPoint ||
+        ctx->Polygon.OffsetLine ||
+        ctx->Polygon.OffsetFill) ? DD_TRI_OFFSET : 0) |
+      (ctx->Line.StippleFlag ? DD_LINE_STIPPLE : 0) |
+      (ctx->Point._Attenuated ? DD_POINT_ATTEN : 0);
    const struct gl_fragment_program *fprog = ctx->FragmentProgram._Current;
-   GLboolean have_wpos = (fprog && (fprog->Base.InputsRead & FRAG_BIT_WPOS));
+   bool have_wpos = (fprog && (fprog->Base.InputsRead & VARYING_BIT_POS));
    GLuint index = 0;
 
    if (INTEL_DEBUG & DEBUG_STATE)
@@ -983,20 +1008,10 @@ intelChooseRenderState(GLcontext * ctx)
          if ((flags & DD_TRI_STIPPLE) && !intel->hw_stipple)
             intel->draw_tri = intel_fallback_tri;
 
-         if (flags & DD_TRI_SMOOTH) {
-	    if (intel->conformance_mode > 0)
-	       intel->draw_tri = intel_fallback_tri;
-	 }
-
          if (flags & DD_POINT_ATTEN) {
 	    if (0)
 	       intel->draw_point = intel_atten_point;
 	    else
-	       intel->draw_point = intel_fallback_point;
-	 }
-
-	 if (flags & DD_POINT_SMOOTH) {
-	    if (intel->conformance_mode > 0)
 	       intel->draw_point = intel_fallback_point;
 	 }
 
@@ -1049,7 +1064,7 @@ static const GLenum reduced_prim[GL_POLYGON + 1] = {
 
 
 static void
-intelRunPipeline(GLcontext * ctx)
+intelRunPipeline(struct gl_context * ctx)
 {
    struct intel_context *intel = intel_context(ctx);
 
@@ -1057,6 +1072,13 @@ intelRunPipeline(GLcontext * ctx)
    
    if (ctx->NewState)
       _mesa_update_state_locked(ctx);
+
+   /* We need to get this done before we start the pipeline, or a
+    * change in the INTEL_FALLBACK() of its intel_draw_buffers() call
+    * while the pipeline is running will result in mismatched swrast
+    * map/unmaps, and later assertion failures.
+    */
+   intel_prepare_render(intel);
 
    if (intel->NewGLState) {
       if (intel->NewGLState & _NEW_TEXTURE) {
@@ -1071,15 +1093,15 @@ intelRunPipeline(GLcontext * ctx)
       intel->NewGLState = 0;
    }
 
-   intel_map_vertex_shader_textures(ctx);
+   intel->tnl_pipeline_running = true;
    _tnl_run_pipeline(ctx);
-   intel_unmap_vertex_shader_textures(ctx);
+   intel->tnl_pipeline_running = false;
 
    _mesa_unlock_context_textures(ctx);
 }
 
 static void
-intelRenderStart(GLcontext * ctx)
+intelRenderStart(struct gl_context * ctx)
 {
    struct intel_context *intel = intel_context(ctx);
 
@@ -1089,7 +1111,7 @@ intelRenderStart(GLcontext * ctx)
 }
 
 static void
-intelRenderFinish(GLcontext * ctx)
+intelRenderFinish(struct gl_context * ctx)
 {
    struct intel_context *intel = intel_context(ctx);
 
@@ -1106,7 +1128,7 @@ intelRenderFinish(GLcontext * ctx)
   * primitive.
   */
 static void
-intelRasterPrimitive(GLcontext * ctx, GLenum rprim, GLuint hwprim)
+intelRasterPrimitive(struct gl_context * ctx, GLenum rprim, GLuint hwprim)
 {
    struct intel_context *intel = intel_context(ctx);
 
@@ -1129,9 +1151,11 @@ intelRasterPrimitive(GLcontext * ctx, GLenum rprim, GLuint hwprim)
  /* 
   */
 static void
-intelRenderPrimitive(GLcontext * ctx, GLenum prim)
+intelRenderPrimitive(struct gl_context * ctx, GLenum prim)
 {
    struct intel_context *intel = intel_context(ctx);
+   GLboolean unfilled = (ctx->Polygon.FrontMode != GL_FILL ||
+                         ctx->Polygon.BackMode != GL_FILL);
 
    if (0)
       fprintf(stderr, "%s %s\n", __FUNCTION__, _mesa_lookup_enum_by_nr(prim));
@@ -1141,13 +1165,11 @@ intelRenderPrimitive(GLcontext * ctx, GLenum prim)
     */
    intel->render_primitive = prim;
 
-   /* Shortcircuit this when called from t_dd_rendertmp.h for unfilled
-    * triangles.  The rasterized primitive will always be reset by
-    * lower level functions in that case, potentially pingponging the
-    * state:
+   /* Shortcircuit this when called for unfilled triangles.  The rasterized
+    * primitive will always be reset by lower level functions in that case,
+    * potentially pingponging the state:
     */
-   if (reduced_prim[prim] == GL_TRIANGLES &&
-       (ctx->_TriangleCaps & DD_TRI_UNFILLED))
+   if (reduced_prim[prim] == GL_TRIANGLES && unfilled)
       return;
 
    /* Set some primitive-dependent state and Start? a new primitive.
@@ -1178,6 +1200,7 @@ static char *fallbackStrings[] = {
    [19] = "Smooth point",
    [20] = "point sprite coord origin",
    [21] = "depth/color drawing offset",
+   [22] = "coord replace(SPRITE POINT ENABLE)",
 };
 
 
@@ -1199,17 +1222,19 @@ getFallbackString(GLuint bit)
  * \param bit  one of INTEL_FALLBACK_x flags.
  */
 void
-intelFallback(struct intel_context *intel, GLbitfield bit, GLboolean mode)
+intelFallback(struct intel_context *intel, GLbitfield bit, bool mode)
 {
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    const GLbitfield oldfallback = intel->Fallback;
 
    if (mode) {
       intel->Fallback |= bit;
       if (oldfallback == 0) {
-         intelFlush(ctx);
-         if (INTEL_DEBUG & DEBUG_FALLBACKS)
+	 assert(!intel->tnl_pipeline_running);
+
+         intel_flush(ctx);
+         if (INTEL_DEBUG & DEBUG_PERF)
             fprintf(stderr, "ENTER FALLBACK %x: %s\n",
                     bit, getFallbackString(bit));
          _swsetup_Wakeup(ctx);
@@ -1219,8 +1244,10 @@ intelFallback(struct intel_context *intel, GLbitfield bit, GLboolean mode)
    else {
       intel->Fallback &= ~bit;
       if (oldfallback == bit) {
+	 assert(!intel->tnl_pipeline_running);
+
          _swrast_flush(ctx);
-         if (INTEL_DEBUG & DEBUG_FALLBACKS)
+         if (INTEL_DEBUG & DEBUG_PERF)
             fprintf(stderr, "LEAVE FALLBACK %s\n", getFallbackString(bit));
          tnl->Driver.Render.Start = intelRenderStart;
          tnl->Driver.Render.PrimitiveNotify = intelRenderPrimitive;
@@ -1253,7 +1280,7 @@ union fi
 
 
 void
-intelInitTriFuncs(GLcontext * ctx)
+intelInitTriFuncs(struct gl_context * ctx)
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    static int firsttime = 1;

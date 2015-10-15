@@ -35,13 +35,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*
  * Authors:
  *   Gareth Hughes <gareth@valinux.com>
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  *   Kevin E. Martin <martin@valinux.com>
  */
 
 #ifndef __RADEON_SPAN_H__
 #define __RADEON_SPAN_H__
 
-extern void radeonInitSpanFuncs(GLcontext * ctx);
+extern void radeonInitSpanFuncs(struct gl_context * ctx);
 
 #endif

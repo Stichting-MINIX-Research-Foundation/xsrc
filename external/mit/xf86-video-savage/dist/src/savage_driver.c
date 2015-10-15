@@ -1082,7 +1082,7 @@ static Bool SavagePreInit(ScrnInfoPtr pScrn, int flags)
     MessageType from = X_DEFAULT;
     int i;
     ClockRangePtr clockRanges;
-    char *s = NULL;
+    const char *s = NULL;
     unsigned char config1, m, n, n1, n2, sr8, cr66 = 0, tmp;
     int mclk;
     vgaHWPtr hwp;
@@ -1266,6 +1266,7 @@ static Bool SavagePreInit(ScrnInfoPtr pScrn, int flags)
     if(!psav->NoAccel) {
         from = X_DEFAULT;
 	char *strptr;
+#ifdef HAVE_XAA_H
         if((strptr = (char *)xf86GetOptValString(psav->Options, OPTION_ACCELMETHOD))) {
 	    if(!xf86NameCmp(strptr,"XAA")) {
 	        from = X_CONFIG;
@@ -1274,7 +1275,10 @@ static Bool SavagePreInit(ScrnInfoPtr pScrn, int flags)
 	       from = X_CONFIG;
 	       psav->useEXA = TRUE;
 	    }
-       }
+        }
+#else
+	psav->useEXA = TRUE;
+#endif
        xf86DrvMsg(pScrn->scrnIndex, from, "Using %s acceleration architecture\n",
 		psav->useEXA ? "EXA" : "XAA");
     }
@@ -2239,7 +2243,7 @@ static void SavageLeaveVT(VT_FUNC_ARGS_DECL)
     ScreenPtr pScreen;
 #endif
 
-    TRACE(("SavageLeaveVT(%d)\n", flags));
+    TRACE(("SavageLeaveVT()\n"));
     gpScrn = pScrn;
 
 #ifdef SAVAGEDRI
@@ -3408,7 +3412,6 @@ static Bool SavageScreenInit(SCREEN_INIT_ARGS_DECL)
 	SavageInitAccel(pScreen);
     }
 
-    miInitializeBackingStore(pScreen);
     xf86SetBackingStore(pScreen);
 
     if( !psav->shadowFB && !psav->useEXA )
@@ -4573,6 +4576,12 @@ SavageDDC1Read(ScrnInfoPtr pScrn)
     return ((unsigned int) (tmp & 0x08));
 }
 
+static void
+SavageDDC1SetSpeed(ScrnInfoPtr pScrn, xf86ddcSpeed speed)
+{
+    vgaHWddc1SetSpeed(pScrn, speed);
+}
+
 static Bool
 SavageDDC1(ScrnInfoPtr pScrn)
 {
@@ -4586,7 +4595,8 @@ SavageDDC1(ScrnInfoPtr pScrn)
     InI2CREG(byte,psav->I2CPort);
     OutI2CREG(byte | 0x12,psav->I2CPort);
 
-    pMon = xf86DoEDID_DDC1(XF86_SCRN_ARG(pScrn),vgaHWddc1SetSpeedWeak(),SavageDDC1Read);
+    pMon = xf86DoEDID_DDC1(XF86_SCRN_ARG(pScrn), SavageDDC1SetSpeed,
+			   SavageDDC1Read);
     if (!pMon)
         return FALSE;
     

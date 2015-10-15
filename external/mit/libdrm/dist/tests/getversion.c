@@ -25,6 +25,7 @@
  *
  */
 
+#include <string.h>
 #include "drmtest.h"
 
 /**
@@ -42,7 +43,7 @@ int main(int argc, char **argv)
 	assert(strlen(v->desc) != 0);
 	if (strcmp(v->name, "i915") == 0)
 		assert(v->version_major >= 1);
-	drmFree(v);
+	drmFreeVersion(v);
 	close(fd);
 	return 0;
 }

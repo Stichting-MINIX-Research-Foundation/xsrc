@@ -4,7 +4,7 @@
 /*                                                                         */
 /*    AFM parser (body).                                                   */
 /*                                                                         */
-/*  Copyright 2006-2010, 2012, 2013 by                                     */
+/*  Copyright 2006-2015 by                                                 */
 /*  David Turner, Robert Wilhelm, and Werner Lemberg.                      */
 /*                                                                         */
 /*  This file is part of the FreeType project, and may only be used,       */
@@ -75,8 +75,8 @@
 #define AFM_STREAM_KEY_BEGIN( stream )    \
           (char*)( (stream)->cursor - 1 )
 
-#define AFM_STREAM_KEY_LEN( stream, key )       \
-          ( (char*)(stream)->cursor - key - 1 )
+#define AFM_STREAM_KEY_LEN( stream, key )           \
+          (FT_Offset)( (char*)(stream)->cursor - key - 1 )
 
 #define AFM_STATUS_EOC( stream ) \
           ( (stream)->status >= AFM_STREAM_STATUS_EOC )
@@ -120,7 +120,6 @@
   afm_stream_read_one( AFM_Stream  stream )
   {
     char*  str;
-    int    ch;
 
 
     afm_stream_skip_spaces( stream );
@@ -131,7 +130,9 @@
 
     while ( 1 )
     {
-      ch = AFM_GETC();
+      int  ch = AFM_GETC();
+
+
       if ( AFM_IS_SPACE( ch ) )
         break;
       else if ( AFM_IS_NEWLINE( ch ) )
@@ -160,7 +161,6 @@
   afm_stream_read_string( AFM_Stream  stream )
   {
     char*  str;
-    int    ch;
 
 
     afm_stream_skip_spaces( stream );
@@ -172,7 +172,9 @@
     /* scan to eol */
     while ( 1 )
     {
-      ch = AFM_GETC();
+      int  ch = AFM_GETC();
+
+
       if ( AFM_IS_NEWLINE( ch ) )
       {
         stream->status = AFM_STREAM_STATUS_EOL;
@@ -367,11 +369,11 @@
   FT_LOCAL_DEF( FT_Int )
   afm_parser_read_vals( AFM_Parser  parser,
                         AFM_Value   vals,
-                        FT_UInt     n )
+                        FT_Int      n )
   {
     AFM_Stream  stream = parser->stream;
     char*       str;
-    FT_UInt     i;
+    FT_Int      i;
 
 
     if ( n > AFM_MAX_ARGUMENTS )
@@ -444,7 +446,7 @@
                        FT_Offset*  len )
   {
     AFM_Stream  stream = parser->stream;
-    char*       key    = 0;  /* make stupid compiler happy */
+    char*       key    = NULL;  /* make stupid compiler happy */
 
 
     if ( line )
@@ -560,7 +562,7 @@
   }
 
 
-  FT_LOCAL_DEF( FT_Error )
+  static FT_Error
   afm_parser_read_int( AFM_Parser  parser,
                        FT_Int*     aint )
   {
@@ -588,10 +590,16 @@
     char*          key;
     FT_Offset      len;
     int            n = -1;
+    FT_Int         tmp;
 
 
-    if ( afm_parser_read_int( parser, &fi->NumTrackKern ) )
+    if ( afm_parser_read_int( parser, &tmp ) )
         goto Fail;
+
+    if ( tmp < 0 )
+      goto Fail;
+
+    fi->NumTrackKern = (FT_UInt)tmp;
 
     if ( fi->NumTrackKern )
     {
@@ -613,7 +621,7 @@
       case AFM_TOKEN_TRACKKERN:
         n++;
 
-        if ( n >= fi->NumTrackKern )
+        if ( n >= (int)fi->NumTrackKern )
           goto Fail;
 
         tk = fi->TrackKerns + n;
@@ -637,7 +645,7 @@
       case AFM_TOKEN_ENDTRACKKERN:
       case AFM_TOKEN_ENDKERNDATA:
       case AFM_TOKEN_ENDFONTMETRICS:
-        fi->NumTrackKern = n + 1;
+        fi->NumTrackKern = (FT_UInt)( n + 1 );
         return FT_Err_Ok;
 
       case AFM_TOKEN_UNKNOWN:
@@ -686,10 +694,16 @@
     char*         key;
     FT_Offset     len;
     int           n = -1;
+    FT_Int        tmp;
 
 
-    if ( afm_parser_read_int( parser, &fi->NumKernPair ) )
+    if ( afm_parser_read_int( parser, &tmp ) )
       goto Fail;
+
+    if ( tmp < 0 )
+      goto Fail;
+
+    fi->NumKernPair = (FT_UInt)tmp;
 
     if ( fi->NumKernPair )
     {
@@ -718,7 +732,7 @@
 
           n++;
 
-          if ( n >= fi->NumKernPair )
+          if ( n >= (int)fi->NumKernPair )
             goto Fail;
 
           kp = fi->KernPairs + n;
@@ -731,8 +745,9 @@
           if ( r < 3 )
             goto Fail;
 
-          kp->index1 = shared_vals[0].u.i;
-          kp->index2 = shared_vals[1].u.i;
+          /* index values can't be negative */
+          kp->index1 = shared_vals[0].u.u;
+          kp->index2 = shared_vals[1].u.u;
           if ( token == AFM_TOKEN_KPY )
           {
             kp->x = 0;
@@ -750,7 +765,7 @@
       case AFM_TOKEN_ENDKERNPAIRS:
       case AFM_TOKEN_ENDKERNDATA:
       case AFM_TOKEN_ENDFONTMETRICS:
-        fi->NumKernPair = n + 1;
+        fi->NumKernPair = (FT_UInt)( n + 1 );
         ft_qsort( fi->KernPairs, fi->NumKernPair,
                   sizeof ( AFM_KernPairRec ),
                   afm_compare_kern_pairs );
@@ -813,7 +828,7 @@
 
   static FT_Error
   afm_parser_skip_section( AFM_Parser  parser,
-                           FT_UInt     n,
+                           FT_Int      n,
                            AFM_Token   end_section )
   {
     char*      key;

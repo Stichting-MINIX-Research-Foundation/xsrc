@@ -54,8 +54,11 @@ struct vmwgfx_saa {
     Bool use_present_opt;
     Bool only_hw_presents;
     Bool rendercheck;
+    Bool is_master;
+    Bool known_prime_format;
     void (*present_flush) (ScreenPtr pScreen);
     struct _WsbmListHead sync_x_list;
+    struct _WsbmListHead pixmaps;
     struct vmwgfx_composite *vcomp;
 };
 
@@ -96,6 +99,17 @@ vmwgfx_hw_composite_dst_stage(PixmapPtr pixmap,
 			      enum _PictFormatShort pict_format);
 Bool
 vmwgfx_hw_commit(PixmapPtr pixmap);
+
+Bool
+vmwgfx_xa_surface_redefine(struct vmwgfx_saa_pixmap *vpix,
+			   struct xa_surface *srf,
+			   int width,
+			   int height,
+			   int depth,
+			   enum xa_surface_type stype,
+			   enum xa_formats rgb_format,
+			   unsigned int new_flags,
+			   int copy_contents);
 
 /*
  * vmwgfx_xa_composite.c

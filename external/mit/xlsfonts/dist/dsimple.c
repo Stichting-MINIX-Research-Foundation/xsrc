@@ -1,4 +1,3 @@
-/* $Xorg: dsimple.c,v 1.4 2001/02/09 02:05:54 xorgcvs Exp $ */
 /*
 
 Copyright 1993, 1998  The Open Group
@@ -26,7 +25,6 @@ other dealings in this Software without prior written authorization
 from The Open Group.
 
 */
-/* $XFree86: xc/programs/xlsfonts/dsimple.c,v 3.6 2001/12/14 20:02:09 dawes Exp $ */
 
 #include <X11/Xos.h>
 #include <X11/Xlib.h>
@@ -55,42 +53,9 @@ from The Open Group.
 
 
 /* This stuff is defined in the calling program by just_display.h */
-char    *program_name = "unknown_program";
+const char    *program_name = "unknown_program";
 Display *dpy = NULL;
 int      screen = 0;
-
-/*
- * Malloc: like malloc but handles out of memory using Fatal_Error.
- */
-char *
-Malloc(unsigned size)
-{
-	char *data;
-
-	if (!(data = malloc(size)))
-	  Fatal_Error("Out of memory!");
-
-	return(data);
-}
-	
-
-/*
- * Realloc: like Malloc except for realloc, handles NULL using Malloc.
- */
-char *
-Realloc(char *ptr, int size)
-{
-	char *new_ptr;
-
-	if (!ptr)
-	  return(Malloc(size));
-
-	if (!(new_ptr = realloc(ptr, size)))
-	  Fatal_Error("Out of memory!");
-
-	return(new_ptr);
-}
-
 
 /*
  * Get_Display_Name (argc, argv) Look for -display, -d, or host:dpy (obselete)
@@ -108,7 +73,7 @@ Get_Display_Name(int *pargc/* MODIFIED */, char **argv/* MODIFIED */)
 	char *arg = argv[i];
 
 	if (!strcmp (arg, "-display") || !strcmp (arg, "-d")) {
-	    if (++i >= argc) usage ();
+	    if (++i >= argc) usage ("-display requires an argument");
 
 	    displayname = argv[i];
 	    *pargc -= 2;
@@ -180,7 +145,7 @@ void Close_Display(void)
  * Standard fatal error routine - call like printf but maximum of 7 arguments.
  * Does not require dpy or screen defined.
  */
-void Fatal_Error(char *msg, ...)
+void Fatal_Error(const char *msg, ...)
 {
 	va_list args;
 	fflush(stdout);

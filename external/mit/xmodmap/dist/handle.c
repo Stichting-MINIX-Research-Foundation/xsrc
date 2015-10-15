@@ -1,4 +1,3 @@
-/* $Xorg: handle.c,v 1.6 2001/02/09 02:05:56 xorgcvs Exp $ */
 /*
 
 Copyright 1988, 1998  The Open Group
@@ -26,9 +25,11 @@ other dealings in this Software without prior written authorization
 from The Open Group.
 
 */
-/* $XFree86: xc/programs/xmodmap/handle.c,v 3.6 2001/07/25 15:05:27 dawes Exp $ */
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
 #include <X11/Xos.h>
 #include <X11/Xlib.h>
 #include <stdio.h>
@@ -36,6 +37,10 @@ from The Open Group.
 #include "xmodmap.h"
 #include "wq.h"
 #include <stdlib.h>
+
+#ifdef HAVE_STRNCASECMP
+#include <strings.h>
+#endif
 
 static XModifierKeymap *map = NULL;
 
@@ -65,10 +70,9 @@ KeysymToKeycodes(Display *dpy, KeySym keysym, int *pnum_kcs)
 	for (j = 0; j < 8; j++) {
 	    if (XKeycodeToKeysym(dpy, (KeyCode) i, j) == keysym) {
 		if (!kcs)
-		    kcs = (KeyCode *)malloc(sizeof(KeyCode));
+		    kcs = malloc(sizeof(KeyCode));
 		else
-		    kcs = (KeyCode *)realloc((char *)kcs,
-					 sizeof(KeyCode) * (*pnum_kcs + 1));
+		    kcs = realloc(kcs, sizeof(KeyCode) * (*pnum_kcs + 1));
 		kcs[*pnum_kcs] = i;
 		*pnum_kcs += 1;
 		break;
@@ -84,17 +88,22 @@ copy_to_scratch(const char *s, int len)
     static char *buf = NULL;
     static int buflen = 0;
 
-    if (len > buflen) {
+    if (len < 0)
+        len = 0;
+
+    if (len >= buflen) {
 	if (buf) free (buf);
 	buflen = (len < 40) ? 80 : (len * 2);
-	buf = (char *) malloc (buflen+1);
+	buf = malloc (buflen+1);
+	if (!buf) {
+	    fprintf (stderr, "attempt to allocate %d byte scratch buffer\n", buflen + 1);
+	    return NULL;
+	}
     }
-    if (len > 0)
-      strncpy (buf, s, len);
-    else 
-      len = 0;
 
+    strncpy (buf, s, len);
     buf[len] = '\0';
+
     return (buf);
 }
 
@@ -137,7 +146,7 @@ static int skip_chars ( const char *s, int len );
 static int skip_space ( const char *s, int len );
 
 static struct dt {
-    char *command;			/* name of input command */
+    const char *command;		/* name of input command */
     int length;				/* length of command */
     void (*proc)(char *, int);		/* handler */
 } dispatch_table[] = {
@@ -270,7 +279,7 @@ add_to_work_queue(union op *p)	/* this can become a macro someday */
 static Bool 
 parse_number(const char *str, unsigned long *val)
 {
-    char *fmt = "%ld";
+    const char *fmt = "%ld";
 
     if (*str == '0') {
 	str++;
@@ -317,7 +326,7 @@ static void
 do_keycode(char *line, int len)
 {
     int dummy;
-    char *fmt = "%d";
+    const char *fmt = "%d";
     KeyCode keycode;
 
     if (len < 3 || !line || *line == '\0') {  /* 5=a minimum */
@@ -575,10 +584,10 @@ make_add(int modifier, KeySym keysym)
     opam->type = doAddModifier;
     opam->modifier = modifier;
     opam->count = 1;
-    opam->keysyms = (KeySym *) malloc (sizeof (KeySym));
+    opam->keysyms = malloc (sizeof (KeySym));
     if (!opam->keysyms) {
 	badmsg ("attempt to allocate %ld byte KeySym", (long) sizeof (KeySym));
-	free ((char *) opam);
+	free (opam);
 	return;
     }
     opam->keysyms[0] = keysym;
@@ -650,11 +659,11 @@ do_remove(char *line, int len)
      * unlike the add command, we have to now evaluate the keysyms
      */
 
-    kclist = (KeyCode *) malloc (n * sizeof (KeyCode));
+    kclist = malloc (n * sizeof (KeyCode));
     if (!kclist) {
 	badmsg ("attempt to allocate %ld byte keycode list",
 		(long) (n * sizeof (KeyCode)));
-	free ((char *) kslist);
+	free (kslist);
 	return;
     }
 
@@ -681,11 +690,11 @@ do_remove(char *line, int len)
 	}
 	if (nc + num_kcs > tot) {
 	    tot = nc + num_kcs;
-	    kclist = (KeyCode *)realloc((char *)kclist, tot * sizeof(KeyCode));
+	    kclist = realloc(kclist, tot * sizeof(KeyCode));
 	    if (!kclist) {
 		badmsg ("attempt to allocate %ld byte keycode list",
 			(long) (tot * sizeof (KeyCode)));
-		free ((char *) kslist);
+		free (kslist);
 		return;
 	    }
 	}
@@ -693,7 +702,7 @@ do_remove(char *line, int len)
 	    kclist[nc++] = *kcs++;		/* okay, add it to list */
     }
 
-    free ((char *) kslist);		/* all done with it */
+    free (kslist);		/* all done with it */
 
     uop = AllocStruct (union op);
     if (!uop) {
@@ -732,11 +741,11 @@ make_remove(int modifier, KeyCode keycode)
     oprm->type = doRemoveModifier;
     oprm->modifier = modifier;
     oprm->count = 1;
-    oprm->keycodes = (KeyCode *) malloc (sizeof (KeyCode));
+    oprm->keycodes = malloc (sizeof (KeyCode));
     if (!oprm->keycodes) {
 	badmsg ("attempt to allocate %ld byte KeyCode",
 		(long) sizeof (KeyCode));
-	free ((char *) oprm);
+	free (oprm);
 	return;
     }
     oprm->keycodes[0] = keycode;
@@ -866,6 +875,9 @@ do_pointer(char *line, int len)
 		return;
 	    }
 	    strval = copy_to_scratch(line, n);
+	    if (strval == NULL)
+		/* copy_to_scratch already printed error message */
+		return;
 	    ok = parse_number (strval, &val);
 	    if (!ok || val >= MAXBUTTONCODES) {
 		badmsg ("value %s given for buttons list", strval);
@@ -924,7 +936,7 @@ get_keysym_list(const char *line, int len, int *np, KeySym **kslistp)
 
     havesofar = 0;
     maxcanhave = 4;			/* most lists are small */
-    keysymlist = (KeySym *) malloc (maxcanhave * sizeof (KeySym));
+    keysymlist = malloc (maxcanhave * sizeof (KeySym));
     if (!keysymlist) {
 	badmsg ("attempt to allocate %ld byte initial keysymlist",
 		(long) (maxcanhave * sizeof (KeySym)));
@@ -964,8 +976,7 @@ get_keysym_list(const char *line, int len, int *np, KeySym **kslistp)
 	if (havesofar >= maxcanhave) {
 	    KeySym *origkeysymlist = keysymlist;
 	    maxcanhave *= 2;
-	    keysymlist = (KeySym *) realloc (keysymlist,
-					     maxcanhave * sizeof (KeySym));
+	    keysymlist = realloc (keysymlist, maxcanhave * sizeof (KeySym));
 	    if (!keysymlist) {
 		badmsg ("attempt to grow keysym list to %ld bytes",
 			(long) (maxcanhave * sizeof (KeySym)));

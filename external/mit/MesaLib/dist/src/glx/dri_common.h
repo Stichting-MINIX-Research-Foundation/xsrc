@@ -36,28 +36,53 @@
 #ifndef _DRI_COMMON_H
 #define _DRI_COMMON_H
 
+#include <GL/internal/dri_interface.h>
+#include <stdbool.h>
+#include "loader.h"
+
+#if (__GNUC__ >= 3)
+#define PRINTFLIKE(f, a) __attribute__ ((format(__printf__, f, a)))
+#else
+#define PRINTFLIKE(f, a)
+#endif
+
 typedef struct __GLXDRIconfigPrivateRec __GLXDRIconfigPrivate;
 
 struct __GLXDRIconfigPrivateRec
 {
-   __GLcontextModes modes;
+   struct glx_config base;
    const __DRIconfig *driConfig;
 };
 
-extern __GLcontextModes *driConvertConfigs(const __DRIcoreExtension * core,
-                                           __GLcontextModes * modes,
+extern struct glx_config *driConvertConfigs(const __DRIcoreExtension * core,
+                                           struct glx_config * modes,
                                            const __DRIconfig ** configs);
+
+extern void driDestroyConfigs(const __DRIconfig **configs);
+
+extern __GLXDRIdrawable *
+driFetchDrawable(struct glx_context *gc, GLXDrawable glxDrawable);
+
+extern void
+driReleaseDrawables(struct glx_context *gc);
 
 extern const __DRIsystemTimeExtension systemTimeExtension;
 
-extern void InfoMessageF(const char *f, ...);
+extern void dri_message(int level, const char *f, ...) PRINTFLIKE(2, 3);
 
-extern void ErrorMessageF(const char *f, ...);
+#define InfoMessageF(...) dri_message(_LOADER_INFO, __VA_ARGS__)
+#define ErrorMessageF(...) dri_message(_LOADER_WARNING, __VA_ARGS__)
+#define CriticalErrorMessageF(...) dri_message(_LOADER_FATAL, __VA_ARGS__)
 
 extern void *driOpenDriver(const char *driverName);
 
-extern void driBindExtensions(__GLXscreenConfigs * psc);
-extern void dri2BindExtensions(__GLXscreenConfigs * psc);
-extern void driBindCommonExtensions(__GLXscreenConfigs * psc);
+extern const __DRIextension **
+driGetDriverExtensions(void *handle, const char *driver_name);
+
+extern bool
+dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
+                         unsigned *major_ver, unsigned *minor_ver,
+                         uint32_t *render_type, uint32_t *flags, unsigned *api,
+                         int *reset, unsigned *error);
 
 #endif /* _DRI_COMMON_H */

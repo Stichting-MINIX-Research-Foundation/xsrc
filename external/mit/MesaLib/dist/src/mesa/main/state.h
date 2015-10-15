@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.3
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -29,21 +29,47 @@
 #include "mtypes.h"
 
 extern void
-_mesa_update_state(GLcontext *ctx);
+_mesa_update_state(struct gl_context *ctx);
 
 /* As above but can only be called between _mesa_lock_context_textures() and 
  * _mesa_unlock_context_textures().
  */
 extern void
-_mesa_update_state_locked(GLcontext *ctx);
+_mesa_update_state_locked(struct gl_context *ctx);
 
 
 extern void
-_mesa_set_varying_vp_inputs(GLcontext *ctx, GLbitfield varying_inputs);
+_mesa_set_varying_vp_inputs(struct gl_context *ctx, GLbitfield64 varying_inputs);
 
 
 extern void
-_mesa_set_vp_override(GLcontext *ctx, GLboolean flag);
+_mesa_set_vp_override(struct gl_context *ctx, GLboolean flag);
 
+
+/**
+ * Is the secondary color needed?
+ */
+static inline GLboolean
+_mesa_need_secondary_color(const struct gl_context *ctx)
+{
+   if (ctx->Light.Enabled &&
+       ctx->Light.Model.ColorControl == GL_SEPARATE_SPECULAR_COLOR)
+       return GL_TRUE;
+
+   if (ctx->Fog.ColorSumEnabled)
+      return GL_TRUE;
+
+   if (ctx->VertexProgram._Current &&
+       (ctx->VertexProgram._Current != ctx->VertexProgram._TnlProgram) &&
+       (ctx->VertexProgram._Current->Base.InputsRead & VERT_BIT_COLOR1))
+      return GL_TRUE;
+
+   if (ctx->FragmentProgram._Current &&
+       (ctx->FragmentProgram._Current != ctx->FragmentProgram._TexEnvProgram) &&
+       (ctx->FragmentProgram._Current->Base.InputsRead & VARYING_BIT_COL1))
+      return GL_TRUE;
+
+   return GL_FALSE;
+}
 
 #endif

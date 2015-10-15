@@ -1,9 +1,9 @@
-dnl $XTermId: configure.in,v 1.316 2013/05/27 13:46:02 tom Exp $
+dnl $XTermId: configure.in,v 1.335 2015/04/12 20:41:52 tom Exp $
 dnl
 dnl -----------------------------------------------------------------------------
 dnl this file is part of xterm
 dnl
-dnl Copyright 1997-2012,2013 by Thomas E. Dickey
+dnl Copyright 1997-2014,2015 by Thomas E. Dickey
 dnl 
 dnl                         All Rights Reserved
 dnl 
@@ -33,8 +33,9 @@ dnl authorization.
 dnl ---------------------------------------------------------------------------
 dnl Process this file with autoconf to produce a configure script.
 dnl
-AC_PREREQ(2.52.20030208)
-AC_INIT(charproc.c)
+AC_PREREQ(2.52.20121002)
+AC_INIT
+AC_CONFIG_SRCDIR([charproc.c])
 AC_CONFIG_HEADER(xtermcfg.h:xtermcfg.hin)
 CF_CHECK_CACHE
 
@@ -43,18 +44,17 @@ CF_CHECK_CACHE
 dnl Only add to this case statement when a system has a compiler that is not
 dnl detected by AC_PROG_CC.
 case "$host_os" in
-openedition)	: ${CFLAGS="-O2 -Wc,dll -Wl,EDIT=NO"}
+(openedition)	: ${CFLAGS="-O2 -Wc,dll -Wl,EDIT=NO"}
 		: ${CPPFLAGS="-D_ALL_SOURCE"}
 		: ${LIBS="/usr/lib/Xaw.x /usr/lib/SM.x /usr/lib/ICE.x /usr/lib/X11.x"}
 		: ${CC=c89};;
-darwin*)
+(darwin*)
 		: ${LDFLAGS}="${LDFLAGS} -Wl,-bind_at_load";;
 esac
 
 CF_PROG_CC
 AC_PROG_CPP
 AC_PROG_AWK
-CF_PROG_GROFF
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_ARG_PROGRAM
@@ -91,6 +91,8 @@ AC_TYPE_OFF_T
 AC_CHECK_FUNCS( \
 	gethostname \
 	getlogin \
+	initgroups \
+	mkdtemp \
 	putenv \
 	unsetenv \
 	sched_yield \
@@ -259,6 +261,9 @@ CF_X_ATHENA
 CF_TYPE_FD_MASK
 CF_TERMIO_C_ISPEED
 
+# If we notice Xcursor, there is a workaround needed.
+AC_CHECK_LIB(Xcursor, XcursorGetTheme,[AC_DEFINE(HAVE_LIB_XCURSOR)])
+
 LIBS="$LIBS $X_EXTRA_LIBS"
 
 CF_FUNC_GRANTPT
@@ -273,13 +278,14 @@ AC_CHECK_FUNCS(Xutf8LookupString, [],[
 ])
 
 CF_WITH_IMAKE_CFLAGS($(MAIN_DEFINES) $(VENDORMANDEFS))
+CF_WITH_MAN2HTML
 
 # If we have already established that there is a full termcap implementation,
 # suppress the definitions for terminfo that we make have imported from the
 # imake-file.
 if test "x$cf_cv_lib_tgetent" != xno || test "x$cf_cv_lib_part_tgetent" != xno ; then
 	case "$IMAKE_CFLAGS" in
-	*-DUSE_TERMINFO\ -DHAVE_TIGETSTR*)
+	(*-DUSE_TERMINFO\ -DHAVE_TIGETSTR*)
 		CF_UNDO_CFLAGS(IMAKE_CFLAGS,terminfo,[-DUSE_TERMINFO[[ 	]]*-DHAVE_TIGETSTR[[ 	]]*])
 		CF_UNDO_CFLAGS(CPPFLAGS,terminfo,[-DUSE_TERMINFO[[ 	]]*-DHAVE_TIGETSTR[[ 	]]*])
 		;;
@@ -295,7 +301,7 @@ AC_ARG_WITH(terminal-id,
 	[default_termid=vt420])
 AC_MSG_RESULT($default_termid)
 case $default_termid in
-vt*)	default_termid=`echo $default_termid | sed -e 's/^..//'`
+(vt*)	default_termid=`echo $default_termid | sed -e 's/^..//'`
 	;;
 esac
 AC_DEFINE_UNQUOTED(DFT_DECID,"$default_termid",[default terminal-id])
@@ -331,6 +337,13 @@ AC_ARG_ENABLE(delete-is-del,
 	[delete_is_del=$enableval],
 	[delete_is_del=maybe])
 CF_XBOOL_RESULT(DEFDELETE_DEL,delete_is_del,[Define to 1 if default backspace/DEL setting is DEL])
+
+AC_MSG_CHECKING(for default pty initial erase setting)
+AC_ARG_ENABLE(pty-erase,
+	[  --enable-pty-erase      set default ptyInitialErase resource (default: maybe)],
+	[initial_erase=$enableval],
+	[initial_erase=False])
+CF_XBOOL_RESULT(DEF_INITIAL_ERASE,initial_erase,[Define to 1 if default pty initial erase setting is TRUE])
 
 AC_MSG_CHECKING(if alt should send ESC)
 CF_ARG_ENABLE(alt-sends-esc,
@@ -452,10 +465,10 @@ test "$enable_blink_curs" = no && AC_DEFINE(OPT_BLINK_CURS,0,[Define to 0 to dis
 
 AC_MSG_CHECKING(if you want to ignore Linux's broken palette-strings)
 
-case $host_os in #(vi
-linux*)
-	assume_broken_osc=yes ;; #(vi
-*)
+case $host_os in
+(linux*)
+	assume_broken_osc=yes ;;
+(*)
 	assume_broken_osc=no ;;
 esac
 
@@ -478,6 +491,14 @@ CF_ARG_ENABLE(broken-st,
 	[enable_broken_st=yes])
 AC_MSG_RESULT($enable_broken_st)
 test "$enable_broken_st" = no && AC_DEFINE(OPT_BROKEN_ST,0,[Define to 0 to disallow broken string-terminators])
+
+AC_MSG_CHECKING(if you want to compile-in icon data)
+CF_ARG_ENABLE(builtin-xpms,
+	[  --enable-builtin-xpms   compile-in icon data],
+	[enable_builtin_xpms=no],
+	[enable_builtin_xpms=yes])
+AC_MSG_RESULT($enable_builtin_xpms)
+test "$enable_builtin_xpms" = yes && AC_DEFINE(OPT_BUILTIN_XPMS,1,[Define to 1 to compile-in icon data])
 
 AC_MSG_CHECKING(if you want printable 128-159)
 CF_ARG_DISABLE(c1-print,
@@ -563,9 +584,9 @@ CF_ARG_ENABLE(double-buffer,
 AC_MSG_RESULT($enable_double_bfr)
 if test "$enable_double_bfr" = yes ; then
 	case "x$LIBS" in
-	*Xext*)
+	(*Xext*)
 		;;
-	*)
+	(*)
 		CF_X_EXT 
 		;;
 	esac
@@ -836,34 +857,20 @@ CF_ARG_DISABLE(vt52,
 AC_MSG_RESULT($enable_vt52)
 test "$enable_vt52" = no && AC_DEFINE(OPT_VT52_MODE,0,[Define to 0 to disable VT52 emulation])
 
-AC_MSG_CHECKING(if you want to use mini-luit/Latin9 built-in support)
-CF_ARG_ENABLE(mini-luit,
-	[  --enable-mini-luit      enable mini-luit (built-in Latin9 support)],
-	[enable_mini_luit=yes],
-	[enable_mini_luit=no])
-AC_MSG_RESULT($enable_mini_luit)
-if test "$enable_mini_luit" = yes ; then
-	AC_DEFINE(OPT_MINI_LUIT,1,[Define to 1 to enable mini-luit (built-in Latin9 support)])
-fi
-
-AC_MSG_CHECKING(if you want to use luit)
-CF_ARG_ENABLE(luit,
-	[  --enable-luit           enable luit filter (Unicode translation)],
-	[enable_luit=yes],
-	[enable_luit=$enable_mini_luit])
-AC_MSG_RESULT($enable_luit)
-if test "$enable_luit" = yes ; then
-	AC_DEFINE(OPT_LUIT_PROG,1,[Define to 1 to enable luit filter (Unicode translation)])
-	CF_PATH_PROG(LUIT,xterm-filter,bluit luit)
-fi
+AC_MSG_CHECKING(if you want wide-attribute support)
+CF_ARG_DISABLE(wide-attrs,
+	[  --disable-wide-attrs    disable wide-attribute support],
+	[enable_wattr=no],
+	[enable_wattr=yes])
+AC_MSG_RESULT($enable_wattr)
 
 AC_MSG_CHECKING(if you want wide-character support)
-CF_ARG_OPTION(wide-chars,
-	[  --enable-wide-chars     enable wide-character support],
-	[enable_wchar=yes],
-	[enable_wchar=$enable_luit],
-	[$enable_luit])
+CF_ARG_DISABLE(wide-chars,
+	[  --disable-wide-chars    disable wide-character support],
+	[enable_wchar=no],
+	[enable_wchar=yes])
 AC_MSG_RESULT($enable_wchar)
+test "$enable_wattr" = no && AC_DEFINE(OPT_WIDE_ATTRS,0,[Define to 0 to disable rarely-used SGR features])
 
 AC_MSG_CHECKING(if you want only 16-bit character support)
 CF_ARG_ENABLE(16bit-chars,
@@ -878,6 +885,28 @@ if test "$enable_16bit_chars" = yes ; then
 fi
 
 if test "$enable_wchar" = yes ; then
+
+AC_MSG_CHECKING(if you want to use mini-luit/Latin9 built-in support)
+CF_ARG_ENABLE(mini-luit,
+	[  --enable-mini-luit      enable mini-luit (built-in Latin9 support)],
+	[enable_mini_luit=yes],
+	[enable_mini_luit=no])
+AC_MSG_RESULT($enable_mini_luit)
+if test "$enable_mini_luit" = yes ; then
+	AC_DEFINE(OPT_MINI_LUIT,1,[Define to 1 to enable mini-luit (built-in Latin9 support)])
+fi
+
+AC_MSG_CHECKING(if you want to use luit)
+CF_ARG_DISABLE(luit,
+	[  --disable-luit          enable luit filter (Unicode translation)],
+	[enable_luit=no],
+	[enable_luit=yes])
+AC_MSG_RESULT($enable_luit)
+if test "$enable_luit" = yes ; then
+	AC_DEFINE(OPT_LUIT_PROG,1,[Define to 1 to enable luit filter (Unicode translation)])
+	CF_PATH_PROG(LUIT,xterm-filter,bluit luit)
+fi
+
 	AC_DEFINE(OPT_WIDE_CHARS,1,[Define to 1 to enable wide-character support])
 	EXTRAHDRS="$EXTRAHDRS charclass.h precompose.h wcwidth.h"
 	EXTRASRCS="$EXTRASRCS charclass.c precompose.c wcwidth.c"
@@ -904,6 +933,40 @@ if test "$enable_dec_locator" = yes ; then
 	AC_DEFINE(OPT_DEC_LOCATOR,1,[Define to 1 to enable DECterm Locator support])
 fi
 
+AC_MSG_CHECKING(if you want ReGIS graphics support)
+CF_ARG_ENABLE(regis-graphics,
+	[  --enable-regis-graphics enable ReGIS graphics support],
+	[enable_regis_graphics=yes],
+	[enable_regis_graphics=no])
+AC_MSG_RESULT($enable_regis_graphics)
+if test "$enable_regis_graphics" = yes ; then
+	AC_DEFINE(OPT_REGIS_GRAPHICS,1,[Define to 1 to enable ReGIS graphics support])
+	EXTRAHDRS="$EXTRAHDRS graphics_regis.h"
+	EXTRASRCS="$EXTRASRCS graphics_regis.c"
+	EXTRAOBJS="$EXTRAOBJS graphics_regis.o"
+	CF_MATH_LIB
+fi
+
+AC_MSG_CHECKING(if you want sixel graphics support)
+CF_ARG_ENABLE(sixel-graphics,
+	[  --enable-sixel-graphics enable sixel graphics support],
+	[enable_sixel_graphics=yes],
+	[enable_sixel_graphics=no])
+AC_MSG_RESULT($enable_sixel_graphics)
+if test "$enable_sixel_graphics" = yes ; then
+	AC_DEFINE(OPT_SIXEL_GRAPHICS,1,[Define to 1 to enable sixel graphics support])
+	EXTRAHDRS="$EXTRAHDRS graphics_sixel.h"
+	EXTRASRCS="$EXTRASRCS graphics_sixel.c"
+	EXTRAOBJS="$EXTRAOBJS graphics_sixel.o"
+fi
+
+if test "$enable_regis_graphics" = yes || test "$enable_sixel_graphics" = yes ; then
+	AC_DEFINE(OPT_GRAPHICS,1,[Defined to 1 to if any graphics mode is enabled])
+	EXTRAHDRS="$EXTRAHDRS graphics.h"
+	EXTRASRCS="$EXTRASRCS graphics.c"
+	EXTRAOBJS="$EXTRAOBJS graphics.o"
+fi
+
 AC_MSG_CHECKING(if you want VT420 rectangle support)
 CF_ARG_DISABLE(rectangles,
 	[  --disable-rectangles    disable VT420 rectangle support],
@@ -922,6 +985,8 @@ CF_ARG_DISABLE(ziconbeep,
 AC_MSG_RESULT($enable_ziconbeep)
 test "$enable_ziconbeep" = no && AC_DEFINE(OPT_ZICONBEEP,0,[Define to 0 to disable -ziconbeep option])
 
+###############################################################################
+CF_XINERAMA
 ###############################################################################
 CF_HELP_MESSAGE(Testing/development Options:)
 
@@ -1024,4 +1089,5 @@ then
 fi
 
 ###	output xtermcfg.h, etc
-AC_OUTPUT(Makefile df-install minstall:minstall.in)
+AC_CONFIG_FILES([Makefile df-install minstall:minstall.in])
+AC_OUTPUT

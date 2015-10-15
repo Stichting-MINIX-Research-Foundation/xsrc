@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
  
 #include "main/macros.h"
@@ -53,28 +53,14 @@ static GLuint translate_fill( GLenum mode )
    }
 }
 
-static GLboolean get_offset_flag( GLuint fill_mode, 
-				  const struct gl_polygon_attrib *p )
-{
-   switch (fill_mode) {
-   case PIPE_POLYGON_MODE_POINT:
-      return p->OffsetPoint;
-   case PIPE_POLYGON_MODE_LINE:
-      return p->OffsetLine;
-   case PIPE_POLYGON_MODE_FILL:
-      return p->OffsetFill;
-   default:
-      assert(0);
-      return 0;
-   }
-}
 
 
 static void update_raster_state( struct st_context *st )
 {
-   GLcontext *ctx = st->ctx;
+   struct gl_context *ctx = st->ctx;
    struct pipe_rasterizer_state *raster = &st->state.rasterizer;
    const struct gl_vertex_program *vertProg = ctx->VertexProgram._Current;
+   const struct gl_fragment_program *fragProg = ctx->FragmentProgram._Current;
    uint i;
 
    memset(raster, 0, sizeof(*raster));
@@ -82,126 +68,114 @@ static void update_raster_state( struct st_context *st )
    /* _NEW_POLYGON, _NEW_BUFFERS
     */
    {
-      if (ctx->Polygon.FrontFace == GL_CCW)
-         raster->front_winding = PIPE_WINDING_CCW;
-      else
-         raster->front_winding = PIPE_WINDING_CW;
+      raster->front_ccw = (ctx->Polygon.FrontFace == GL_CCW);
 
-      /* XXX
-       * I think the intention here is that user-created framebuffer objects
-       * use Y=0=TOP layout instead of OpenGL's normal Y=0=bottom layout.
-       * Flipping Y changes CW to CCW and vice-versa.
-       * But this is an implementation/driver-specific artifact - remove...
+      /*
+       * Gallium's surfaces are Y=0=TOP orientation.  OpenGL is the
+       * opposite.  Window system surfaces are Y=0=TOP.  Mesa's FBOs
+       * must match OpenGL conventions so FBOs use Y=0=BOTTOM.  In that
+       * case, we must invert Y and flip the notion of front vs. back.
        */
-      if (ctx->DrawBuffer && ctx->DrawBuffer->Name != 0)
-         raster->front_winding ^= PIPE_WINDING_BOTH;
+      if (st_fb_orientation(ctx->DrawBuffer) == Y_0_BOTTOM) {
+         /* Drawing to an FBO.  The viewport will be inverted. */
+         raster->front_ccw ^= 1;
+      }
    }
 
    /* _NEW_LIGHT
     */
-   if (ctx->Light.ShadeModel == GL_FLAT)
-      raster->flatshade = 1;
+   raster->flatshade = ctx->Light.ShadeModel == GL_FLAT;
+      
+   raster->flatshade_first = ctx->Light.ProvokingVertex ==
+                             GL_FIRST_VERTEX_CONVENTION_EXT;
 
-   if (ctx->Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION_EXT)
-      raster->flatshade_first = 1;
+   /* _NEW_LIGHT | _NEW_PROGRAM */
+   raster->light_twoside = ctx->VertexProgram._TwoSideEnabled;
 
-   /* _NEW_LIGHT | _NEW_PROGRAM
-    *
-    * Back-face colors can come from traditional lighting (when
-    * GL_LIGHT_MODEL_TWO_SIDE is set) or from vertex programs/shaders (when
-    * GL_VERTEX_PROGRAM_TWO_SIDE is set).  Note the logic here.
-    */
-   if (ctx->VertexProgram._Current) {
-      if (ctx->VertexProgram._Enabled ||
-          (ctx->Shader.CurrentProgram &&
-           ctx->Shader.CurrentProgram->VertexProgram &&
-           ctx->Shader.CurrentProgram->LinkStatus)) {
-         /* user-defined vertex program or shader */
-         raster->light_twoside = ctx->VertexProgram.TwoSideEnabled;
-      }
-      else {
-         /* TNL-generated program */
-         raster->light_twoside = ctx->Light.Enabled && ctx->Light.Model.TwoSide;
-      }
-   }
-   else if (ctx->Light.Enabled && ctx->Light.Model.TwoSide) {
-      raster->light_twoside = 1;
-   }
+   /*_NEW_LIGHT | _NEW_BUFFERS */
+   raster->clamp_vertex_color = !st->clamp_vert_color_in_shader &&
+                                ctx->Light._ClampVertexColor;
 
    /* _NEW_POLYGON
     */
    if (ctx->Polygon.CullFlag) {
-      if (ctx->Polygon.CullFaceMode == GL_FRONT_AND_BACK) {
-	 raster->cull_mode = PIPE_WINDING_BOTH;
+      switch (ctx->Polygon.CullFaceMode) {
+      case GL_FRONT:
+	 raster->cull_face = PIPE_FACE_FRONT;
+         break;
+      case GL_BACK:
+	 raster->cull_face = PIPE_FACE_BACK;
+         break;
+      case GL_FRONT_AND_BACK:
+	 raster->cull_face = PIPE_FACE_FRONT_AND_BACK;
+         break;
       }
-      else if (ctx->Polygon.CullFaceMode == GL_FRONT) {
-	 raster->cull_mode = raster->front_winding;
-      }
-      else {
-	 raster->cull_mode = raster->front_winding ^ PIPE_WINDING_BOTH;
-      }
+   }
+   else {
+      raster->cull_face = PIPE_FACE_NONE;
    }
 
    /* _NEW_POLYGON
     */
    {
-      GLuint fill_front = translate_fill( ctx->Polygon.FrontMode );
-      GLuint fill_back = translate_fill( ctx->Polygon.BackMode );
-      
-      if (raster->front_winding == PIPE_WINDING_CW) {
-	 raster->fill_cw = fill_front;
-	 raster->fill_ccw = fill_back;
-      }
-      else {
-	 raster->fill_cw = fill_back;
-	 raster->fill_ccw = fill_front;
-      }
+      raster->fill_front = translate_fill( ctx->Polygon.FrontMode );
+      raster->fill_back = translate_fill( ctx->Polygon.BackMode );
 
       /* Simplify when culling is active:
        */
-      if (raster->cull_mode & PIPE_WINDING_CW) {
-	 raster->fill_cw = raster->fill_ccw;
+      if (raster->cull_face & PIPE_FACE_FRONT) {
+	 raster->fill_front = raster->fill_back;
       }
       
-      if (raster->cull_mode & PIPE_WINDING_CCW) {
-	 raster->fill_ccw = raster->fill_cw;
+      if (raster->cull_face & PIPE_FACE_BACK) {
+	 raster->fill_back = raster->fill_front;
       }
    }
 
    /* _NEW_POLYGON 
     */
-   if (ctx->Polygon.OffsetUnits != 0.0 ||
-       ctx->Polygon.OffsetFactor != 0.0) {
-      raster->offset_cw = get_offset_flag( raster->fill_cw, &ctx->Polygon );
-      raster->offset_ccw = get_offset_flag( raster->fill_ccw, &ctx->Polygon );
+   if (ctx->Polygon.OffsetPoint ||
+       ctx->Polygon.OffsetLine ||
+       ctx->Polygon.OffsetFill) {
+      raster->offset_point = ctx->Polygon.OffsetPoint;
+      raster->offset_line = ctx->Polygon.OffsetLine;
+      raster->offset_tri = ctx->Polygon.OffsetFill;
       raster->offset_units = ctx->Polygon.OffsetUnits;
       raster->offset_scale = ctx->Polygon.OffsetFactor;
    }
 
-   if (ctx->Polygon.SmoothFlag)
-      raster->poly_smooth = 1;
-
-   if (ctx->Polygon.StippleFlag)
-      raster->poly_stipple_enable = 1;
+   raster->poly_smooth = ctx->Polygon.SmoothFlag;
+   raster->poly_stipple_enable = ctx->Polygon.StippleFlag;
 
    /* _NEW_POINT
     */
    raster->point_size = ctx->Point.Size;
+   raster->point_smooth = !ctx->Point.PointSprite && ctx->Point.SmoothFlag;
 
-   if (!ctx->Point.PointSprite && ctx->Point.SmoothFlag)
-      raster->point_smooth = 1;
-
+   /* _NEW_POINT | _NEW_PROGRAM
+    */
    if (ctx->Point.PointSprite) {
+      /* origin */
       if ((ctx->Point.SpriteOrigin == GL_UPPER_LEFT) ^
           (st_fb_orientation(ctx->DrawBuffer) == Y_0_BOTTOM))
          raster->sprite_coord_mode = PIPE_SPRITE_COORD_UPPER_LEFT;
       else 
          raster->sprite_coord_mode = PIPE_SPRITE_COORD_LOWER_LEFT;
+
+      /* Coord replacement flags.  If bit 'k' is set that means
+       * that we need to replace GENERIC[k] attrib with an automatically
+       * computed texture coord.
+       */
       for (i = 0; i < MAX_TEXTURE_COORD_UNITS; i++) {
          if (ctx->Point.CoordReplace[i]) {
             raster->sprite_coord_enable |= 1 << i;
          }
       }
+      if (fragProg->Base.InputsRead & VARYING_BIT_PNTC) {
+         raster->sprite_coord_enable |=
+            1 << (VARYING_SLOT_PNTC - VARYING_SLOT_TEX0);
+      }
+
       raster->point_quad_rasterization = 1;
    }
 
@@ -209,7 +183,7 @@ static void update_raster_state( struct st_context *st )
     */
    if (vertProg) {
       if (vertProg->Base.Id == 0) {
-         if (vertProg->Base.OutputsWritten & BITFIELD64_BIT(VERT_RESULT_PSIZ)) {
+         if (vertProg->Base.OutputsWritten & BITFIELD64_BIT(VARYING_SLOT_PSIZ)) {
             /* generated program which emits point size */
             raster->point_size_per_vertex = TRUE;
          }
@@ -246,14 +220,33 @@ static void update_raster_state( struct st_context *st )
    raster->line_stipple_factor = ctx->Line.StippleFactor - 1;
 
    /* _NEW_MULTISAMPLE */
-   if (ctx->Multisample._Enabled || st->force_msaa)
-      raster->multisample = 1;
+   raster->multisample = ctx->Multisample._Enabled;
 
    /* _NEW_SCISSOR */
-   if (ctx->Scissor.Enabled)
-      raster->scissor = 1;
+   raster->scissor = ctx->Scissor.EnableFlags;
 
-   raster->gl_rasterization_rules = 1;
+   /* _NEW_FRAG_CLAMP */
+   raster->clamp_fragment_color = !st->clamp_frag_color_in_shader &&
+                                  ctx->Color._ClampFragmentColor;
+
+   raster->half_pixel_center = 1;
+   if (st_fb_orientation(ctx->DrawBuffer) == Y_0_TOP)
+      raster->bottom_edge_rule = 1;
+
+   /* ST_NEW_RASTERIZER */
+   raster->rasterizer_discard = ctx->RasterDiscard;
+
+   if (st->edgeflag_culls_prims) {
+      /* All edge flags are FALSE. Cull the affected faces. */
+      if (raster->fill_front != PIPE_POLYGON_MODE_FILL)
+         raster->cull_face |= PIPE_FACE_FRONT;
+      if (raster->fill_back != PIPE_POLYGON_MODE_FILL)
+         raster->cull_face |= PIPE_FACE_BACK;
+   }
+
+   /* _NEW_TRANSFORM */
+   raster->depth_clip = !ctx->Transform.DepthClamp;
+   raster->clip_plane_enable = ctx->Transform.ClipPlanesEnabled;
 
    cso_set_rasterizer(st->cso_context, raster);
 }
@@ -268,8 +261,11 @@ const struct st_tracked_state st_update_rasterizer = {
        _NEW_POINT |
        _NEW_POLYGON |
        _NEW_PROGRAM |
-       _NEW_SCISSOR),      /* mesa state dependencies*/
-      ST_NEW_VERTEX_PROGRAM,  /* state tracker dependencies */
+       _NEW_SCISSOR |
+       _NEW_FRAG_CLAMP |
+       _NEW_TRANSFORM),      /* mesa state dependencies*/
+      (ST_NEW_VERTEX_PROGRAM |
+       ST_NEW_RASTERIZER),  /* state tracker dependencies */
    },
    update_raster_state     /* update function */
 };

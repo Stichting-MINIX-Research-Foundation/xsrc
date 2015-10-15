@@ -218,6 +218,7 @@ typedef struct {
     CARD32		Option2;
     CARD32		Option3;
     long                Clock;
+    unsigned char	Pan_Ctl;
     Bool                PIXPLLCSaved;
     unsigned char       PllM;
     unsigned char       PllN;
@@ -313,16 +314,6 @@ typedef struct {
 #define ISTV1(p) (p->pMgaHwInfo && ((p->pMgaHwInfo->ulCapsFirstOutput) & MGAHWINFOCAPS_OUTPUT_TV))
 #define ISTV2(p) (p->pMgaHwInfo && ((p->pMgaHwInfo->ulCapsSecondOutput) & MGAHWINFOCAPS_OUTPUT_TV))
 
-#ifdef DISABLE_VGA_IO
-typedef struct mgaSave {
-#ifdef XSERVER_LIBPCIACCESS
-    struct pci_device * pvp;
-#else
-    pciVideoPtr pvp;
-#endif
-    Bool enable;
-} MgaSave, *MgaSavePtr;
-#endif
 
 
 typedef enum {
@@ -343,6 +334,13 @@ typedef struct {
     int			mastervideoRam;
     int			slavevideoRam;
     Bool		directRenderingEnabled;
+
+    void *		mappedIOBase;
+    int			mappedIOUsage;
+
+    void *		mappedILOADBase;
+    int			mappedILOADUsage;
+
     ScrnInfoPtr 	pScrn_1;
     ScrnInfoPtr 	pScrn_2;
 } MGAEntRec, *MGAEntPtr;
@@ -688,7 +686,12 @@ extern CARD32 MGAAtypeNoBLK[16];
 #define	NICE_DASH_PATTERN	0x00000020
 #define	TWO_PASS_COLOR_EXPAND	0x00000040
 #define	MGA_NO_PLANEMASK	0x00000080
+/* linear expansion doesn't work on BE due to wrong byte order */
+#if X_BYTE_ORDER == X_BIG_ENDIAN
+#define USE_LINEAR_EXPANSION	0x00000000
+#else
 #define USE_LINEAR_EXPANSION	0x00000100
+#endif
 #define LARGE_ADDRESSES		0x00000200
 
 #define MGAIOMAPSIZE		0x00004000

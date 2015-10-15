@@ -135,7 +135,7 @@ struct fenced_buffer
    void *data;
 
    /**
-    * A bitmask of PIPE_BUFFER_USAGE_CPU/GPU_READ/WRITE describing the current
+    * A bitmask of PB_USAGE_CPU/GPU_READ/WRITE describing the current
     * buffer usage.
     */
    unsigned flags;
@@ -210,8 +210,8 @@ fenced_manager_dump_locked(struct fenced_manager *fenced_mgr)
       assert(!fenced_buf->fence);
       debug_printf("%10p %7u %8u %7s\n",
                    (void *) fenced_buf,
-                   fenced_buf->base.base.size,
-                   p_atomic_read(&fenced_buf->base.base.reference.count),
+                   fenced_buf->base.size,
+                   p_atomic_read(&fenced_buf->base.reference.count),
                    fenced_buf->buffer ? "gpu" : (fenced_buf->data ? "cpu" : "none"));
       curr = next;
       next = curr->next;
@@ -226,8 +226,8 @@ fenced_manager_dump_locked(struct fenced_manager *fenced_mgr)
       signaled = ops->fence_signalled(ops, fenced_buf->fence, 0);
       debug_printf("%10p %7u %8u %7s %10p %s\n",
                    (void *) fenced_buf,
-                   fenced_buf->base.base.size,
-                   p_atomic_read(&fenced_buf->base.base.reference.count),
+                   fenced_buf->base.size,
+                   p_atomic_read(&fenced_buf->base.reference.count),
                    "gpu",
                    (void *) fenced_buf->fence,
                    signaled == 0 ? "y" : "n");
@@ -244,7 +244,7 @@ static INLINE void
 fenced_buffer_destroy_locked(struct fenced_manager *fenced_mgr,
                              struct fenced_buffer *fenced_buf)
 {
-   assert(!pipe_is_referenced(&fenced_buf->base.base.reference));
+   assert(!pipe_is_referenced(&fenced_buf->base.reference));
 
    assert(!fenced_buf->fence);
    assert(fenced_buf->head.prev);
@@ -269,11 +269,11 @@ static INLINE void
 fenced_buffer_add_locked(struct fenced_manager *fenced_mgr,
                          struct fenced_buffer *fenced_buf)
 {
-   assert(pipe_is_referenced(&fenced_buf->base.base.reference));
-   assert(fenced_buf->flags & PIPE_BUFFER_USAGE_GPU_READ_WRITE);
+   assert(pipe_is_referenced(&fenced_buf->base.reference));
+   assert(fenced_buf->flags & PB_USAGE_GPU_READ_WRITE);
    assert(fenced_buf->fence);
 
-   p_atomic_inc(&fenced_buf->base.base.reference.count);
+   p_atomic_inc(&fenced_buf->base.reference.count);
 
    LIST_DEL(&fenced_buf->head);
    assert(fenced_mgr->num_unfenced);
@@ -299,7 +299,7 @@ fenced_buffer_remove_locked(struct fenced_manager *fenced_mgr,
    assert(fenced_buf->mgr == fenced_mgr);
 
    ops->fence_reference(ops, &fenced_buf->fence, NULL);
-   fenced_buf->flags &= ~PIPE_BUFFER_USAGE_GPU_READ_WRITE;
+   fenced_buf->flags &= ~PB_USAGE_GPU_READ_WRITE;
 
    assert(fenced_buf->head.prev);
    assert(fenced_buf->head.next);
@@ -311,7 +311,7 @@ fenced_buffer_remove_locked(struct fenced_manager *fenced_mgr,
    LIST_ADDTAIL(&fenced_buf->head, &fenced_mgr->unfenced);
    ++fenced_mgr->num_unfenced;
 
-   if (p_atomic_dec_zero(&fenced_buf->base.base.reference.count)) {
+   if (p_atomic_dec_zero(&fenced_buf->base.reference.count)) {
       fenced_buffer_destroy_locked(fenced_mgr, fenced_buf);
       return TRUE;
    }
@@ -337,7 +337,7 @@ fenced_buffer_finish_locked(struct fenced_manager *fenced_mgr,
    debug_warning("waiting for GPU");
 #endif
 
-   assert(pipe_is_referenced(&fenced_buf->base.base.reference));
+   assert(pipe_is_referenced(&fenced_buf->base.reference));
    assert(fenced_buf->fence);
 
    if(fenced_buf->fence) {
@@ -353,7 +353,7 @@ fenced_buffer_finish_locked(struct fenced_manager *fenced_mgr,
 
       pipe_mutex_lock(fenced_mgr->mutex);
 
-      assert(pipe_is_referenced(&fenced_buf->base.base.reference));
+      assert(pipe_is_referenced(&fenced_buf->base.reference));
 
       /*
        * Only proceed if the fence object didn't change in the meanwhile.
@@ -377,7 +377,7 @@ fenced_buffer_finish_locked(struct fenced_manager *fenced_mgr,
 
          assert(!destroyed);
 
-         fenced_buf->flags &= ~PIPE_BUFFER_USAGE_GPU_READ_WRITE;
+         fenced_buf->flags &= ~PB_USAGE_GPU_READ_WRITE;
 
          ret = PIPE_OK;
       }
@@ -624,7 +624,7 @@ fenced_buffer_copy_storage_to_gpu_locked(struct fenced_buffer *fenced_buf)
    assert(fenced_buf->data);
    assert(fenced_buf->buffer);
 
-   map = pb_map(fenced_buf->buffer, PIPE_BUFFER_USAGE_CPU_WRITE);
+   map = pb_map(fenced_buf->buffer, PB_USAGE_CPU_WRITE, NULL);
    if(!map)
       return PIPE_ERROR;
 
@@ -644,7 +644,7 @@ fenced_buffer_copy_storage_to_cpu_locked(struct fenced_buffer *fenced_buf)
    assert(fenced_buf->data);
    assert(fenced_buf->buffer);
 
-   map = pb_map(fenced_buf->buffer, PIPE_BUFFER_USAGE_CPU_READ);
+   map = pb_map(fenced_buf->buffer, PB_USAGE_CPU_READ, NULL);
    if(!map)
       return PIPE_ERROR;
 
@@ -662,7 +662,7 @@ fenced_buffer_destroy(struct pb_buffer *buf)
    struct fenced_buffer *fenced_buf = fenced_buffer(buf);
    struct fenced_manager *fenced_mgr = fenced_buf->mgr;
 
-   assert(!pipe_is_referenced(&fenced_buf->base.base.reference));
+   assert(!pipe_is_referenced(&fenced_buf->base.reference));
 
    pipe_mutex_lock(fenced_mgr->mutex);
 
@@ -674,7 +674,7 @@ fenced_buffer_destroy(struct pb_buffer *buf)
 
 static void *
 fenced_buffer_map(struct pb_buffer *buf,
-                  unsigned flags)
+                  unsigned flags, void *flush_ctx)
 {
    struct fenced_buffer *fenced_buf = fenced_buffer(buf);
    struct fenced_manager *fenced_mgr = fenced_buf->mgr;
@@ -683,24 +683,24 @@ fenced_buffer_map(struct pb_buffer *buf,
 
    pipe_mutex_lock(fenced_mgr->mutex);
 
-   assert(!(flags & PIPE_BUFFER_USAGE_GPU_READ_WRITE));
+   assert(!(flags & PB_USAGE_GPU_READ_WRITE));
 
    /*
     * Serialize writes.
     */
-   while((fenced_buf->flags & PIPE_BUFFER_USAGE_GPU_WRITE) ||
-         ((fenced_buf->flags & PIPE_BUFFER_USAGE_GPU_READ) &&
-          (flags & PIPE_BUFFER_USAGE_CPU_WRITE))) {
+   while((fenced_buf->flags & PB_USAGE_GPU_WRITE) ||
+         ((fenced_buf->flags & PB_USAGE_GPU_READ) &&
+          (flags & PB_USAGE_CPU_WRITE))) {
 
       /* 
        * Don't wait for the GPU to finish accessing it, if blocking is forbidden.
        */
-      if((flags & PIPE_BUFFER_USAGE_DONTBLOCK) &&
+      if((flags & PB_USAGE_DONTBLOCK) &&
           ops->fence_signalled(ops, fenced_buf->fence, 0) != 0) {
          goto done;
       }
 
-      if (flags & PIPE_BUFFER_USAGE_UNSYNCHRONIZED) {
+      if (flags & PB_USAGE_UNSYNCHRONIZED) {
          break;
       }
 
@@ -712,7 +712,7 @@ fenced_buffer_map(struct pb_buffer *buf,
    }
 
    if(fenced_buf->buffer) {
-      map = pb_map(fenced_buf->buffer, flags);
+      map = pb_map(fenced_buf->buffer, flags, flush_ctx);
    }
    else {
       assert(fenced_buf->data);
@@ -721,7 +721,7 @@ fenced_buffer_map(struct pb_buffer *buf,
 
    if(map) {
       ++fenced_buf->mapcount;
-      fenced_buf->flags |= flags & PIPE_BUFFER_USAGE_CPU_READ_WRITE;
+      fenced_buf->flags |= flags & PB_USAGE_CPU_READ_WRITE;
    }
 
 done:
@@ -745,7 +745,7 @@ fenced_buffer_unmap(struct pb_buffer *buf)
          pb_unmap(fenced_buf->buffer);
       --fenced_buf->mapcount;
       if(!fenced_buf->mapcount)
-	 fenced_buf->flags &= ~PIPE_BUFFER_USAGE_CPU_READ_WRITE;
+	 fenced_buf->flags &= ~PB_USAGE_CPU_READ_WRITE;
    }
 
    pipe_mutex_unlock(fenced_mgr->mutex);
@@ -771,9 +771,9 @@ fenced_buffer_validate(struct pb_buffer *buf,
       goto done;
    }
 
-   assert(flags & PIPE_BUFFER_USAGE_GPU_READ_WRITE);
-   assert(!(flags & ~PIPE_BUFFER_USAGE_GPU_READ_WRITE));
-   flags &= PIPE_BUFFER_USAGE_GPU_READ_WRITE;
+   assert(flags & PB_USAGE_GPU_READ_WRITE);
+   assert(!(flags & ~PB_USAGE_GPU_READ_WRITE));
+   flags &= PB_USAGE_GPU_READ_WRITE;
 
    /* Buffer cannot be validated in two different lists */
    if(fenced_buf->vl && fenced_buf->vl != vl) {
@@ -837,7 +837,7 @@ fenced_buffer_fence(struct pb_buffer *buf,
 
    pipe_mutex_lock(fenced_mgr->mutex);
 
-   assert(pipe_is_referenced(&fenced_buf->base.base.reference));
+   assert(pipe_is_referenced(&fenced_buf->base.reference));
    assert(fenced_buf->buffer);
 
    if(fence != fenced_buf->fence) {
@@ -929,10 +929,10 @@ fenced_bufmgr_create_buffer(struct pb_manager *mgr,
    if(!fenced_buf)
       goto no_buffer;
 
-   pipe_reference_init(&fenced_buf->base.base.reference, 1);
-   fenced_buf->base.base.alignment = desc->alignment;
-   fenced_buf->base.base.usage = desc->usage;
-   fenced_buf->base.base.size = size;
+   pipe_reference_init(&fenced_buf->base.reference, 1);
+   fenced_buf->base.alignment = desc->alignment;
+   fenced_buf->base.usage = desc->usage;
+   fenced_buf->base.size = size;
    fenced_buf->size = size;
    fenced_buf->desc = *desc;
 

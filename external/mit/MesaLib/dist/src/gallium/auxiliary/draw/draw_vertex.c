@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -48,40 +48,21 @@ draw_compute_vertex_size(struct vertex_info *vinfo)
    uint i;
 
    vinfo->size = 0;
-   for (i = 0; i < vinfo->num_attribs; i++) {
-      switch (vinfo->attrib[i].emit) {
-      case EMIT_OMIT:
-         break;
-      case EMIT_4UB:
-         /* fall-through */
-      case EMIT_1F_PSIZE:
-         /* fall-through */
-      case EMIT_1F:
-         vinfo->size += 1;
-         break;
-      case EMIT_2F:
-         vinfo->size += 2;
-         break;
-      case EMIT_3F:
-         vinfo->size += 3;
-         break;
-      case EMIT_4F:
-         vinfo->size += 4;
-         break;
-      default:
-         assert(0);
-      }
-   }
+   for (i = 0; i < vinfo->num_attribs; i++)
+      vinfo->size += draw_translate_vinfo_size(vinfo->attrib[i].emit);
+
+   assert(vinfo->size % 4 == 0);
+   /* in dwords */
+   vinfo->size /= 4;
 }
 
 
 void
 draw_dump_emitted_vertex(const struct vertex_info *vinfo, const uint8_t *data)
 {
-   unsigned i, j;
+   unsigned i;
 
    for (i = 0; i < vinfo->num_attribs; i++) {
-      j = vinfo->attrib[i].src_index;
       switch (vinfo->attrib[i].emit) {
       case EMIT_OMIT:
          debug_printf("EMIT_OMIT:");
@@ -115,6 +96,13 @@ draw_dump_emitted_vertex(const struct vertex_info *vinfo, const uint8_t *data)
          break;
       case EMIT_4UB:
          debug_printf("EMIT_4UB:\t");
+         debug_printf("%u ", *data++);
+         debug_printf("%u ", *data++);
+         debug_printf("%u ", *data++);
+         debug_printf("%u ", *data++);
+         break;
+      case EMIT_4UB_BGRA:
+         debug_printf("EMIT_4UB_BGRA:\t");
          debug_printf("%u ", *data++);
          debug_printf("%u ", *data++);
          debug_printf("%u ", *data++);

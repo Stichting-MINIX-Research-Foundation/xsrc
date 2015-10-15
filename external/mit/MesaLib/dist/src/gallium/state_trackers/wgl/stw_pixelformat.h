@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -34,20 +34,15 @@
 #define PFD_SUPPORT_COMPOSITION 0x00008000
 #endif
 
-#include "main/mtypes.h"
-
 #include "pipe/p_compiler.h"
 #include "pipe/p_format.h"
+#include "state_tracker/st_api.h"
 
 struct stw_pixelformat_info
 {
-   enum pipe_format color_format;
-   enum pipe_format depth_stencil_format;
-   
    PIXELFORMATDESCRIPTOR pfd;
    
-   unsigned numSampleBuffers;
-   unsigned numSamples;
+   struct st_visual stvis;
 };
 
 void
@@ -60,11 +55,7 @@ uint
 stw_pixelformat_get_extended_count( void );
 
 const struct stw_pixelformat_info *
-stw_pixelformat_get_info( uint index );
-
-void
-stw_pixelformat_visual(GLvisual *visual, 
-                       const struct stw_pixelformat_info *pfi );
+stw_pixelformat_get_info( int iPixelFormat );
 
 int
 stw_pixelformat_choose( HDC hdc,

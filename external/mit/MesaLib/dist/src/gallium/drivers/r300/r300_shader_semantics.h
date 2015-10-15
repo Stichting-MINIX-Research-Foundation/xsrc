@@ -25,7 +25,7 @@
 
 #define ATTR_UNUSED             (-1)
 #define ATTR_COLOR_COUNT        2
-#define ATTR_GENERIC_COUNT      16
+#define ATTR_GENERIC_COUNT      32
 
 /* This structure contains information about what attributes are written by VS
  * or read by FS. (but not both) It's much easier to work with than
@@ -38,9 +38,12 @@ struct r300_shader_semantics {
     int psize;
     int color[ATTR_COLOR_COUNT];
     int bcolor[ATTR_COLOR_COUNT];
+    int face;
     int generic[ATTR_GENERIC_COUNT];
     int fog;
     int wpos;
+
+    int num_generic;
 };
 
 static INLINE void r300_shader_semantics_reset(
@@ -50,6 +53,7 @@ static INLINE void r300_shader_semantics_reset(
 
     info->pos = ATTR_UNUSED;
     info->psize = ATTR_UNUSED;
+    info->face = ATTR_UNUSED;
     info->fog = ATTR_UNUSED;
     info->wpos = ATTR_UNUSED;
 
@@ -61,6 +65,8 @@ static INLINE void r300_shader_semantics_reset(
     for (i = 0; i < ATTR_GENERIC_COUNT; i++) {
         info->generic[i] = ATTR_UNUSED;
     }
+
+    info->num_generic = 0;
 }
 
 #endif

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  * 
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  * 
@@ -17,16 +16,17 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 /*
- * This is the GLX API dispatcher.  Calls to the glX* functions are
- * either routed to the real GLX encoders or to Mesa's pseudo-GLX functions.
- * See the glxapi.h file for more details.
+ * This is the GLX API dispatcher.  It uses a dispatch table but that's
+ * not really needed anymore since the table always points to the "fake"
+ * GLX functions.
  */
 
 
@@ -40,7 +40,6 @@
 #include "glxapi.h"
 
 
-extern struct _glxapi_table *_real_GetGLXDispatchTable(void);
 extern struct _glxapi_table *_mesa_GetGLXDispatchTable(void);
 
 
@@ -58,7 +57,6 @@ struct display_dispatch {
 #ifdef GLX_INDIRECT_RENDERING
 
 #include "glapi/glapitable.h"
-#include "glapi/glapidispatch.h"
 
 #define KEYWORD1 PUBLIC
 
@@ -69,10 +67,10 @@ struct display_dispatch {
 #endif
 
 #define DISPATCH(FUNC, ARGS, MESSAGE)		\
-   CALL_ ## FUNC(GET_DISPATCH(), ARGS);
+   GET_DISPATCH()->FUNC ARGS
 
 #define RETURN_DISPATCH(FUNC, ARGS, MESSAGE) 	\
-   return CALL_ ## FUNC(GET_DISPATCH(), ARGS);
+   return GET_DISPATCH()->FUNC ARGS
 
 /* skip normal ones */
 #define _GLAPI_SKIP_NORMAL_ENTRY_POINTS
@@ -108,15 +106,13 @@ get_dispatch(Display *dpy)
       }
    }
 
-   /* A new display, determine if we should use real GLX
-    * or Mesa's pseudo-GLX.
-    */
+   /* Setup the dispatch table */
    {
       struct _glxapi_table *t = _mesa_GetGLXDispatchTable();
 
       if (t) {
          struct display_dispatch *d;
-         d = (struct display_dispatch *) malloc(sizeof(struct display_dispatch));
+         d = malloc(sizeof(struct display_dispatch));
          if (d) {
             d->Dpy = dpy;
             d->Table = t;
@@ -131,15 +127,11 @@ get_dispatch(Display *dpy)
       }
    }
 
-   /* If we get here that means we can't use real GLX on this display
-    * and the Mesa pseudo-GLX software renderer wasn't compiled in.
-    * Or, we ran out of memory!
-    */
    return NULL;
 }
 
 
-/* Don't use the GET_DISPATCH defined in glthread.h */
+/* Don't use the GET_DISPATCH macro */
 #undef GET_DISPATCH
 
 #define GET_DISPATCH(DPY, TABLE)	\
@@ -154,34 +146,6 @@ get_dispatch(Display *dpy)
    }
 
    
-
-
-/**
- * GLX API current context.
- */
-#if defined(GLX_USE_TLS)
-PUBLIC __thread void * CurrentContext
-    __attribute__((tls_model("initial-exec")));
-#elif defined(THREADS)
-static _glthread_TSD ContextTSD;         /**< Per-thread context pointer */
-#else
-static GLXContext CurrentContext = 0;
-#endif
-
-
-static void
-SetCurrentContext(GLXContext c)
-{
-#if defined(GLX_USE_TLS)
-   CurrentContext = c;
-#elif defined(THREADS)
-   _glthread_SetTSD(&ContextTSD, c);
-#else
-   CurrentContext = c;
-#endif
-}
-
-
 /*
  * GLX API entrypoints
  */
@@ -239,8 +203,6 @@ glXDestroyContext(Display *dpy, GLXContext ctx)
    GET_DISPATCH(dpy, t);
    if (!t)
       return;
-   if (glXGetCurrentContext() == ctx)
-      SetCurrentContext(NULL);
    (t->DestroyContext)(dpy, ctx);
 }
 
@@ -267,16 +229,13 @@ glXGetConfig(Display *dpy, XVisualInfo *visinfo, int attrib, int *value)
 }
 
 
+/* declare here to avoid including xmesa.h */
+extern void *XMesaGetCurrentContext(void);
+
 GLXContext PUBLIC
 glXGetCurrentContext(void)
 {
-#if defined(GLX_USE_TLS)
-   return CurrentContext;
-#elif defined(THREADS)
-   return (GLXContext) _glthread_GetTSD(&ContextTSD);
-#else
-   return CurrentContext;
-#endif
+   return (GLXContext) XMesaGetCurrentContext();
 }
 
 
@@ -309,9 +268,6 @@ glXMakeCurrent(Display *dpy, GLXDrawable drawable, GLXContext ctx)
       return False;
    }
    b = (*t->MakeCurrent)(dpy, drawable, ctx);
-   if (b) {
-      SetCurrentContext(ctx);
-   }
    return b;
 }
 
@@ -584,9 +540,6 @@ glXMakeContextCurrent(Display *dpy, GLXDrawable draw, GLXDrawable read, GLXConte
    if (!t)
       return False;
    b = (t->MakeContextCurrent)(dpy, draw, read, ctx);
-   if (b) {
-      SetCurrentContext(ctx);
-   }
    return b;
 }
 
@@ -1111,31 +1064,6 @@ glXGetAGPOffsetMESA( const GLvoid *pointer )
 }
 
 
-/*** GLX_MESA_allocate_memory */
-
-void PUBLIC *
-glXAllocateMemoryMESA(Display *dpy, int scrn, size_t size,
-                      float readfreq, float writefreq, float priority)
-{
-   /* dummy */
-   return NULL;
-}
-
-void PUBLIC
-glXFreeMemoryMESA(Display *dpy, int scrn, void *pointer)
-{
-   /* dummy */
-}
-
-
-GLuint PUBLIC
-glXGetMemoryOffsetMESA(Display *dpy, int scrn, const void *pointer)
-{
-   /* dummy */
-   return 0;
-}
-
-
 /*** GLX_EXT_texture_from_pixmap */
 
 void PUBLIC
@@ -1386,11 +1314,6 @@ static struct name_address_pair GLX_functions[] = {
 
    /*** GLX_MESA_agp_offset ***/
    { "glXGetAGPOffsetMESA", (__GLXextFuncPtr) glXGetAGPOffsetMESA },
-
-   /*** GLX_MESA_allocate_memory ***/
-   { "glXAllocateMemoryMESA", (__GLXextFuncPtr) glXAllocateMemoryMESA },
-   { "glXFreeMemoryMESA", (__GLXextFuncPtr) glXFreeMemoryMESA },
-   { "glXGetMemoryOffsetMESA", (__GLXextFuncPtr) glXGetMemoryOffsetMESA },
 
    /*** GLX_EXT_texture_from_pixmap ***/
    { "glXBindTexImageEXT", (__GLXextFuncPtr) glXBindTexImageEXT },

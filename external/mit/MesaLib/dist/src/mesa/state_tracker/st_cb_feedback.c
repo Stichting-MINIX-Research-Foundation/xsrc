@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -60,7 +60,7 @@
 struct feedback_stage
 {
    struct draw_stage stage;   /**< Base class */
-   GLcontext *ctx;            /**< Rendering context */
+   struct gl_context *ctx;            /**< Rendering context */
    GLboolean reset_stipple_counter;
 };
 
@@ -77,17 +77,19 @@ feedback_stage( struct draw_stage *stage )
 
 
 static void
-feedback_vertex(GLcontext *ctx, const struct draw_context *draw,
+feedback_vertex(struct gl_context *ctx, const struct draw_context *draw,
                 const struct vertex_header *v)
 {
-   const struct st_context *st = ctx->st;
+   const struct st_context *st = st_context(ctx);
    GLfloat win[4];
    const GLfloat *color, *texcoord;
    GLuint slot;
 
-   /* Recall that Y=0=Top of window for Gallium wincoords */
    win[0] = v->data[0][0];
-   win[1] = ctx->DrawBuffer->Height - v->data[0][1];
+   if (st_fb_orientation(ctx->DrawBuffer) == Y_0_TOP)
+      win[1] = ctx->DrawBuffer->Height - v->data[0][1];
+   else
+      win[1] = v->data[0][1];
    win[2] = v->data[0][2];
    win[3] = 1.0F / v->data[0][3];
 
@@ -96,13 +98,13 @@ feedback_vertex(GLcontext *ctx, const struct draw_context *draw,
     * color and texcoord attribs to use here.
     */
 
-   slot = st->vertex_result_to_slot[VERT_RESULT_COL0];
+   slot = st->vertex_result_to_slot[VARYING_SLOT_COL0];
    if (slot != ~0U)
       color = v->data[slot];
    else
       color = ctx->Current.Attrib[VERT_ATTRIB_COLOR0];
 
-   slot = st->vertex_result_to_slot[VERT_RESULT_TEX0];
+   slot = st->vertex_result_to_slot[VARYING_SLOT_TEX0];
    if (slot != ~0U)
       texcoord = v->data[slot];
    else
@@ -177,7 +179,7 @@ feedback_destroy( struct draw_stage *stage )
  * Create GL feedback drawing stage.
  */
 static struct draw_stage *
-draw_glfeedback_stage(GLcontext *ctx, struct draw_context *draw)
+draw_glfeedback_stage(struct gl_context *ctx, struct draw_context *draw)
 {
    struct feedback_stage *fs = ST_CALLOC_STRUCT(feedback_stage);
 
@@ -250,7 +252,7 @@ select_destroy( struct draw_stage *stage )
  * Create GL selection mode drawing stage.
  */
 static struct draw_stage *
-draw_glselect_stage(GLcontext *ctx, struct draw_context *draw)
+draw_glselect_stage(struct gl_context *ctx, struct draw_context *draw)
 {
    struct feedback_stage *fs = ST_CALLOC_STRUCT(feedback_stage);
 
@@ -269,9 +271,9 @@ draw_glselect_stage(GLcontext *ctx, struct draw_context *draw)
 
 
 static void
-st_RenderMode(GLcontext *ctx, GLenum newMode )
+st_RenderMode(struct gl_context *ctx, GLenum newMode )
 {
-   struct st_context *st = ctx->st;
+   struct st_context *st = st_context(ctx);
    struct draw_context *draw = st->draw;
 
    if (newMode == GL_RENDER) {

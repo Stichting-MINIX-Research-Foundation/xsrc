@@ -34,50 +34,141 @@
  * Pixel format helpers.
  */
 
-#include <llvm-c/Core.h>  
+#include "gallivm/lp_bld.h"
+#include "gallivm/lp_bld_init.h"
 
 #include "pipe/p_format.h"
 
 struct util_format_description;
 struct lp_type;
+struct lp_build_context;
 
 
-boolean
-lp_format_is_rgba8(const struct util_format_description *desc);
-
-
-void
-lp_build_format_swizzle_soa(const struct util_format_description *format_desc,
-                            struct lp_type type,
-                            const LLVMValueRef *unswizzled,
-                            LLVMValueRef *swizzled);
-
+/*
+ * AoS
+ */
 
 LLVMValueRef
-lp_build_unpack_rgba_aos(LLVMBuilderRef builder,
-                         const struct util_format_description *desc,
-                         LLVMValueRef packed);
-
-
-LLVMValueRef
-lp_build_unpack_rgba8_aos(LLVMBuilderRef builder,
-                          const struct util_format_description *desc,
-                          struct lp_type type,
-                          LLVMValueRef packed);
-
+lp_build_format_swizzle_aos(const struct util_format_description *desc,
+                            struct lp_build_context *bld,
+                            LLVMValueRef unswizzled);
 
 LLVMValueRef
-lp_build_pack_rgba_aos(LLVMBuilderRef builder,
+lp_build_pack_rgba_aos(struct gallivm_state *gallivm,
                        const struct util_format_description *desc,
                        LLVMValueRef rgba);
 
+LLVMValueRef
+lp_build_fetch_rgba_aos(struct gallivm_state *gallivm,
+                        const struct util_format_description *format_desc,
+                        struct lp_type type,
+                        LLVMValueRef base_ptr,
+                        LLVMValueRef offset,
+                        LLVMValueRef i,
+                        LLVMValueRef j);
+
+LLVMValueRef
+lp_build_fetch_rgba_aos_array(struct gallivm_state *gallivm,
+                        const struct util_format_description *format_desc,
+                        struct lp_type type,
+                        LLVMValueRef base_ptr,
+                        LLVMValueRef offset);
+
+
+/*
+ * SoA
+ */
 
 void
-lp_build_unpack_rgba_soa(LLVMBuilderRef builder,
+lp_build_format_swizzle_soa(const struct util_format_description *format_desc,
+                            struct lp_build_context *bld,
+                            const LLVMValueRef unswizzled[4],
+                            LLVMValueRef swizzled_out[4]);
+
+void
+lp_build_unpack_rgba_soa(struct gallivm_state *gallivm,
                          const struct util_format_description *format_desc,
                          struct lp_type type,
                          LLVMValueRef packed,
-                         LLVMValueRef *rgba);
+                         LLVMValueRef rgba_out[4]);
+
+void
+lp_build_rgba8_to_fi32_soa(struct gallivm_state *gallivm,
+                          struct lp_type dst_type,
+                          LLVMValueRef packed,
+                          LLVMValueRef *rgba);
+
+void
+lp_build_fetch_rgba_soa(struct gallivm_state *gallivm,
+                        const struct util_format_description *format_desc,
+                        struct lp_type type,
+                        LLVMValueRef base_ptr,
+                        LLVMValueRef offsets,
+                        LLVMValueRef i,
+                        LLVMValueRef j,
+                        LLVMValueRef rgba_out[4]);
+
+/*
+ * YUV
+ */
+
+
+LLVMValueRef
+lp_build_fetch_subsampled_rgba_aos(struct gallivm_state *gallivm,
+                                   const struct util_format_description *format_desc,
+                                   unsigned n,
+                                   LLVMValueRef base_ptr,
+                                   LLVMValueRef offset,
+                                   LLVMValueRef i,
+                                   LLVMValueRef j);
+
+/*
+ * special float formats
+ */
+
+LLVMValueRef
+lp_build_float_to_smallfloat(struct gallivm_state *gallivm,
+                             struct lp_type i32_type,
+                             LLVMValueRef src,
+                             unsigned mantissa_bits,
+                             unsigned exponent_bits,
+                             unsigned mantissa_start,
+                             boolean has_sign);
+
+LLVMValueRef
+lp_build_smallfloat_to_float(struct gallivm_state *gallivm,
+                             struct lp_type f32_type,
+                             LLVMValueRef src,
+                             unsigned mantissa_bits,
+                             unsigned exponent_bits,
+                             unsigned mantissa_start,
+                             boolean has_sign);
+
+LLVMValueRef
+lp_build_float_to_r11g11b10(struct gallivm_state *gallivm,
+                            LLVMValueRef *src);
+
+void
+lp_build_r11g11b10_to_float(struct gallivm_state *gallivm,
+                            LLVMValueRef src,
+                            LLVMValueRef *dst);
+
+void
+lp_build_rgb9e5_to_float(struct gallivm_state *gallivm,
+                         LLVMValueRef src,
+                         LLVMValueRef *dst);
+
+LLVMValueRef
+lp_build_float_to_srgb_packed(struct gallivm_state *gallivm,
+                              const struct util_format_description *dst_fmt,
+                              struct lp_type src_type,
+                              LLVMValueRef *src);
+
+LLVMValueRef
+lp_build_srgb_to_linear(struct gallivm_state *gallivm,
+                        struct lp_type src_type,
+                        unsigned chan_bits,
+                        LLVMValueRef src);
 
 
 #endif /* !LP_BLD_FORMAT_H */

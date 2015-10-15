@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -37,10 +37,9 @@
 
 #include "main/imports.h"
 #include "main/mtypes.h"
-#include "shader/program.h"
+#include "program/program.h"
 
 #include "pipe/p_context.h"
-#include "pipe/p_shader_tokens.h"
 
 #include "util/u_simple_shaders.h"
 
@@ -49,87 +48,6 @@
 #include "st_context.h"
 #include "st_atom.h"
 #include "st_program.h"
-
-
-
-/**
- * Translate fragment program if needed.
- */
-static void
-translate_fp(struct st_context *st,
-             struct st_fragment_program *stfp)
-{
-   if (!stfp->tgsi.tokens) {
-      assert(stfp->Base.Base.NumInstructions > 0);
-
-      st_translate_fragment_program(st, stfp);
-   }
-}
-
-
-
-/**
- * Find a translated vertex program that corresponds to stvp and
- * has outputs matched to stfp's inputs.
- * This performs vertex and fragment translation (to TGSI) when needed.
- */
-static struct st_vp_varient *
-find_translated_vp(struct st_context *st,
-                   struct st_vertex_program *stvp )
-{
-   struct st_vp_varient *vpv;
-   struct st_vp_varient_key key;
-
-   /* Nothing in our key yet.  This will change:
-    */
-   memset(&key, 0, sizeof key);
-
-   /* When this is true, we will add an extra input to the vertex
-    * shader translation (for edgeflags), an extra output with
-    * edgeflag semantics, and extend the vertex shader to pass through
-    * the input to the output.  We'll need to use similar logic to set
-    * up the extra vertex_element input for edgeflags.
-    * _NEW_POLYGON, ST_NEW_EDGEFLAGS_DATA
-    */
-   key.passthrough_edgeflags = (st->vertdata_edgeflags && (
-                                st->ctx->Polygon.FrontMode != GL_FILL ||
-                                st->ctx->Polygon.BackMode != GL_FILL));
-
-
-   /* Do we need to throw away old translations after a change in the
-    * GL program string?
-    */
-   if (stvp->serialNo != stvp->lastSerialNo) {
-      /* These may have changed if the program string changed.
-       */
-      st_prepare_vertex_program( st, stvp );
-
-      /* We are now up-to-date:
-       */
-      stvp->lastSerialNo = stvp->serialNo;
-   }
-   
-   /* See if we've got a translated vertex program whose outputs match
-    * the fragment program's inputs.
-    */
-   for (vpv = stvp->varients; vpv; vpv = vpv->next) {
-      if (memcmp(&vpv->key, &key, sizeof key) == 0) {
-         break;
-      }
-   }
-
-   /* No?  Perform new translation here. */
-   if (!vpv) {
-      vpv = st_translate_vertex_program(st, stvp, &key);
-      if (!vpv)
-         return NULL;
-      
-      vpv->next = stvp->varients;
-      stvp->varients = vpv;
-   }
-
-   return vpv;
-}
 
 
 /**
@@ -141,7 +59,9 @@ get_passthrough_fs(struct st_context *st)
 {
    if (!st->passthrough_fs) {
       st->passthrough_fs =
-         util_make_fragment_passthrough_shader(st->pipe);
+         util_make_fragment_passthrough_shader(st->pipe, TGSI_SEMANTIC_COLOR,
+                                               TGSI_INTERPOLATE_PERSPECTIVE,
+                                               TRUE);
    }
 
    return st->passthrough_fs;
@@ -156,12 +76,24 @@ static void
 update_fp( struct st_context *st )
 {
    struct st_fragment_program *stfp;
+   struct st_fp_variant_key key;
 
    assert(st->ctx->FragmentProgram._Current);
    stfp = st_fragment_program(st->ctx->FragmentProgram._Current);
    assert(stfp->Base.Base.Target == GL_FRAGMENT_PROGRAM_ARB);
 
-   translate_fp(st, stfp);
+   memset(&key, 0, sizeof(key));
+   key.st = st;
+
+   /* _NEW_FRAG_CLAMP */
+   key.clamp_color = st->clamp_frag_color_in_shader &&
+                     st->ctx->Color._ClampFragmentColor;
+
+   /* Ignore sample qualifier while computing this flag. */
+   key.persample_shading =
+      _mesa_get_min_invocations_per_fragment(st->ctx, &stfp->Base, true) > 1;
+
+   st->fp_variant = st_get_fp_variant(st, stfp, &key);
 
    st_reference_fragprog(st, &st->fp, stfp);
 
@@ -171,7 +103,8 @@ update_fp( struct st_context *st )
       cso_set_fragment_shader_handle(st->cso_context, fs);
    }
    else {
-      cso_set_fragment_shader_handle(st->cso_context, stfp->driver_shader);
+      cso_set_fragment_shader_handle(st->cso_context,
+                                     st->fp_variant->driver_shader);
    }
 }
 
@@ -179,7 +112,7 @@ update_fp( struct st_context *st )
 const struct st_tracked_state st_update_fp = {
    "st_update_fp",					/* name */
    {							/* dirty */
-      0,						/* mesa */
+      _NEW_BUFFERS | _NEW_MULTISAMPLE,			/* mesa */
       ST_NEW_FRAGMENT_PROGRAM                           /* st */
    },
    update_fp  					/* update */
@@ -195,6 +128,7 @@ static void
 update_vp( struct st_context *st )
 {
    struct st_vertex_program *stvp;
+   struct st_vp_variant_key key;
 
    /* find active shader and params -- Should be covered by
     * ST_NEW_VERTEX_PROGRAM
@@ -203,12 +137,26 @@ update_vp( struct st_context *st )
    stvp = st_vertex_program(st->ctx->VertexProgram._Current);
    assert(stvp->Base.Base.Target == GL_VERTEX_PROGRAM_ARB);
 
-   st->vp_varient = find_translated_vp(st, stvp);
+   memset(&key, 0, sizeof key);
+   key.st = st;  /* variants are per-context */
+
+   /* When this is true, we will add an extra input to the vertex
+    * shader translation (for edgeflags), an extra output with
+    * edgeflag semantics, and extend the vertex shader to pass through
+    * the input to the output.  We'll need to use similar logic to set
+    * up the extra vertex_element input for edgeflags.
+    */
+   key.passthrough_edgeflags = st->vertdata_edgeflags;
+
+   key.clamp_color = st->clamp_vert_color_in_shader &&
+                     st->ctx->Light._ClampVertexColor;
+
+   st->vp_variant = st_get_vp_variant(st, stvp, &key);
 
    st_reference_vertprog(st, &st->vp, stvp);
 
    cso_set_vertex_shader_handle(st->cso_context, 
-                                st->vp_varient->driver_shader);
+                                st->vp_variant->driver_shader);
 
    st->vertex_result_to_slot = stvp->result_to_output;
 }
@@ -217,8 +165,44 @@ update_vp( struct st_context *st )
 const struct st_tracked_state st_update_vp = {
    "st_update_vp",					/* name */
    {							/* dirty */
-      _NEW_POLYGON,					/* mesa */
-      ST_NEW_VERTEX_PROGRAM | ST_NEW_EDGEFLAGS_DATA	/* st */
+      0,                                                /* mesa */
+      ST_NEW_VERTEX_PROGRAM                             /* st */
    },
-   update_vp					/* update */
+   update_vp						/* update */
+};
+
+
+
+static void
+update_gp( struct st_context *st )
+{
+   struct st_geometry_program *stgp;
+   struct st_gp_variant_key key;
+
+   if (!st->ctx->GeometryProgram._Current) {
+      cso_set_geometry_shader_handle(st->cso_context, NULL);
+      return;
+   }
+
+   stgp = st_geometry_program(st->ctx->GeometryProgram._Current);
+   assert(stgp->Base.Base.Target == MESA_GEOMETRY_PROGRAM);
+
+   memset(&key, 0, sizeof(key));
+   key.st = st;
+
+   st->gp_variant = st_get_gp_variant(st, stgp, &key);
+
+   st_reference_geomprog(st, &st->gp, stgp);
+
+   cso_set_geometry_shader_handle(st->cso_context,
+                                  st->gp_variant->driver_shader);
+}
+
+const struct st_tracked_state st_update_gp = {
+   "st_update_gp",			/* name */
+   {					/* dirty */
+      0,				/* mesa */
+      ST_NEW_GEOMETRY_PROGRAM           /* st */
+   },
+   update_gp  				/* update */
 };

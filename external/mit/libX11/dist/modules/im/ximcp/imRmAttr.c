@@ -238,7 +238,7 @@ _XimAttributeToValue(
 	    if (!(value))
 		return False;
 
-	    if (!(str = (char *)Xmalloc(data_len + 1)))
+	    if (!(str = Xmalloc(data_len + 1)))
 		return False;
 
 	    (void)memcpy(str, (char *)data, data_len);
@@ -262,7 +262,7 @@ _XimAttributeToValue(
 		return False;
 
 	    alloc_len = sizeof(XIMStyles) + sizeof(XIMStyle) * num;
-	    if (!(p = (char *)Xmalloc(alloc_len)))
+	    if (!(p = Xmalloc(alloc_len)))
 		return False;
 
 	    rep   = (XIMStyles *)p;
@@ -284,7 +284,7 @@ _XimAttributeToValue(
 	    if (!(value))
 		return False;
 
-	    if (!(rep = (XRectangle *)Xmalloc(sizeof(XRectangle))))
+	    if (!(rep = Xmalloc(sizeof(XRectangle))))
 		return False;
 
 	    rep->x      = data[0];
@@ -302,7 +302,7 @@ _XimAttributeToValue(
 	    if (!(value))
 		return False;
 
-	    if (!(rep = (XPoint *)Xmalloc(sizeof(XPoint))))
+	    if (!(rep = Xmalloc(sizeof(XPoint))))
 		return False;
 
 	    rep->x = data[0];
@@ -325,7 +325,7 @@ _XimAttributeToValue(
 	    if (!ic)
 		return False;
 
-	    if (!(base_name = (char *)Xmalloc(len + 1)))
+	    if (!(base_name = Xmalloc(len + 1)))
 		return False;
 
 	    (void)strncpy(base_name, (char *)&data[1], (int)len);
@@ -370,7 +370,7 @@ _XimAttributeToValue(
 
 	    alloc_len = sizeof(XIMHotKeyTriggers)
 		      + sizeof(XIMHotKeyTrigger) * num;
-	    if (!(p = (char *)Xmalloc(alloc_len)))
+	    if (!(p = Xmalloc(alloc_len)))
 		return False;
 
 	    rep = (XIMHotKeyTriggers *)p;
@@ -972,8 +972,7 @@ _XimEncodePreeditValue(
 	if (!p->value)
 	    return False;
 
-	if (ic->private.proto.preedit_font)
-	    Xfree(ic->private.proto.preedit_font);
+	Xfree(ic->private.proto.preedit_font);
 
 	list_ret = XFontsOfFontSet((XFontSet)p->value,
 						 &struct_list, &name_list);
@@ -1024,8 +1023,7 @@ _XimEncodeStatusValue(
 	if (!p->value)
 	    return False;
 
-	if (ic->private.proto.status_font)
-	    Xfree(ic->private.proto.status_font);
+	Xfree(ic->private.proto.status_font);
 
 	list_ret = XFontsOfFontSet((XFontSet)p->value,
 						 &struct_list, &name_list);
@@ -1243,8 +1241,7 @@ _XimEncodeSavedStatusValue(
 	if (!value)
 	    return False;
 
-	if (ic->private.proto.status_font)
-	    Xfree(ic->private.proto.status_font);
+	Xfree(ic->private.proto.status_font);
 
 	list_ret = XFontsOfFontSet((XFontSet)value,
 						&struct_list, &name_list);
@@ -1460,10 +1457,9 @@ _XimGetAttributeID(
     }
     _XIMCompileResourceList(res, n);
 
-    if (im->core.im_resources)
-	Xfree(im->core.im_resources);
-    if (im->core.im_values_list)
-	Xfree(im->core.im_values_list);
+    Xfree(im->core.im_resources);
+    Xfree(im->core.im_values_list);
+
     im->core.im_resources     = res;
     im->core.im_num_resources = n;
     im->core.im_values_list   = values_list;
@@ -1506,10 +1502,10 @@ _XimGetAttributeID(
     }
     _XIMCompileResourceList(res, n);
 
-    if (im->core.ic_resources)
-	Xfree(im->core.ic_resources);
-    if (im->core.ic_values_list)
-	Xfree(im->core.ic_values_list);
+
+    Xfree(im->core.ic_resources);
+    Xfree(im->core.ic_values_list);
+
     im->core.ic_resources     = res;
     im->core.ic_num_resources = n;
     im->core.ic_values_list   = values_list;

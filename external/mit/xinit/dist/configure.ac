@@ -22,19 +22,18 @@ dnl Process this file with autoconf to create configure.
 
 # Initialize Autoconf
 AC_PREREQ([2.60])
-AC_INIT([xinit], [1.3.2],
+AC_INIT([xinit], [1.3.4],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg], [xinit])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
-AM_MAINTAINER_MODE
 
-# Require X.Org macros 1.8 or later for AC_PROG_SED in XORG_DEFAULT_OPTIONS
+# Require X.Org macros 1.19 or later for TRADITIONALCPPFLAGS
 m4_ifndef([XORG_MACROS_VERSION],
-          [m4_fatal([must install xorg-macros 1.8 or later before running autoconf/autogen])])
-XORG_MACROS_VERSION(1.8)
+          [m4_fatal([must install xorg-macros 1.19 or later before running autoconf/autogen])])
+XORG_MACROS_VERSION(1.19)
 XORG_DEFAULT_OPTIONS
 
 XORG_PROG_RAWCPP
@@ -50,7 +49,7 @@ DEFAULT_XTERM=xterm
 DEFAULT_XSERVER=${bindir}/X
 DEFAULT_XAUTH=xauth
 DEFAULT_XINIT=xinit
-DEFAULT_XINITDIR=${libdir}/X11/xinit
+DEFAULT_XINITDIR=${sysconfdir}/X11/xinit
 
 AC_ARG_WITH(xrdb,
 	 AS_HELP_STRING([--with-xrdb=XRDB], [Path to xrdb]),
@@ -141,7 +140,7 @@ AM_CONDITIONAL(TIGER_LAUNCHD, [test "x$TIGER_LAUNCHD" = "xyes"])
 AM_CONDITIONAL(LAUNCHAGENT_XSERVER, [test "x$launchagentxserver" != "xno"])
 
 # Checks for pkg-config packages
-PKG_CHECK_MODULES(XINIT, x11)
+PKG_CHECK_MODULES(XINIT, x11 xproto >= 7.0.17)
 
 case $host_os in
     *bsd*)
@@ -153,17 +152,23 @@ esac
 AC_PATH_PROGS(MCOOKIE, [mcookie], [$MCOOKIE],
   [$PATH:/bin:/usr/bin:/usr/lib:/usr/libexec:/usr/local/bin])
 
-case $host_os in
-	*openbsd*)
-	MCOOKIE='/usr/sbin/openssl rand -hex 16'
-	;;
-	*solaris*)
-	MCOOKIE="/usr/bin/od -X -A n -N 16 /dev/urandom | /usr/bin/tr -d ' '"
-	;;
-esac
-
+# If mcookie not found, try openssl, else per-system fallbacks
+if test "x$MCOOKIE" = x ; then
+    AC_PATH_PROGS(OPENSSL, [openssl], [$OPENSSL],
+        [$PATH:/bin:/usr/bin:/usr/sbin:/usr/lib:/usr/libexec:/usr/local/bin])
+    if test "x$OPENSSL" != x ; then
+        MCOOKIE="$OPENSSL rand -hex 16"
+    else
+        case $host_os in
+            *solaris*)
+                MCOOKIE="/usr/bin/od -X -A n -N 16 /dev/urandom | /usr/bin/tr -d ' '"
+                ;;
+        esac
+    fi
+fi
 if test "x$MCOOKIE" != x ; then
 	STARTX_COOKIE_FLAGS='-DHAS_COOKIE_MAKER -DMK_COOKIE="$(MCOOKIE)"'
+	AC_MSG_NOTICE([startx will depend on "$MCOOKIE" to generate xauth cookies])
 fi
 AC_SUBST(STARTX_COOKIE_FLAGS)
 

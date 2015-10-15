@@ -52,6 +52,8 @@ vmwlegacy_hookup(ScrnInfoPtr pScrn);
 #ifdef BUILD_VMWGFX
 void
 vmwgfx_hookup(ScrnInfoPtr pScrn);
+void
+vmwgfx_modify_flags(uint32_t *flags);
 #endif /* defined(BUILD_VMWGFX) */
 
 #ifdef XFree86LOADER

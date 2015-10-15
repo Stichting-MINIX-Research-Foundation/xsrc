@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,7 +30,7 @@
 
 
 #include "pipe/p_state.h"
-#include "pipe/p_video_state.h"
+#include "sp_limits.h"
 
 
 struct pipe_context;
@@ -38,24 +38,39 @@ struct pipe_screen;
 struct softpipe_context;
 
 
-struct softpipe_texture
+/**
+ * Subclass of pipe_resource.
+ */
+struct softpipe_resource
 {
-   struct pipe_texture base;
+   struct pipe_resource base;
 
-   unsigned long level_offset[PIPE_MAX_TEXTURE_LEVELS];
-   unsigned stride[PIPE_MAX_TEXTURE_LEVELS];
+   unsigned long level_offset[SP_MAX_TEXTURE_2D_LEVELS];
+   unsigned stride[SP_MAX_TEXTURE_2D_LEVELS];
 
-   /* The data is held here:
+   /**
+    * Display target, only valid for PIPE_TEXTURE_2D with the
+    * PIPE_BIND_DISPLAY_TARGET usage.
     */
-   struct pipe_buffer *buffer;
+   struct sw_displaytarget *dt;
+
+   /**
+    * Malloc'ed data for regular buffers and textures, or a mapping to dt above.
+    */
+   void *data;
 
    /* True if texture images are power-of-two in all dimensions:
     */
    boolean pot;
+   boolean userBuffer;
 
    unsigned timestamp;
 };
 
+
+/**
+ * Subclass of pipe_transfer.
+ */
 struct softpipe_transfer
 {
    struct pipe_transfer base;
@@ -63,21 +78,12 @@ struct softpipe_transfer
    unsigned long offset;
 };
 
-struct softpipe_video_surface
-{
-   struct pipe_video_surface base;
-
-   /* The data is held here:
-    */
-   struct pipe_texture *tex;
-};
-
 
 /** cast wrappers */
-static INLINE struct softpipe_texture *
-softpipe_texture(struct pipe_texture *pt)
+static INLINE struct softpipe_resource *
+softpipe_resource(struct pipe_resource *pt)
 {
-   return (struct softpipe_texture *) pt;
+   return (struct softpipe_resource *) pt;
 }
 
 static INLINE struct softpipe_transfer *
@@ -86,15 +92,28 @@ softpipe_transfer(struct pipe_transfer *pt)
    return (struct softpipe_transfer *) pt;
 }
 
-static INLINE struct softpipe_video_surface *
-softpipe_video_surface(struct pipe_video_surface *pvs)
+
+/**
+ * Return pointer to a resource's actual data.
+ * This is a short-cut instead of using map()/unmap(), which should
+ * probably be fixed.
+ */
+static INLINE void *
+softpipe_resource_data(struct pipe_resource *pt)
 {
-   return (struct softpipe_video_surface *) pvs;
+   if (!pt)
+      return NULL;
+
+   assert(softpipe_resource(pt)->dt == NULL);
+   return softpipe_resource(pt)->data;
 }
 
 
 extern void
 softpipe_init_screen_texture_funcs(struct pipe_screen *screen);
+
+extern void
+softpipe_init_texture_funcs(struct pipe_context *pipe);
 
 
 #endif /* SP_TEXTURE */

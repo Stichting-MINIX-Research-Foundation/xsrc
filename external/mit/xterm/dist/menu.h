@@ -1,7 +1,7 @@
-/* $XTermId: menu.h,v 1.128 2012/09/21 10:39:10 tom Exp $ */
+/* $XTermId: menu.h,v 1.135 2014/09/04 00:17:55 tom Exp $ */
 
 /*
- * Copyright 1999-2010,2011 by Thomas E. Dickey
+ * Copyright 1999-2013,2014 by Thomas E. Dickey
  *
  *                         All Rights Reserved
  *
@@ -126,10 +126,12 @@ extern void HandleScrollbar        PROTO_XT_ACTIONS_ARGS;
 extern void HandleSecure           PROTO_XT_ACTIONS_ARGS;
 extern void HandleSendSignal       PROTO_XT_ACTIONS_ARGS;
 extern void HandleSetPopOnBell     PROTO_XT_ACTIONS_ARGS;
+extern void HandleSetPrivateColorRegisters PROTO_XT_ACTIONS_ARGS;
 extern void HandleSetSelect        PROTO_XT_ACTIONS_ARGS;
 extern void HandleSetTekText       PROTO_XT_ACTIONS_ARGS;
 extern void HandleSetTerminalType  PROTO_XT_ACTIONS_ARGS;
 extern void HandleSetVisualBell    PROTO_XT_ACTIONS_ARGS;
+extern void HandleSixelScrolling   PROTO_XT_ACTIONS_ARGS;
 extern void HandleSoftReset        PROTO_XT_ACTIONS_ARGS;
 extern void HandleSunFunctionKeys  PROTO_XT_ACTIONS_ARGS;
 extern void HandleSunKeyboard      PROTO_XT_ACTIONS_ARGS;
@@ -255,6 +257,12 @@ typedef enum {
     vtMenu_vthide,
 #endif
     vtMenu_altscreen,
+#if OPT_SIXEL_GRAPHICS
+    vtMenu_sixelscrolling,
+#endif
+#if OPT_GRAPHICS
+    vtMenu_privatecolorregisters,
+#endif
     vtMenu_LAST
 } vtMenuIndices;
 
@@ -444,6 +452,12 @@ extern void update_poponbell(void);
 
 #define update_marginbell() /* nothing */
 
+#if OPT_LOAD_VTFONTS
+extern void update_font_escape(void);
+#else
+#define update_font_escape() /* nothing */
+#endif
+
 #if OPT_ALLOW_XXX_OPS
 extern void update_menu_allowColorOps(void);
 extern void update_menu_allowFontOps(void);
@@ -477,6 +491,18 @@ extern void update_font_packed(void);
 #else
 #define update_font_boxchars() /* nothing */
 #define update_font_packed() /* nothing */
+#endif
+
+#if OPT_SIXEL_GRAPHICS
+extern void update_decsdm(void);
+#else
+#define update_decsdm() /* nothing */
+#endif
+
+#if OPT_GRAPHICS
+extern void update_privatecolorregisters(void);
+#else
+#define update_privatecolorregisters() /* nothing */
 #endif
 
 #if OPT_DEC_SOFTFONT

@@ -37,7 +37,9 @@
  * TODO: use cairo to write the mode info on the selected output once
  *       the mode has been programmed, along with possible test patterns.
  */
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 
 #include <assert.h>
 #include <stdio.h>
@@ -102,8 +104,9 @@ static void usage(char *name)
 
 int main(int argc, char **argv)
 {
-	int i, c, fd;
-	char *modules[] = { "i915", "radeon", "nouveau" };
+	unsigned i;
+	int c, fd, ret;
+	const char *modules[] = { "i915", "radeon", "nouveau", "vmwgfx", "exynos", "omapdrm", "tilcdc", "msm", "tegra", "imx-drm" , "rockchip" };
 	drmVBlank vbl;
 	drmEventContext evctx;
 	struct vbl_info handler_info;
@@ -141,7 +144,11 @@ int main(int argc, char **argv)
 	if (secondary)
 		vbl.request.type |= DRM_VBLANK_SECONDARY;
 	vbl.request.sequence = 0;
-	drmWaitVBlank(fd, &vbl);
+	ret = drmWaitVBlank(fd, &vbl);
+	if (ret != 0) {
+		printf("drmWaitVBlank (relative) failed ret: %i\n", ret);
+		return -1;
+	}
 
 	printf("starting count: %d\n", vbl.request.sequence);
 
@@ -154,7 +161,11 @@ int main(int argc, char **argv)
 		vbl.request.type |= DRM_VBLANK_SECONDARY;
 	vbl.request.sequence = 1;
 	vbl.request.signal = (unsigned long)&handler_info;
-	drmWaitVBlank(fd, &vbl);
+	ret = drmWaitVBlank(fd, &vbl);
+	if (ret != 0) {
+		printf("drmWaitVBlank (relative, event) failed ret: %i\n", ret);
+		return -1;
+	}
 
 	/* Set up our event handler */
 	memset(&evctx, 0, sizeof evctx);
@@ -181,7 +192,11 @@ int main(int argc, char **argv)
 			break;
 		}
 
-		drmHandleEvent(fd, &evctx);
+		ret = drmHandleEvent(fd, &evctx);
+		if (ret != 0) {
+			printf("drmHandleEvent failed: %i\n", ret);
+			return -1;
+		}
 	}
 
 	return 0;

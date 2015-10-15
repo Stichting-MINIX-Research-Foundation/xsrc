@@ -82,6 +82,9 @@ enum xorg_throttling_reason {
     THROTTLE_SWAP
 };
 
+struct vmwgfx_hosted;
+struct xf86_platform_device;
+
 typedef struct _modesettingRec
 {
     /* drm */
@@ -96,6 +99,7 @@ typedef struct _modesettingRec
     int Chipset;
     EntityInfoPtr pEnt;
     struct pci_device *PciInfo;
+    struct xf86_platform_device *platform_dev;
 
     /* Accel */
     Bool accelerate_render;
@@ -131,6 +135,8 @@ typedef struct _modesettingRec
     size_t max_fb_size;
 
     struct xa_tracker *xat;
+    const struct vmwgfx_hosted_driver *hdriver;
+    struct vmwgfx_hosted *hosted;
 #ifdef DRI2
     Bool dri2_available;
     char dri2_device_name[VMWGFX_DRI_DEVICE_LEN];

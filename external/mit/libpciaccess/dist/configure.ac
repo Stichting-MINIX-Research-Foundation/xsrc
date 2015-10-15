@@ -23,14 +23,13 @@
 
 # Initialize Autoconf
 AC_PREREQ([2.60])
-AC_INIT([libpciaccess],[0.13.1],
+AC_INIT([libpciaccess],[0.13.4],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg&component=libpciaccess],[libpciaccess])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
-AM_MAINTAINER_MODE
 AC_USE_SYSTEM_EXTENSIONS
 
 # Initialize libtool
@@ -77,13 +76,17 @@ case $host_os in
 		;;
 	*netbsd*)
 		case $host in
-		*i386*)
-			PCIACCESS_LIBS="-li386"
+		*i[3-9]86*)
+			PCIACCESS_LIBS="$PCIACCESS_LIBS -li386"
 			;;
 		*x86_64*|*amd64*)
-			PCIACCESS_LIBS="-lx86_64"
+			PCIACCESS_LIBS="$PCIACCESS_LIBS -lx86_64"
+			;;
+		*alpha*)
+			PCIACCESS_LIBS="$PCIACCESS_LIBS -lalpha"
 			;;
 		esac
+		PCIACCESS_LIBS="$PCIACCESS_LIBS -lpci"
 		netbsd=yes
 		;;
 	*openbsd*)
@@ -96,6 +99,10 @@ case $host_os in
 	gnu*)
 		gnu=yes
 		;;
+	*cygwin*)
+		cygwin=yes
+		PCIACCESS_LIBS="$PCIACCESS_LIBS"
+		;;
 esac
 
 AM_CONDITIONAL(LINUX, [test "x$linux" = xyes])
@@ -104,12 +111,23 @@ AM_CONDITIONAL(NETBSD, [test "x$netbsd" = xyes])
 AM_CONDITIONAL(OPENBSD, [test "x$openbsd" = xyes])
 AM_CONDITIONAL(SOLARIS, [test "x$solaris" = xyes])
 AM_CONDITIONAL(GNU, [test "x$gnu" = xyes])
+AM_CONDITIONAL(CYGWIN, [test "x$cygwin" = xyes])
 
 AC_SYS_LARGEFILE
 
 AC_CHECK_HEADERS([err.h])
 
+if test "x$netbsd" = xyes; then
+AC_CHECK_HEADERS([machine/sysarch.h])
+AC_CHECK_HEADERS([machine/mtrr.h], [have_mtrr_h="yes"], [have_mtrr_h="no"],
+[#ifdef HAVE_MACHINE_SYSARCH_H
+#include <sys/types.h>
+#include <machine/sysarch.h>
+#endif
+])
+else
 AC_CHECK_HEADER([asm/mtrr.h], [have_mtrr_h="yes"], [have_mtrr_h="no"])
+fi
 
 if test "x$have_mtrr_h" = xyes; then
     AC_DEFINE(HAVE_MTRR, 1, [Use MTRRs on mappings])

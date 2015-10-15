@@ -29,6 +29,10 @@
  *      Dave Airlie
  *      Jérôme Glisse <glisse@freedesktop.org>
  */
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+#include <libdrm_macros.h>
 #include <radeon_bo.h>
 #include <radeon_bo_int.h>
 
@@ -40,12 +44,9 @@ void radeon_bo_debug(struct radeon_bo *bo, const char *op)
             op, bo, bo->handle, boi->size, boi->cref);
 }
 
-struct radeon_bo *radeon_bo_open(struct radeon_bo_manager *bom,
-                                 uint32_t handle,
-                                 uint32_t size,
-                                 uint32_t alignment,
-                                 uint32_t domains,
-                                 uint32_t flags)
+struct radeon_bo *
+radeon_bo_open(struct radeon_bo_manager *bom, uint32_t handle, uint32_t size,
+	       uint32_t alignment, uint32_t domains, uint32_t flags)
 {
     struct radeon_bo *bo;
     bo = bom->funcs->bo_open(bom, handle, size, alignment, domains, flags);
@@ -95,15 +96,17 @@ int radeon_bo_is_busy(struct radeon_bo *bo, uint32_t *domain)
     return boi->bom->funcs->bo_is_busy(boi, domain);
 }
 
-int radeon_bo_set_tiling(struct radeon_bo *bo,
-                         uint32_t tiling_flags, uint32_t pitch)
+int
+radeon_bo_set_tiling(struct radeon_bo *bo,
+                     uint32_t tiling_flags, uint32_t pitch)
 {
     struct radeon_bo_int *boi = (struct radeon_bo_int *)bo;
     return boi->bom->funcs->bo_set_tiling(boi, tiling_flags, pitch);
 }
 
-int radeon_bo_get_tiling(struct radeon_bo *bo,
-                         uint32_t *tiling_flags, uint32_t *pitch)
+int
+radeon_bo_get_tiling(struct radeon_bo *bo,
+                     uint32_t *tiling_flags, uint32_t *pitch)
 {
     struct radeon_bo_int *boi = (struct radeon_bo_int *)bo;
     return boi->bom->funcs->bo_get_tiling(boi, tiling_flags, pitch);
@@ -117,7 +120,8 @@ int radeon_bo_is_static(struct radeon_bo *bo)
     return 0;
 }
 
-int radeon_bo_is_referenced_by_cs(struct radeon_bo *bo, struct radeon_cs *cs)
+int
+radeon_bo_is_referenced_by_cs(struct radeon_bo *bo, struct radeon_cs *cs)
 {
     struct radeon_bo_int *boi = (struct radeon_bo_int *)bo;
     return boi->cref > 1;

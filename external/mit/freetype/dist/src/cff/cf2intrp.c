@@ -4,7 +4,7 @@
 /*                                                                         */
 /*    Adobe's CFF Interpreter (body).                                      */
 /*                                                                         */
-/*  Copyright 2007-2013 Adobe Systems Incorporated.                        */
+/*  Copyright 2007-2014 Adobe Systems Incorporated.                        */
 /*                                                                         */
 /*  This software, and all works of authorship, whether in source or       */
 /*  object code form as indicated by the copyright notice(s) included      */
@@ -43,6 +43,7 @@
 #include "cf2font.h"
 #include "cf2stack.h"
 #include "cf2hints.h"
+#include "cf2intrp.h"
 
 #include "cf2error.h"
 
@@ -287,11 +288,17 @@
   {
     CF2_UInt  i;
     CF2_UInt  count       = cf2_stack_count( opStack );
-    FT_Bool   hasWidthArg = count & 1;
+    FT_Bool   hasWidthArg = (FT_Bool)( count & 1 );
 
     /* variable accumulates delta values from operand stack */
     CF2_Fixed  position = hintOffset;
 
+    if ( hasWidthArg && ! *haveWidth )
+      *width = cf2_stack_getReal( opStack, 0 ) +
+                 cf2_getNominalWidthX( font->decoder );
+
+    if ( font->decoder->width_only )
+      goto exit;
 
     for ( i = hasWidthArg ? 1 : 0; i < count; i += 2 )
     {
@@ -300,9 +307,9 @@
 
 
       stemhint.min  =
-      position     += cf2_stack_getReal( opStack, i );
+        position   += cf2_stack_getReal( opStack, i );
       stemhint.max  =
-      position     += cf2_stack_getReal( opStack, i + 1 );
+        position   += cf2_stack_getReal( opStack, i + 1 );
 
       stemhint.used  = FALSE;
       stemhint.maxDS =
@@ -311,13 +318,11 @@
       cf2_arrstack_push( stemHintArray, &stemhint ); /* defer error check */
     }
 
-    if ( hasWidthArg && ! *haveWidth )
-      *width = cf2_stack_getReal( opStack, 0 ) +
-                 cf2_getNominalWidthX( font->decoder );
-
-    *haveWidth = TRUE;
-
     cf2_stack_clear( opStack );
+
+  exit:
+    /* cf2_doStems must define a width (may be default) */
+    *haveWidth = TRUE;
   }
 
 
@@ -353,8 +358,8 @@
 
     if ( doConditionalLastRead )
     {
-      FT_Bool    lastIsX = cf2_fixedAbs( vals[10] - *curX ) >
-                             cf2_fixedAbs( vals[11] - *curY );
+      FT_Bool    lastIsX = (FT_Bool)( cf2_fixedAbs( vals[10] - *curX ) >
+                                        cf2_fixedAbs( vals[11] - *curY ) );
       CF2_Fixed  lastVal = cf2_stack_getReal( opStack, index );
 
 
@@ -507,6 +512,9 @@
      * What we implement here uses the first validly specified width, but
      * does not detect errors for specifying more than one width.
      *
+     * If one of the above operators occurs without explicitly specifying
+     * a width, we assume the default width.
+     *
      */
     haveWidth = FALSE;
     *width    = cf2_getDefaultWidthX( decoder );
@@ -586,8 +594,11 @@
 
         /* never add hints after the mask is computed */
         if ( cf2_hintmask_isValid( &hintMask ) )
+        {
           FT_TRACE4(( "cf2_interpT2CharString:"
                       " invalid horizontal hint mask\n" ));
+          break;
+        }
 
         cf2_doStems( font,
                      opStack,
@@ -595,6 +606,10 @@
                      width,
                      &haveWidth,
                      0 );
+
+        if ( font->decoder->width_only )
+            goto exit;
+
         break;
 
       case cf2_cmdVSTEMHM:
@@ -603,8 +618,11 @@
 
         /* never add hints after the mask is computed */
         if ( cf2_hintmask_isValid( &hintMask ) )
+        {
           FT_TRACE4(( "cf2_interpT2CharString:"
                       " invalid vertical hint mask\n" ));
+          break;
+        }
 
         cf2_doStems( font,
                      opStack,
@@ -612,19 +630,28 @@
                      width,
                      &haveWidth,
                      0 );
+
+        if ( font->decoder->width_only )
+            goto exit;
+
         break;
 
       case cf2_cmdVMOVETO:
         FT_TRACE4(( " vmoveto\n" ));
 
+        if ( cf2_stack_count( opStack ) > 1 && !haveWidth )
+          *width = cf2_stack_getReal( opStack, 0 ) + nominalWidthX;
+
+        /* width is defined or default after this */
+        haveWidth = TRUE;
+
+        if ( font->decoder->width_only )
+            goto exit;
+
         curY += cf2_stack_popFixed( opStack );
 
         cf2_glyphpath_moveTo( &glyphPath, curX, curY );
 
-        if ( cf2_stack_count( opStack ) > 0 && !haveWidth )
-          *width = cf2_stack_popFixed( opStack ) + nominalWidthX;
-
-        haveWidth = TRUE;
         break;
 
       case cf2_cmdRLINETO:
@@ -734,16 +761,19 @@
 
           /* push our current CFF charstring region on subrStack */
           charstring = (CF2_Buffer)
-                         cf2_arrstack_getPointer( &subrStack,
-                                                  charstringIndex + 1 );
+                         cf2_arrstack_getPointer(
+                           &subrStack,
+                           (size_t)charstringIndex + 1 );
 
           /* set up the new CFF region and pointer */
-          subrIndex = cf2_stack_popInt( opStack );
+          subrIndex = (CF2_UInt)cf2_stack_popInt( opStack );
 
           switch ( op1 )
           {
           case cf2_cmdCALLGSUBR:
-            FT_TRACE4(( "(%d)\n", subrIndex + decoder->globals_bias ));
+            FT_TRACE4(( " (idx %d, entering level %d)\n",
+                        subrIndex + (CF2_UInt)decoder->globals_bias,
+                        charstringIndex + 1 ));
 
             if ( cf2_initGlobalRegionBuffer( decoder,
                                              subrIndex,
@@ -756,7 +786,9 @@
 
           default:
             /* cf2_cmdCALLSUBR */
-            FT_TRACE4(( "(%d)\n", subrIndex + decoder->locals_bias ));
+            FT_TRACE4(( " (idx %d, entering level %d)\n",
+                        subrIndex + (CF2_UInt)decoder->locals_bias,
+                        charstringIndex + 1 ));
 
             if ( cf2_initLocalRegionBuffer( decoder,
                                             subrIndex,
@@ -772,7 +804,7 @@
         continue; /* do not clear the stack */
 
       case cf2_cmdRETURN:
-        FT_TRACE4(( " return\n" ));
+        FT_TRACE4(( " return (leaving level %d)\n", charstringIndex ));
 
         if ( charstringIndex < 1 )
         {
@@ -783,13 +815,14 @@
 
         /* restore position in previous charstring */
         charstring = (CF2_Buffer)
-                       cf2_arrstack_getPointer( &subrStack,
-                                                --charstringIndex );
+                       cf2_arrstack_getPointer(
+                         &subrStack,
+                         (CF2_UInt)--charstringIndex );
         continue;     /* do not clear the stack */
 
       case cf2_cmdESC:
         {
-          FT_Byte  op2 = cf2_buf_readByte( charstring );
+          FT_Byte  op2 = (FT_Byte)cf2_buf_readByte( charstring );
 
 
           switch ( op2 )
@@ -1048,7 +1081,11 @@
             *width = cf2_stack_getReal( opStack, 0 ) + nominalWidthX;
         }
 
+        /* width is defined or default after this */
         haveWidth = TRUE;
+
+        if ( font->decoder->width_only )
+            goto exit;
 
         /* close path if still open */
         cf2_glyphpath_closeOpenPath( &glyphPath );
@@ -1058,8 +1095,8 @@
           /* must be either 4 or 5 --                       */
           /* this is a (deprecated) implied `seac' operator */
 
-          CF2_UInt       achar;
-          CF2_UInt       bchar;
+          CF2_Int        achar;
+          CF2_Int        bchar;
           CF2_BufferRec  component;
           CF2_Fixed      dummyWidth;   /* ignore component width */
           FT_Error       error2;
@@ -1117,21 +1154,25 @@
         /* `cf2_hintmask_read' (which also traces the mask bytes) */
         FT_TRACE4(( op1 == cf2_cmdCNTRMASK ? " cntrmask" : " hintmask" ));
 
-        /* if there are arguments on the stack, there this is an */
-        /* implied cf2_cmdVSTEMHM                                */
-        if ( cf2_stack_count( opStack ) != 0 )
+        /* never add hints after the mask is computed */
+        if ( cf2_stack_count( opStack ) > 1    &&
+             cf2_hintmask_isValid( &hintMask ) )
         {
-          /* never add hints after the mask is computed */
-          if ( cf2_hintmask_isValid( &hintMask ) )
-            FT_TRACE4(( "cf2_interpT2CharString: invalid hint mask\n" ));
+          FT_TRACE4(( "cf2_interpT2CharString: invalid hint mask\n" ));
+          break;
         }
 
+        /* if there are arguments on the stack, there this is an */
+        /* implied cf2_cmdVSTEMHM                                */
         cf2_doStems( font,
                      opStack,
                      &vStemHintArray,
                      width,
                      &haveWidth,
                      0 );
+
+        if ( font->decoder->width_only )
+            goto exit;
 
         if ( op1 == cf2_cmdHINTMASK )
         {
@@ -1183,28 +1224,38 @@
       case cf2_cmdRMOVETO:
         FT_TRACE4(( " rmoveto\n" ));
 
+        if ( cf2_stack_count( opStack ) > 2 && !haveWidth )
+          *width = cf2_stack_getReal( opStack, 0 ) + nominalWidthX;
+
+        /* width is defined or default after this */
+        haveWidth = TRUE;
+
+        if ( font->decoder->width_only )
+            goto exit;
+
         curY += cf2_stack_popFixed( opStack );
         curX += cf2_stack_popFixed( opStack );
 
         cf2_glyphpath_moveTo( &glyphPath, curX, curY );
 
-        if ( cf2_stack_count( opStack ) > 0 && !haveWidth )
-          *width = cf2_stack_popFixed( opStack ) + nominalWidthX;
-
-        haveWidth = TRUE;
         break;
 
       case cf2_cmdHMOVETO:
         FT_TRACE4(( " hmoveto\n" ));
 
+        if ( cf2_stack_count( opStack ) > 1 && !haveWidth )
+          *width = cf2_stack_getReal( opStack, 0 ) + nominalWidthX;
+
+        /* width is defined or default after this */
+        haveWidth = TRUE;
+
+        if ( font->decoder->width_only )
+            goto exit;
+
         curX += cf2_stack_popFixed( opStack );
 
         cf2_glyphpath_moveTo( &glyphPath, curX, curY );
 
-        if ( cf2_stack_count( opStack ) > 0 && !haveWidth )
-          *width = cf2_stack_popFixed( opStack ) + nominalWidthX;
-
-        haveWidth = TRUE;
         break;
 
       case cf2_cmdRLINECURVE:
@@ -1247,9 +1298,15 @@
 
       case cf2_cmdVVCURVETO:
         {
-          CF2_UInt  count = cf2_stack_count( opStack );
+          CF2_UInt  count, count1 = cf2_stack_count( opStack );
           CF2_UInt  index = 0;
 
+
+          /* if `cf2_stack_count' isn't of the form 4n or 4n+1, */
+          /* we enforce it by clearing the second bit           */
+          /* (and sorting the stack indexing to suit)           */
+          count  = count1 & ~2;
+          index += count1 - count;
 
           FT_TRACE4(( " vvcurveto\n" ));
 
@@ -1286,9 +1343,15 @@
 
       case cf2_cmdHHCURVETO:
         {
-          CF2_UInt  count = cf2_stack_count( opStack );
+          CF2_UInt  count, count1 = cf2_stack_count( opStack );
           CF2_UInt  index = 0;
 
+
+          /* if `cf2_stack_count' isn't of the form 4n or 4n+1, */
+          /* we enforce it by clearing the second bit           */
+          /* (and sorting the stack indexing to suit)           */
+          count  = count1 & ~2;
+          index += count1 - count;
 
           FT_TRACE4(( " hhcurveto\n" ));
 
@@ -1326,11 +1389,18 @@
       case cf2_cmdVHCURVETO:
       case cf2_cmdHVCURVETO:
         {
-          CF2_UInt  count = cf2_stack_count( opStack );
+          CF2_UInt  count, count1 = cf2_stack_count( opStack );
           CF2_UInt  index = 0;
 
           FT_Bool  alternate = op1 == cf2_cmdHVCURVETO;
 
+
+          /* if `cf2_stack_count' isn't of the form 8n, 8n+1, */
+          /* 8n+4, or 8n+5, we enforce it by clearing the     */
+          /* second bit                                       */
+          /* (and sorting the stack indexing to suit)         */
+          count  = count1 & ~2;
+          index += count1 - count;
 
           FT_TRACE4(( alternate ? " hvcurveto\n" : " vhcurveto\n" ));
 

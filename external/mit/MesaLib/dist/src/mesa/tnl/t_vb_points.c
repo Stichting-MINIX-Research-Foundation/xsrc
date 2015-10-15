@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.0
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
  *    Brian Paul
@@ -47,7 +47,7 @@ struct point_stage_data {
  * disabled.
  */
 static GLboolean
-run_point_stage(GLcontext *ctx, struct tnl_pipeline_stage *stage)
+run_point_stage(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 {
    if (ctx->Point._Attenuated && !ctx->VertexProgram._Current) {
       struct point_stage_data *store = POINT_STAGE_DATA(stage);
@@ -64,7 +64,7 @@ run_point_stage(GLcontext *ctx, struct tnl_pipeline_stage *stage)
       for (i = 0; i < VB->Count; i++) {
          const GLfloat dist = FABSF(*eyeCoord);
          const GLfloat q = p0 + dist * (p1 + dist * p2);
-         const GLfloat atten = (q != 0.0F) ? SQRTF(1.0F / q) : 1.0F;
+         const GLfloat atten = (q != 0.0F) ? INV_SQRTF(q) : 1.0F;
          size[i][0] = pointSize * atten; /* clamping done in rasterization */
          eyeCoord += eyeCoordStride;
       }
@@ -77,7 +77,7 @@ run_point_stage(GLcontext *ctx, struct tnl_pipeline_stage *stage)
 
 
 static GLboolean
-alloc_point_data(GLcontext *ctx, struct tnl_pipeline_stage *stage)
+alloc_point_data(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 {
    struct vertex_buffer *VB = &TNL_CONTEXT(ctx)->vb;
    struct point_stage_data *store;

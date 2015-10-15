@@ -10,7 +10,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -27,67 +26,36 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef _EXTENSIONS_H_
 #define _EXTENSIONS_H_
 
-#include "mtypes.h"
+#include "glheader.h"
 
-#if _HAVE_FULL_GL
+struct gl_context;
+struct gl_extensions;
 
-extern void _mesa_enable_sw_extensions(GLcontext *ctx);
+extern void _mesa_enable_sw_extensions(struct gl_context *ctx);
 
-extern void _mesa_enable_imaging_extensions(GLcontext *ctx);
+extern void _mesa_one_time_init_extension_overrides(void);
 
-extern void _mesa_enable_1_3_extensions(GLcontext *ctx);
+extern void _mesa_init_extensions(struct gl_extensions *extentions);
 
-extern void _mesa_enable_1_4_extensions(GLcontext *ctx);
-
-extern void _mesa_enable_1_5_extensions(GLcontext *ctx);
-
-extern void _mesa_enable_2_0_extensions(GLcontext *ctx);
-
-extern void _mesa_enable_2_1_extensions(GLcontext *ctx);
-
-extern void _mesa_enable_extension(GLcontext *ctx, const char *name);
-
-extern void _mesa_disable_extension(GLcontext *ctx, const char *name);
-
-extern GLboolean _mesa_extension_is_enabled(GLcontext *ctx, const char *name);
-
-extern void _mesa_init_extensions(GLcontext *ctx);
-
-extern GLubyte *_mesa_make_extension_string(GLcontext *ctx);
+extern GLubyte *_mesa_make_extension_string(struct gl_context *ctx);
 
 extern GLuint
-_mesa_get_extension_count(GLcontext *ctx);
+_mesa_get_extension_count(struct gl_context *ctx);
 
 extern const GLubyte *
-_mesa_get_enabled_extension(GLcontext *ctx, GLuint index);
+_mesa_get_enabled_extension(struct gl_context *ctx, GLuint index);
 
-
-#else
-
-/** No-op */
-#define _mesa_extensions_dtr( ctx ) ((void)0)
-
-/** No-op */
-#define _mesa_extensions_ctr( ctx ) ((void)0)
-
-/** No-op */
-#define _mesa_extensions_get_string( ctx ) "GL_EXT_texture_object"
-
-/** No-op */
-#define _mesa_enable_imaging_extensions( c ) ((void)0)
-
-/** No-op */
-#define _mesa_enable_extension( c, n ) ((void)0)
-
-#endif
+extern struct gl_extensions _mesa_extension_override_enables;
+extern struct gl_extensions _mesa_extension_override_disables;
 
 #endif

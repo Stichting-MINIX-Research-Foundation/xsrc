@@ -38,7 +38,7 @@
 #include "u_cpu_detect.h"
 
 #if defined(PIPE_ARCH_PPC)
-#if defined(PIPE_OS_DARWIN)
+#if defined(PIPE_OS_APPLE)
 #include <sys/sysctl.h>
 #else
 #include <signal.h>
@@ -67,72 +67,25 @@
 
 #if defined(PIPE_OS_WINDOWS)
 #include <windows.h>
-#if defined(MSVC)
+#if defined(PIPE_CC_MSVC)
 #include <intrin.h>
 #endif
 #endif
 
 
+#ifdef DEBUG
+DEBUG_GET_ONCE_BOOL_OPTION(dump_cpu, "GALLIUM_DUMP_CPU", FALSE)
+#endif
+
+
 struct util_cpu_caps util_cpu_caps;
 
+#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
 static int has_cpuid(void);
-
-#if defined(PIPE_ARCH_X86)
-
-/* The sigill handlers */
-#if defined(PIPE_OS_LINUX) /*&& defined(_POSIX_SOURCE) && defined(X86_FXSR_MAGIC)*/
-static void
-sigill_handler_sse(int signal, struct sigcontext sc)
-{
-   /* Both the "xorps %%xmm0,%%xmm0" and "divps %xmm0,%%xmm1"
-    * instructions are 3 bytes long.  We must increment the instruction
-    * pointer manually to avoid repeated execution of the offending
-    * instruction.
-    *
-    * If the SIGILL is caused by a divide-by-zero when unmasked
-    * exceptions aren't supported, the SIMD FPU status and control
-    * word will be restored at the end of the test, so we don't need
-    * to worry about doing it here.  Besides, we may not be able to...
-    */
-   sc.eip += 3;
-
-   util_cpu_caps.has_sse=0;
-}
-
-static void
-sigfpe_handler_sse(int signal, struct sigcontext sc)
-{
-   if (sc.fpstate->magic != 0xffff) {
-      /* Our signal context has the extended FPU state, so reset the
-       * divide-by-zero exception mask and clear the divide-by-zero
-       * exception bit.
-       */
-      sc.fpstate->mxcsr |= 0x00000200;
-      sc.fpstate->mxcsr &= 0xfffffffb;
-   } else {
-      /* If we ever get here, we're completely hosed.
-      */
-   }
-}
-#endif /* PIPE_OS_LINUX && _POSIX_SOURCE && X86_FXSR_MAGIC */
-
-#if defined(PIPE_OS_WINDOWS)
-static LONG CALLBACK
-win32_sig_handler_sse(EXCEPTION_POINTERS* ep)
-{
-   if(ep->ExceptionRecord->ExceptionCode==EXCEPTION_ILLEGAL_INSTRUCTION){
-      ep->ContextRecord->Eip +=3;
-      util_cpu_caps.has_sse=0;
-      return EXCEPTION_CONTINUE_EXECUTION;
-   }
-   return EXCEPTION_CONTINUE_SEARCH;
-}
-#endif /* PIPE_OS_WINDOWS */
-
-#endif /* PIPE_ARCH_X86 */
+#endif
 
 
-#if defined(PIPE_ARCH_PPC) && !defined(PIPE_OS_DARWIN)
+#if defined(PIPE_ARCH_PPC) && !defined(PIPE_OS_APPLE)
 static jmp_buf  __lv_powerpc_jmpbuf;
 static volatile sig_atomic_t __lv_powerpc_canjump = 0;
 
@@ -153,7 +106,7 @@ sigill_handler(int sig)
 static void
 check_os_altivec_support(void)
 {
-#if defined(PIPE_OS_DARWIN)
+#if defined(PIPE_OS_APPLE)
    int sels[2] = {CTL_HW, HW_VECTORUNIT};
    int has_vu = 0;
    int len = sizeof (has_vu);
@@ -166,8 +119,8 @@ check_os_altivec_support(void)
          util_cpu_caps.has_altivec = 1;
       }
    }
-#else /* !PIPE_OS_DARWIN */
-   /* no Darwin, do it the brute-force way */
+#else /* !PIPE_OS_APPLE */
+   /* not on Apple/Darwin, do it the brute-force way */
    /* this is borrowed from the libmpeg2 library */
    signal(SIGILL, sigill_handler);
    if (setjmp(__lv_powerpc_jmpbuf)) {
@@ -184,127 +137,12 @@ check_os_altivec_support(void)
       signal(SIGILL, SIG_DFL);
       util_cpu_caps.has_altivec = 1;
    }
-#endif /* PIPE_OS_DARWIN */
+#endif /* !PIPE_OS_APPLE */
 }
 #endif /* PIPE_ARCH_PPC */
 
-/* If we're running on a processor that can do SSE, let's see if we
- * are allowed to or not.  This will catch 2.4.0 or later kernels that
- * haven't been configured for a Pentium III but are running on one,
- * and RedHat patched 2.2 kernels that have broken exception handling
- * support for user space apps that do SSE.
- */
+
 #if defined(PIPE_ARCH_X86) || defined (PIPE_ARCH_X86_64)
-static void
-check_os_katmai_support(void)
-{
-#if defined(PIPE_ARCH_X86)
-#if defined(PIPE_OS_FREEBSD)
-   int has_sse=0, ret;
-   int len = sizeof (has_sse);
-
-   ret = sysctlbyname("hw.instruction_sse", &has_sse, &len, NULL, 0);
-   if (ret || !has_sse)
-      util_cpu_caps.has_sse=0;
-
-#elif defined(PIPE_OS_NETBSD) || defined(PIPE_OS_OPENBSD)
-   int has_sse, has_sse2, ret, mib[2];
-   int varlen;
-
-   mib[0] = CTL_MACHDEP;
-   mib[1] = CPU_SSE;
-   varlen = sizeof (has_sse);
-
-   ret = sysctl(mib, 2, &has_sse, &varlen, NULL, 0);
-   if (ret < 0 || !has_sse) {
-      util_cpu_caps.has_sse = 0;
-   } else {
-      util_cpu_caps.has_sse = 1;
-   }
-
-   mib[1] = CPU_SSE2;
-   varlen = sizeof (has_sse2);
-   ret = sysctl(mib, 2, &has_sse2, &varlen, NULL, 0);
-   if (ret < 0 || !has_sse2) {
-      util_cpu_caps.has_sse2 = 0;
-   } else {
-      util_cpu_caps.has_sse2 = 1;
-   }
-   util_cpu_caps.has_sse = 0; /* FIXME ?!?!? */
-
-#elif defined(PIPE_OS_WINDOWS)
-   LPTOP_LEVEL_EXCEPTION_FILTER exc_fil;
-   if (util_cpu_caps.has_sse) {
-      exc_fil = SetUnhandledExceptionFilter(win32_sig_handler_sse);
-#if defined(PIPE_CC_GCC)
-      __asm __volatile ("xorps %xmm0, %xmm0");
-#elif defined(PIPE_CC_MSVC)
-      __asm {
-          xorps xmm0, xmm0        /* executing SSE instruction */
-      }
-#else
-#error Unsupported compiler
-#endif
-      SetUnhandledExceptionFilter(exc_fil);
-   }
-#elif defined(PIPE_OS_LINUX)
-   struct sigaction saved_sigill;
-   struct sigaction saved_sigfpe;
-
-   /* Save the original signal handlers.
-   */
-   sigaction(SIGILL, NULL, &saved_sigill);
-   sigaction(SIGFPE, NULL, &saved_sigfpe);
-
-   signal(SIGILL, (void (*)(int))sigill_handler_sse);
-   signal(SIGFPE, (void (*)(int))sigfpe_handler_sse);
-
-   /* Emulate test for OSFXSR in CR4.  The OS will set this bit if it
-    * supports the extended FPU save and restore required for SSE.  If
-    * we execute an SSE instruction on a PIII and get a SIGILL, the OS
-    * doesn't support Streaming SIMD Exceptions, even if the processor
-    * does.
-    */
-   if (util_cpu_caps.has_sse) {
-      __asm __volatile ("xorps %xmm1, %xmm0");
-   }
-
-   /* Emulate test for OSXMMEXCPT in CR4.  The OS will set this bit if
-    * it supports unmasked SIMD FPU exceptions.  If we unmask the
-    * exceptions, do a SIMD divide-by-zero and get a SIGILL, the OS
-    * doesn't support unmasked SIMD FPU exceptions.  If we get a SIGFPE
-    * as expected, we're okay but we need to clean up after it.
-    *
-    * Are we being too stringent in our requirement that the OS support
-    * unmasked exceptions?  Certain RedHat 2.2 kernels enable SSE by
-    * setting CR4.OSFXSR but don't support unmasked exceptions.  Win98
-    * doesn't even support them.  We at least know the user-space SSE
-    * support is good in kernels that do support unmasked exceptions,
-    * and therefore to be safe I'm going to leave this test in here.
-    */
-   if (util_cpu_caps.has_sse) {
-      /* test_os_katmai_exception_support(); */
-   }
-
-   /* Restore the original signal handlers.
-   */
-   sigaction(SIGILL, &saved_sigill, NULL);
-   sigaction(SIGFPE, &saved_sigfpe, NULL);
-
-#else
-   /* We can't use POSIX signal handling to test the availability of
-    * SSE, so we disable it by default.
-    */
-   util_cpu_caps.has_sse = 0;
-#endif /* __linux__ */
-#endif
-
-#if defined(PIPE_ARCH_X86_64)
-   util_cpu_caps.has_sse = 1;
-#endif
-}
-
-
 static int has_cpuid(void)
 {
 #if defined(PIPE_ARCH_X86)
@@ -344,7 +182,7 @@ static int has_cpuid(void)
 static INLINE void
 cpuid(uint32_t ax, uint32_t *p)
 {
-#if defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86)
+#if (defined(PIPE_CC_GCC) || defined(PIPE_CC_SUNPRO)) && defined(PIPE_ARCH_X86)
    __asm __volatile (
      "xchgl %%ebx, %1\n\t"
      "cpuid\n\t"
@@ -355,7 +193,7 @@ cpuid(uint32_t ax, uint32_t *p)
        "=d" (p[3])
      : "0" (ax)
    );
-#elif defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86_64)
+#elif (defined(PIPE_CC_GCC) || defined(PIPE_CC_SUNPRO)) && defined(PIPE_ARCH_X86_64)
    __asm __volatile (
      "cpuid\n\t"
      : "=a" (p[0]),
@@ -373,6 +211,88 @@ cpuid(uint32_t ax, uint32_t *p)
    p[3] = 0;
 #endif
 }
+
+/**
+ * @sa cpuid.h included in gcc-4.4 onwards.
+ * @sa http://msdn.microsoft.com/en-us/library/hskdteyh%28v=vs.90%29.aspx
+ */
+static INLINE void
+cpuid_count(uint32_t ax, uint32_t cx, uint32_t *p)
+{
+#if (defined(PIPE_CC_GCC) || defined(PIPE_CC_SUNPRO)) && defined(PIPE_ARCH_X86)
+   __asm __volatile (
+     "xchgl %%ebx, %1\n\t"
+     "cpuid\n\t"
+     "xchgl %%ebx, %1"
+     : "=a" (p[0]),
+       "=S" (p[1]),
+       "=c" (p[2]),
+       "=d" (p[3])
+     : "0" (ax), "2" (cx)
+   );
+#elif (defined(PIPE_CC_GCC) || defined(PIPE_CC_SUNPRO)) && defined(PIPE_ARCH_X86_64)
+   __asm __volatile (
+     "cpuid\n\t"
+     : "=a" (p[0]),
+       "=b" (p[1]),
+       "=c" (p[2]),
+       "=d" (p[3])
+     : "0" (ax), "2" (cx)
+   );
+#elif defined(PIPE_CC_MSVC)
+   __cpuidex(p, ax, cx);
+#else
+   p[0] = 0;
+   p[1] = 0;
+   p[2] = 0;
+   p[3] = 0;
+#endif
+}
+
+
+static INLINE uint64_t xgetbv(void)
+{
+#if defined(PIPE_CC_GCC)
+   uint32_t eax, edx;
+
+   __asm __volatile (
+     ".byte 0x0f, 0x01, 0xd0" // xgetbv isn't supported on gcc < 4.4
+     : "=a"(eax),
+       "=d"(edx)
+     : "c"(0)
+   );
+
+   return ((uint64_t)edx << 32) | eax;
+#elif defined(PIPE_CC_MSVC) && defined(_MSC_FULL_VER) && defined(_XCR_XFEATURE_ENABLED_MASK)
+   return _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+#else
+   return 0;
+#endif
+}
+
+
+#if defined(PIPE_ARCH_X86)
+static INLINE boolean sse2_has_daz(void)
+{
+   struct {
+      uint32_t pad1[7];
+      uint32_t mxcsr_mask;
+      uint32_t pad2[128-8];
+   } PIPE_ALIGN_VAR(16) fxarea;
+
+   fxarea.mxcsr_mask = 0;
+#if (defined(PIPE_CC_GCC) || defined(PIPE_CC_SUNPRO))
+   __asm __volatile ("fxsave %0" : "+m" (fxarea));
+#elif (defined(PIPE_CC_MSVC) && _MSC_VER >= 1700) || defined(PIPE_CC_ICL)
+   /* 1700 = Visual Studio 2012 */
+   _fxsave(&fxarea);
+#else
+   fxarea.mxcsr_mask = 0;
+#endif
+   return !!(fxarea.mxcsr_mask & (1 << 6));
+}
+#endif
+
 #endif /* X86 or X86_64 */
 
 void
@@ -384,23 +304,6 @@ util_cpu_detect(void)
       return;
 
    memset(&util_cpu_caps, 0, sizeof util_cpu_caps);
-
-   /* Check for arch type */
-#if defined(PIPE_ARCH_MIPS)
-   util_cpu_caps.arch = UTIL_CPU_ARCH_MIPS;
-#elif defined(PIPE_ARCH_ALPHA)
-   util_cpu_caps.arch = UTIL_CPU_ARCH_ALPHA;
-#elif defined(PIPE_ARCH_SPARC)
-   util_cpu_caps.arch = UTIL_CPU_ARCH_SPARC;
-#elif defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
-   util_cpu_caps.arch = UTIL_CPU_ARCH_X86;
-   util_cpu_caps.little_endian = 1;
-#elif defined(PIPE_ARCH_PPC)
-   util_cpu_caps.arch = UTIL_CPU_ARCH_POWERPC;
-   util_cpu_caps.little_endian = 0;
-#else
-   util_cpu_caps.arch = UTIL_CPU_ARCH_UNKNOWN;
-#endif
 
    /* Count the number of CPUs in system */
 #if defined(PIPE_OS_WINDOWS)
@@ -429,6 +332,11 @@ util_cpu_detect(void)
    util_cpu_caps.nr_cpus = 1;
 #endif
 
+   /* Make the fallback cacheline size nonzero so that it can be
+    * safely passed to align().
+    */
+   util_cpu_caps.cacheline = sizeof(void *);
+
 #if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
    if (has_cpuid()) {
       uint32_t regs[4];
@@ -449,18 +357,40 @@ util_cpu_detect(void)
              util_cpu_caps.x86_cpu_type = 8 + ((regs2[0] >> 20) & 255); /* use extended family (P4, IA64) */
 
          /* general feature flags */
-         util_cpu_caps.has_tsc    = (regs2[3] & (1 << 8  )) >>  8; /* 0x0000010 */
-         util_cpu_caps.has_mmx    = (regs2[3] & (1 << 23 )) >> 23; /* 0x0800000 */
-         util_cpu_caps.has_sse    = (regs2[3] & (1 << 25 )) >> 25; /* 0x2000000 */
-         util_cpu_caps.has_sse2   = (regs2[3] & (1 << 26 )) >> 26; /* 0x4000000 */
-         util_cpu_caps.has_sse3   = (regs2[2] & (1));          /* 0x0000001 */
-         util_cpu_caps.has_ssse3  = (regs2[2] & (1 << 9 )) >> 9;   /* 0x0000020 */
-         util_cpu_caps.has_sse4_1 = (regs2[2] & (1 << 19)) >> 19;
+         util_cpu_caps.has_tsc    = (regs2[3] >>  4) & 1; /* 0x0000010 */
+         util_cpu_caps.has_mmx    = (regs2[3] >> 23) & 1; /* 0x0800000 */
+         util_cpu_caps.has_sse    = (regs2[3] >> 25) & 1; /* 0x2000000 */
+         util_cpu_caps.has_sse2   = (regs2[3] >> 26) & 1; /* 0x4000000 */
+         util_cpu_caps.has_sse3   = (regs2[2] >>  0) & 1; /* 0x0000001 */
+         util_cpu_caps.has_ssse3  = (regs2[2] >>  9) & 1; /* 0x0000020 */
+         util_cpu_caps.has_sse4_1 = (regs2[2] >> 19) & 1;
+         util_cpu_caps.has_sse4_2 = (regs2[2] >> 20) & 1;
+         util_cpu_caps.has_popcnt = (regs2[2] >> 23) & 1;
+         util_cpu_caps.has_avx    = ((regs2[2] >> 28) & 1) && // AVX
+                                    ((regs2[2] >> 27) & 1) && // OSXSAVE
+                                    ((xgetbv() & 6) == 6);    // XMM & YMM
+         util_cpu_caps.has_f16c   = (regs2[2] >> 29) & 1;
          util_cpu_caps.has_mmx2   = util_cpu_caps.has_sse; /* SSE cpus supports mmxext too */
+#if defined(PIPE_ARCH_X86_64)
+         util_cpu_caps.has_daz = 1;
+#else
+         util_cpu_caps.has_daz = util_cpu_caps.has_sse3 ||
+            (util_cpu_caps.has_sse2 && sse2_has_daz());
+#endif
 
          cacheline = ((regs2[1] >> 8) & 0xFF) * 8;
          if (cacheline > 0)
             util_cpu_caps.cacheline = cacheline;
+      }
+      if (util_cpu_caps.has_avx && regs[0] >= 0x00000007) {
+         uint32_t regs7[4];
+         cpuid_count(0x00000007, 0x00000000, regs7);
+         util_cpu_caps.has_avx2 = (regs7[1] >> 5) & 1;
+      }
+
+      if (regs[1] == 0x756e6547 && regs[2] == 0x6c65746e && regs[3] == 0x49656e69) {
+         /* GenuineIntel */
+         util_cpu_caps.has_intel = 1;
       }
 
       cpuid(0x80000000, regs);
@@ -469,19 +399,19 @@ util_cpu_detect(void)
 
          cpuid(0x80000001, regs2);
 
-         util_cpu_caps.has_mmx  |= (regs2[3] & (1 << 23 )) >> 23; /* 0x0800000 */
-         util_cpu_caps.has_mmx2 |= (regs2[3] & (1 << 22 )) >> 22; /* 0x400000 */
-         util_cpu_caps.has_3dnow    = (regs2[3] & (1 << 31 )) >> 31; /* 0x80000000 */
-         util_cpu_caps.has_3dnow_ext = (regs2[3] & (1 << 30 )) >> 30;
+         util_cpu_caps.has_mmx  |= (regs2[3] >> 23) & 1;
+         util_cpu_caps.has_mmx2 |= (regs2[3] >> 22) & 1;
+         util_cpu_caps.has_3dnow = (regs2[3] >> 31) & 1;
+         util_cpu_caps.has_3dnow_ext = (regs2[3] >> 30) & 1;
+
+         util_cpu_caps.has_xop = util_cpu_caps.has_avx &&
+                                 ((regs2[2] >> 11) & 1);
       }
 
       if (regs[0] >= 0x80000006) {
          cpuid(0x80000006, regs2);
          util_cpu_caps.cacheline = regs2[2] & 0xFF;
       }
-
-      if (util_cpu_caps.has_sse)
-         check_os_katmai_support();
 
       if (!util_cpu_caps.has_sse) {
          util_cpu_caps.has_sse2 = 0;
@@ -497,23 +427,31 @@ util_cpu_detect(void)
 #endif /* PIPE_ARCH_PPC */
 
 #ifdef DEBUG
-   debug_printf("util_cpu_caps.arch = %i\n", util_cpu_caps.arch);
-   debug_printf("util_cpu_caps.nr_cpus = %u\n", util_cpu_caps.nr_cpus);
+   if (debug_get_option_dump_cpu()) {
+      debug_printf("util_cpu_caps.nr_cpus = %u\n", util_cpu_caps.nr_cpus);
 
-   debug_printf("util_cpu_caps.x86_cpu_type = %u\n", util_cpu_caps.x86_cpu_type);
-   debug_printf("util_cpu_caps.cacheline = %u\n", util_cpu_caps.cacheline);
+      debug_printf("util_cpu_caps.x86_cpu_type = %u\n", util_cpu_caps.x86_cpu_type);
+      debug_printf("util_cpu_caps.cacheline = %u\n", util_cpu_caps.cacheline);
 
-   debug_printf("util_cpu_caps.has_tsc = %u\n", util_cpu_caps.has_tsc);
-   debug_printf("util_cpu_caps.has_mmx = %u\n", util_cpu_caps.has_mmx);
-   debug_printf("util_cpu_caps.has_mmx2 = %u\n", util_cpu_caps.has_mmx2);
-   debug_printf("util_cpu_caps.has_sse = %u\n", util_cpu_caps.has_sse);
-   debug_printf("util_cpu_caps.has_sse2 = %u\n", util_cpu_caps.has_sse2);
-   debug_printf("util_cpu_caps.has_sse3 = %u\n", util_cpu_caps.has_sse3);
-   debug_printf("util_cpu_caps.has_ssse3 = %u\n", util_cpu_caps.has_ssse3);
-   debug_printf("util_cpu_caps.has_sse4_1 = %u\n", util_cpu_caps.has_sse4_1);
-   debug_printf("util_cpu_caps.has_3dnow = %u\n", util_cpu_caps.has_3dnow);
-   debug_printf("util_cpu_caps.has_3dnow_ext = %u\n", util_cpu_caps.has_3dnow_ext);
-   debug_printf("util_cpu_caps.has_altivec = %u\n", util_cpu_caps.has_altivec);
+      debug_printf("util_cpu_caps.has_tsc = %u\n", util_cpu_caps.has_tsc);
+      debug_printf("util_cpu_caps.has_mmx = %u\n", util_cpu_caps.has_mmx);
+      debug_printf("util_cpu_caps.has_mmx2 = %u\n", util_cpu_caps.has_mmx2);
+      debug_printf("util_cpu_caps.has_sse = %u\n", util_cpu_caps.has_sse);
+      debug_printf("util_cpu_caps.has_sse2 = %u\n", util_cpu_caps.has_sse2);
+      debug_printf("util_cpu_caps.has_sse3 = %u\n", util_cpu_caps.has_sse3);
+      debug_printf("util_cpu_caps.has_ssse3 = %u\n", util_cpu_caps.has_ssse3);
+      debug_printf("util_cpu_caps.has_sse4_1 = %u\n", util_cpu_caps.has_sse4_1);
+      debug_printf("util_cpu_caps.has_sse4_2 = %u\n", util_cpu_caps.has_sse4_2);
+      debug_printf("util_cpu_caps.has_avx = %u\n", util_cpu_caps.has_avx);
+      debug_printf("util_cpu_caps.has_avx2 = %u\n", util_cpu_caps.has_avx2);
+      debug_printf("util_cpu_caps.has_f16c = %u\n", util_cpu_caps.has_f16c);
+      debug_printf("util_cpu_caps.has_popcnt = %u\n", util_cpu_caps.has_popcnt);
+      debug_printf("util_cpu_caps.has_3dnow = %u\n", util_cpu_caps.has_3dnow);
+      debug_printf("util_cpu_caps.has_3dnow_ext = %u\n", util_cpu_caps.has_3dnow_ext);
+      debug_printf("util_cpu_caps.has_xop = %u\n", util_cpu_caps.has_xop);
+      debug_printf("util_cpu_caps.has_altivec = %u\n", util_cpu_caps.has_altivec);
+      debug_printf("util_cpu_caps.has_daz = %u\n", util_cpu_caps.has_daz);
+   }
 #endif
 
    util_cpu_detect_initialized = TRUE;

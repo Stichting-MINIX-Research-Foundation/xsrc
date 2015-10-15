@@ -22,6 +22,7 @@ Julien Cristau
 Ma Ling
 Bryce Harrington
 Daniel Stone
+Robert Lowery
 Kaleb Keithley
 Paulo Cesar Pereira de Andrade
 Eamon Walsh
@@ -54,7 +55,7 @@ let us know.
 
 The X.Org version of this driver is maintained by Intel Corporation:
 
-	http://www.intellinuxgraphics.org
+	https://01.org/linuxgraphics/
 
 The X11R6 version of this driver originally came from XFree86 4.4 rc2.
  

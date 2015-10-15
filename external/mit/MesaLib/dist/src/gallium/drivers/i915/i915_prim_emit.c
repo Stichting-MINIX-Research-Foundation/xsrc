@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -102,6 +102,13 @@ emit_hw_vertex( struct i915_context *i915,
          count += 4;
          break;
       case EMIT_4UB:
+         OUT_BATCH( pack_ub4(float_to_ubyte( attrib[0] ),
+                             float_to_ubyte( attrib[1] ),
+                             float_to_ubyte( attrib[2] ),
+                             float_to_ubyte( attrib[3] )) );
+         count += 1;
+         break;
+      case EMIT_4UB_BGRA:
          OUT_BATCH( pack_ub4(float_to_ubyte( attrib[2] ),
                              float_to_ubyte( attrib[1] ),
                              float_to_ubyte( attrib[0] ),
@@ -137,15 +144,14 @@ emit_prim( struct draw_stage *stage,
    vertex_size = i915->current.vertex_info.size * 4; /* in bytes */
    assert(vertex_size >= 12); /* never smaller than 12 bytes */
 
-   if (!BEGIN_BATCH( 1 + nr * vertex_size / 4, 0 )) {
-      FLUSH_BATCH(NULL);
+   if (!BEGIN_BATCH( 1 + nr * vertex_size / 4)) {
+      FLUSH_BATCH(NULL, I915_FLUSH_ASYNC);
 
       /* Make sure state is re-emitted after a flush: 
        */
-      i915_update_derived( i915 );
       i915_emit_hardware_state( i915 );
 
-      if (!BEGIN_BATCH( 1 + nr * vertex_size / 4, 0 )) {
+      if (!BEGIN_BATCH( 1 + nr * vertex_size / 4)) {
 	 assert(0);
 	 return;
       }

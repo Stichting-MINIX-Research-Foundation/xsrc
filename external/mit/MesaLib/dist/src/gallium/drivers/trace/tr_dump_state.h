@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -28,14 +28,13 @@
 #ifndef TR_DUMP_STATE_H_
 #define TR_DUMP_STATE_H_
 
-#include "pipe/p_format.h"
 #include "pipe/p_state.h"
 #include "pipe/p_shader_tokens.h"
 
 
-void trace_dump_format(enum pipe_format format);
+void trace_dump_resource_template(const struct pipe_resource *templat);
 
-void trace_dump_template(const struct pipe_texture *templat);
+void trace_dump_box(const struct pipe_box *box);
 
 void trace_dump_rasterizer_state(const struct pipe_rasterizer_state *state);
 
@@ -63,13 +62,27 @@ void trace_dump_framebuffer_state(const struct pipe_framebuffer_state *state);
 
 void trace_dump_sampler_state(const struct pipe_sampler_state *state);
 
-void trace_dump_surface(const struct pipe_surface *state);
+void trace_dump_sampler_view_template(const struct pipe_sampler_view *view,
+                                      enum pipe_texture_target target);
+
+void trace_dump_surface_template(const struct pipe_surface *state,
+                                 enum pipe_texture_target target);
 
 void trace_dump_transfer(const struct pipe_transfer *state);
 
 void trace_dump_vertex_buffer(const struct pipe_vertex_buffer *state);
 
+void trace_dump_index_buffer(const struct pipe_index_buffer *state);
+
 void trace_dump_vertex_element(const struct pipe_vertex_element *state);
 
+void trace_dump_constant_buffer(const struct pipe_constant_buffer *state);
+
+void trace_dump_draw_info(const struct pipe_draw_info *state);
+
+void trace_dump_blit_info(const struct pipe_blit_info *);
+
+void trace_dump_query_result(unsigned query_type,
+                             const union pipe_query_result *result);
 
 #endif /* TR_STATE_H */

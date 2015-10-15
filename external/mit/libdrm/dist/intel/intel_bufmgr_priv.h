@@ -62,6 +62,18 @@ struct _drm_intel_bufmgr {
 					      unsigned int alignment);
 
 	/**
+	 * Allocate a buffer object from an existing user accessible
+	 * address malloc'd with the provided size.
+	 * Alignment is used when mapping to the gtt.
+	 * Flags may be I915_VMAP_READ_ONLY or I915_USERPTR_UNSYNCHRONIZED
+	 */
+	drm_intel_bo *(*bo_alloc_userptr)(drm_intel_bufmgr *bufmgr,
+					  const char *name, void *addr,
+					  uint32_t tiling_mode, uint32_t stride,
+					  unsigned long size,
+					  unsigned long flags);
+
+	/**
 	 * Allocate a tiled buffer object.
 	 *
 	 * Alignment for tiled objects is set automatically; the 'flags'
@@ -177,8 +189,8 @@ struct _drm_intel_bufmgr {
 	 * ring buffer
 	 */
 	int (*bo_mrb_exec) (drm_intel_bo *bo, int used,
-			drm_clip_rect_t *cliprects, int num_cliprects,
-			int DR4, int ring_flag);
+			    drm_clip_rect_t *cliprects, int num_cliprects,
+			    int DR4, unsigned flags);
 
 	/**
 	 * Pin a buffer to the aperture and fix the offset until unpinned
@@ -278,6 +290,11 @@ struct _drm_intel_bufmgr {
 
 	/**< Enables verbose debugging printouts */
 	int debug;
+};
+
+struct _drm_intel_context {
+	unsigned int ctx_id;
+	struct _drm_intel_bufmgr *bufmgr;
 };
 
 #define ALIGN(value, alignment)	((value + alignment - 1) & ~(alignment - 1))

@@ -48,7 +48,7 @@ _XimSetIMStructureList(
     Xim		 *xim;
 
     if(!(_XimCurrentIMlist)) {
-	if(!(_XimCurrentIMlist = (Xim *)Xmalloc(sizeof(Xim))))
+	if(!(_XimCurrentIMlist = Xmalloc(sizeof(Xim))))
 	    return False;
 	_XimCurrentIMlist[0] = im;
 	_XimCurrentIMcount   = 1;
@@ -61,7 +61,7 @@ _XimSetIMStructureList(
 	    }
 	}
 	if(i >= _XimCurrentIMcount) {
-	    if(!(xim = (Xim *)Xrealloc(_XimCurrentIMlist,
+	    if(!(xim = Xrealloc(_XimCurrentIMlist,
 					 ((i + 1) * sizeof(Xim)))))
 		return False;
 	    _XimCurrentIMlist			  = xim;
@@ -239,14 +239,11 @@ Error4 :
     Xfree(im);
     return NULL;
 Error3 :
-    if(im->core.im_name)
-	Xfree(im->core.im_name);
+    Xfree(im->core.im_name);
 Error2:
-    if(im->core.res_class)
-	Xfree(im->core.res_class);
+    Xfree(im->core.res_class);
 Error1:
-    if(im->core.res_name)
-	Xfree(im->core.res_name);
+    Xfree(im->core.res_name);
     Xfree(im);
     return NULL;
 }

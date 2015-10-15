@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -37,7 +37,7 @@
  * There is no obligation of a winsys driver to use this library. And a pipe
  * driver should be completly agnostic about it.
  * 
- * \author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * \author Jose Fonseca <jfonseca@vmware.com>
  */
 
 #ifndef PB_BUFFER_H_
@@ -48,7 +48,6 @@
 #include "util/u_debug.h"
 #include "util/u_inlines.h"
 #include "pipe/p_defines.h"
-#include "pipe/p_state.h"
 
 
 #ifdef __cplusplus
@@ -58,7 +57,22 @@ extern "C" {
 
 struct pb_vtbl;
 struct pb_validate;
+struct pipe_fence_handle;
 
+
+#define PB_USAGE_CPU_READ  (1 << 0)
+#define PB_USAGE_CPU_WRITE (1 << 1)
+#define PB_USAGE_GPU_READ  (1 << 2)
+#define PB_USAGE_GPU_WRITE (1 << 3)
+#define PB_USAGE_UNSYNCHRONIZED (1 << 10)
+#define PB_USAGE_DONTBLOCK (1 << 9)
+
+#define PB_USAGE_CPU_READ_WRITE \
+   ( PB_USAGE_CPU_READ | PB_USAGE_CPU_WRITE )
+#define PB_USAGE_GPU_READ_WRITE \
+   ( PB_USAGE_GPU_READ | PB_USAGE_GPU_WRITE )
+#define PB_USAGE_WRITE \
+   ( PB_USAGE_CPU_WRITE | PB_USAGE_GPU_WRITE )
 
 /**
  * Buffer description.
@@ -83,7 +97,10 @@ typedef unsigned pb_size;
  */
 struct pb_buffer 
 {
-   struct pipe_buffer base;
+   struct pipe_reference  reference;
+   unsigned               size;
+   unsigned               alignment;
+   unsigned               usage;
 
    /**
     * Pointer to the virtual function table.
@@ -106,10 +123,10 @@ struct pb_vtbl
 
    /** 
     * Map the entire data store of a buffer object into the client's address.
-    * flags is bitmask of PIPE_BUFFER_FLAG_READ/WRITE. 
+    * flags is bitmask of PB_USAGE_CPU_READ/WRITE. 
     */
    void *(*map)( struct pb_buffer *buf, 
-                 unsigned flags );
+                 unsigned flags, void *flush_ctx );
    
    void (*unmap)( struct pb_buffer *buf );
 
@@ -138,35 +155,18 @@ struct pb_vtbl
 };
 
 
-static INLINE struct pipe_buffer *
-pb_pipe_buffer( struct pb_buffer *pbuf )
-{
-   assert(pbuf);
-   return &pbuf->base;
-}
-
-
-static INLINE struct pb_buffer *
-pb_buffer( struct pipe_buffer *buf )
-{
-   assert(buf);
-   /* Could add a magic cookie check on debug builds.
-    */
-   return (struct pb_buffer *)buf;
-}
-
 
 /* Accessor functions for pb->vtbl:
  */
 static INLINE void *
 pb_map(struct pb_buffer *buf, 
-       unsigned flags)
+       unsigned flags, void *flush_ctx)
 {
    assert(buf);
    if(!buf)
       return NULL;
-   assert(pipe_is_referenced(&buf->base.reference));
-   return buf->vtbl->map(buf, flags);
+   assert(pipe_is_referenced(&buf->reference));
+   return buf->vtbl->map(buf, flags, flush_ctx);
 }
 
 
@@ -176,7 +176,7 @@ pb_unmap(struct pb_buffer *buf)
    assert(buf);
    if(!buf)
       return;
-   assert(pipe_is_referenced(&buf->base.reference));
+   assert(pipe_is_referenced(&buf->reference));
    buf->vtbl->unmap(buf);
 }
 
@@ -192,11 +192,11 @@ pb_get_base_buffer( struct pb_buffer *buf,
       offset = 0;
       return;
    }
-   assert(pipe_is_referenced(&buf->base.reference));
+   assert(pipe_is_referenced(&buf->reference));
    assert(buf->vtbl->get_base_buffer);
    buf->vtbl->get_base_buffer(buf, base_buf, offset);
    assert(*base_buf);
-   assert(*offset < (*base_buf)->base.size);
+   assert(*offset < (*base_buf)->size);
 }
 
 
@@ -228,7 +228,7 @@ pb_destroy(struct pb_buffer *buf)
    assert(buf);
    if(!buf)
       return;
-   assert(!pipe_is_referenced(&buf->base.reference));
+   assert(!pipe_is_referenced(&buf->reference));
    buf->vtbl->destroy(buf);
 }
 
@@ -238,7 +238,7 @@ pb_reference(struct pb_buffer **dst,
 {
    struct pb_buffer *old = *dst;
 
-   if (pipe_reference(&(*dst)->base.reference, &src->base.reference))
+   if (pipe_reference(&(*dst)->reference, &src->reference))
       pb_destroy( old );
    *dst = src;
 }

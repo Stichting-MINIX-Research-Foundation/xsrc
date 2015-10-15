@@ -29,7 +29,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef __R200_TCL_H__
@@ -37,18 +37,14 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "r200_context.h"
 
-extern void r200TclPrimitive( GLcontext *ctx, GLenum prim, int hw_prim );
-extern void r200EmitEltPrimitive( GLcontext *ctx, GLuint first, GLuint last,
+extern void r200TclPrimitive( struct gl_context *ctx, GLenum prim, int hw_prim );
+extern void r200EmitEltPrimitive( struct gl_context *ctx, GLuint first, GLuint last,
 				    GLuint flags );
-extern void r200EmitPrimitive( GLcontext *ctx, GLuint first, GLuint last,
+extern void r200EmitPrimitive( struct gl_context *ctx, GLuint first, GLuint last,
 				 GLuint flags );
 
-extern void r200TclFallback( GLcontext *ctx, GLuint bit, GLboolean mode );
+extern void r200TclFallback( struct gl_context *ctx, GLuint bit, GLboolean mode );
 
-extern void r200InitStaticFogData( void );
-
-extern float r200ComputeFogBlendFactor( GLcontext *ctx, GLfloat fogcoord );
-					      
 #define R200_TCL_FALLBACK_RASTER            0x1 /* rasterization */
 #define R200_TCL_FALLBACK_UNFILLED          0x2 /* unfilled tris */
 #define R200_TCL_FALLBACK_LIGHT_TWOSIDE     0x4 /* twoside tris */

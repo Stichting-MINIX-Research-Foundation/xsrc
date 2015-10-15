@@ -49,19 +49,45 @@ struct svga_winsys_buffer;
 struct pipe_screen;
 struct pipe_context;
 struct pipe_fence_handle;
-struct pipe_texture;
+struct pipe_resource;
 struct svga_region;
+struct winsys_handle;
 
 
-#define SVGA_BUFFER_USAGE_PINNED  (PIPE_BUFFER_USAGE_CUSTOM << 0)
-#define SVGA_BUFFER_USAGE_WRAPPED (PIPE_BUFFER_USAGE_CUSTOM << 1)
+#define SVGA_BUFFER_USAGE_PINNED  (1 << 0)
+#define SVGA_BUFFER_USAGE_WRAPPED (1 << 1)
+#define SVGA_BUFFER_USAGE_SHADER  (1 << 2)
 
+/**
+ * Relocation flags to help with dirty tracking
+ * SVGA_RELOC_WRITE -   The command will cause a GPU write to this
+ *                      resource.
+ * SVGA_RELOC_READ -    The command will cause a GPU read from this
+ *                      resource.
+ * SVGA_RELOC_INTERNAL  The command will only transfer data internally
+ *                      within the resource, and optionally clear
+ *                      dirty bits
+ * SVGA_RELOC_DMA -     Only set for resource buffer DMA uploads for winsys
+ *                      implementations that want to track the amount
+ *                      of such data referenced in the command stream.
+ */
+#define SVGA_RELOC_WRITE          (1 << 0)
+#define SVGA_RELOC_READ           (1 << 1)
+#define SVGA_RELOC_INTERNAL       (1 << 2)
+#define SVGA_RELOC_DMA            (1 << 3)
+
+#define SVGA_FENCE_FLAG_EXEC      (1 << 0)
+#define SVGA_FENCE_FLAG_QUERY     (1 << 1)
+
+#define SVGA_SURFACE_USAGE_SHARED (1 << 0)
 
 /** Opaque surface handle */
 struct svga_winsys_surface;
 
-/** Opaque buffer handle */
-struct svga_winsys_handle;
+
+/** Opaque guest-backed objects */
+struct svga_winsys_gb_shader;
+
 
 
 /**
@@ -79,21 +105,22 @@ struct svga_winsys_context
    /**
     * Emit a relocation for a host surface.
     * 
-    * @param flags PIPE_BUFFER_USAGE_GPU_READ/WRITE
+    * @param flags bitmask of SVGA_RELOC_* flags
     * 
     * NOTE: Order of this call does matter. It should be the same order
     * as relocations appear in the command buffer.
     */
    void
    (*surface_relocation)(struct svga_winsys_context *swc, 
-	                 uint32 *sid, 
+	                 uint32 *sid,
+                         uint32 *mobid,
 	                 struct svga_winsys_surface *surface,
 	                 unsigned flags);
    
    /**
     * Emit a relocation for a guest memory region.
     * 
-    * @param flags PIPE_BUFFER_USAGE_GPU_READ/WRITE
+    * @param flags bitmask of SVGA_RELOC_* flags
     * 
     * NOTE: Order of this call does matter. It should be the same order
     * as relocations appear in the command buffer.
@@ -104,6 +131,47 @@ struct svga_winsys_context
 	                struct svga_winsys_buffer *buffer,
 	                uint32 offset,
                         unsigned flags);
+
+   /**
+    * Emit a relocation for a guest-backed shader object.
+    * 
+    * NOTE: Order of this call does matter. It should be the same order
+    * as relocations appear in the command buffer.
+    */
+   void
+   (*shader_relocation)(struct svga_winsys_context *swc, 
+	                uint32 *shid,
+			uint32 *mobid,
+			uint32 *offset,
+	                struct svga_winsys_gb_shader *shader);
+
+   /**
+    * Emit a relocation for a guest-backed context.
+    * 
+    * NOTE: Order of this call does matter. It should be the same order
+    * as relocations appear in the command buffer.
+    */
+   void
+   (*context_relocation)(struct svga_winsys_context *swc, uint32 *cid);
+
+   /**
+    * Emit a relocation for a guest Memory OBject.
+    *
+    * @param flags bitmask of SVGA_RELOC_* flags
+    * @param offset_into_mob Buffer starts at this offset into the MOB.
+    *
+    * Note that not all commands accept an offset into the MOB and
+    * those commands can't use suballocated buffer pools. To trap
+    * errors from improper buffer pool usage, set the offset_into_mob
+    * pointer to NULL.
+    */
+   void
+   (*mob_relocation)(struct svga_winsys_context *swc,
+		     SVGAMobId *id,
+		     uint32 *offset_into_mob,
+		     struct svga_winsys_buffer *buffer,
+		     uint32 offset,
+		     unsigned flags);
 
    void
    (*commit)(struct svga_winsys_context *swc);
@@ -119,6 +187,38 @@ struct svga_winsys_context
     * global to the entire SVGA device.
     */
    uint32 cid;
+
+   /**
+    ** BEGIN new functions for guest-backed surfaces.
+    **/
+
+   boolean have_gb_objects;
+
+   /**
+    * Map a guest-backed surface.
+    * \param flags  bitmaks of PIPE_TRANSFER_x flags
+    *
+    * The surface_map() member is allowed to fail due to a
+    * shortage of command buffer space, if the
+    * PIPE_TRANSFER_DISCARD_WHOLE_RESOURCE bit is set in flags.
+    * In that case, the caller must flush the current command
+    * buffer and reissue the map.
+    */
+   void *
+   (*surface_map)(struct svga_winsys_context *swc,
+                  struct svga_winsys_surface *surface,
+                  unsigned flags, boolean *retry);
+
+   /**
+    * Unmap a guest-backed surface.
+    * \param rebind  returns a flag indicating whether the caller should
+    *                issue a SVGA3D_BindGBSurface() call.
+    */
+   void
+   (*surface_unmap)(struct svga_winsys_context *swc,
+                    struct svga_winsys_surface *surface,
+                    boolean *rebind);
+
 };
 
 
@@ -130,6 +230,9 @@ struct svga_winsys_screen
    void
    (*destroy)(struct svga_winsys_screen *sws);
    
+   SVGA3dHardwareVersion
+   (*get_hw_version)(struct svga_winsys_screen *sws);
+
    boolean
    (*get_cap)(struct svga_winsys_screen *sws,
               SVGA3dDevCapIndex index,
@@ -150,8 +253,17 @@ struct svga_winsys_screen
    
    
    /**
-    * This creates a "surface" object in the SVGA3D device,
-    * and returns the surface ID (sid). Surfaces are generic
+    * This creates a "surface" object in the SVGA3D device.
+    *
+    * \param sws Pointer to an svga_winsys_context
+    * \param flags Device surface create flags
+    * \param format Format Device surface format
+    * \param usage Winsys usage: bitmask of SVGA_SURFACE_USAGE_x flags
+    * \param size Surface size given in device format
+    * \param numFaces Number of faces of the surface (1 or 6)
+    * \param numMipLevels Number of mipmap levels for each face
+    *
+    * Returns the surface ID (sid). Surfaces are generic
     * containers for host VRAM objects like textures, vertex
     * buffers, and depth/stencil buffers.
     *
@@ -182,9 +294,29 @@ struct svga_winsys_screen
    (*surface_create)(struct svga_winsys_screen *sws,
                      SVGA3dSurfaceFlags flags,
                      SVGA3dSurfaceFormat format,
+                     unsigned usage,
                      SVGA3dSize size,
                      uint32 numFaces,
                      uint32 numMipLevels);
+
+   /**
+    * Creates a surface from a winsys handle.
+    * Used to implement pipe_screen::resource_from_handle.
+    */
+   struct svga_winsys_surface *
+   (*surface_from_handle)(struct svga_winsys_screen *sws,
+                          struct winsys_handle *whandle,
+                          SVGA3dSurfaceFormat *format);
+
+   /**
+    * Get a winsys_handle from a surface.
+    * Used to implement pipe_screen::resource_get_handle.
+    */
+   boolean
+   (*surface_get_handle)(struct svga_winsys_screen *sws,
+                         struct svga_winsys_surface *surface,
+                         unsigned stride,
+                         struct winsys_handle *whandle);
 
    /**
     * Whether this surface is sitting in a validate list
@@ -203,15 +335,21 @@ struct svga_winsys_screen
 			struct svga_winsys_surface *src);
 
    /**
+    * Check if a resource (texture, buffer) of the given size
+    * and format can be created.
+    * \Return TRUE if OK, FALSE if too large.
+    */
+   boolean
+   (*surface_can_create)(struct svga_winsys_screen *sws,
+                         SVGA3dSurfaceFormat format,
+                         SVGA3dSize size,
+                         uint32 numFaces,
+                         uint32 numMipLevels);
+
+   /**
     * Buffer management. Buffer attributes are mostly fixed over its lifetime.
     *
-    * Remember that gallium gets to choose the interface it needs, and the
-    * window systems must then implement that interface (rather than the
-    * other way around...).
-    *
-    * usage is a bitmask of PIPE_BUFFER_USAGE_PIXEL/VERTEX/INDEX/CONSTANT. This
-    * usage argument is only an optimization hint, not a guarantee, therefore 
-    * proper behavior must be observed in all circumstances.
+    * @param usage bitmask of SVGA_BUFFER_USAGE_* flags.
     *
     * alignment indicates the client's alignment requirements, eg for
     * SSE instructions.
@@ -224,10 +362,7 @@ struct svga_winsys_screen
 
    /** 
     * Map the entire data store of a buffer object into the client's address.
-    * flags is a bitmask of:
-    * - PIPE_BUFFER_USAGE_CPU_READ/WRITE
-    * - PIPE_BUFFER_USAGE_DONTBLOCK
-    * - PIPE_BUFFER_USAGE_UNSYNCHRONIZED
+    * usage is a bitmask of PIPE_TRANSFER_*
     */
    void *
    (*buffer_map)( struct svga_winsys_screen *sws, 
@@ -269,34 +404,49 @@ struct svga_winsys_screen
                         struct pipe_fence_handle *fence,
                         unsigned flag );
 
+
+   /**
+    ** BEGIN new functions for guest-backed surfaces.
+    **/
+
+   /** Are guest-backed objects enabled? */
+   bool have_gb_objects;
+
+   /** Can we do DMA with guest-backed objects enabled? */
+   bool have_gb_dma;
+
+   /**
+    * Create and define a GB shader.
+    */
+   struct svga_winsys_gb_shader *
+   (*shader_create)(struct svga_winsys_screen *sws,
+		    SVGA3dShaderType type,
+		    const uint32 *bytecode,
+		    uint32 bytecodeLen);
+
+   /**
+    * Destroy a GB shader. It's safe to call this function even
+    * if the shader is referenced in a context's command stream.
+    */
+   void
+   (*shader_destroy)(struct svga_winsys_screen *sws,
+		     struct svga_winsys_gb_shader *shader);
+
 };
 
-
-struct pipe_screen *
-svga_screen_create(struct svga_winsys_screen *sws);
 
 struct svga_winsys_screen *
 svga_winsys_screen(struct pipe_screen *screen);
 
-struct pipe_buffer *
+struct svga_winsys_context *
+svga_winsys_context(struct pipe_context *context);
+
+struct pipe_resource *
 svga_screen_buffer_wrap_surface(struct pipe_screen *screen,
 				enum SVGA3dSurfaceFormat format,
 				struct svga_winsys_surface *srf);
 
 struct svga_winsys_surface *
-svga_screen_texture_get_winsys_surface(struct pipe_texture *texture);
-struct svga_winsys_surface *
-svga_screen_buffer_get_winsys_surface(struct pipe_buffer *buffer);
-
-boolean
-svga_screen_buffer_from_texture(struct pipe_texture *texture,
-				struct pipe_buffer **buffer,
-				unsigned *stride);
-
-struct pipe_texture *
-svga_screen_texture_wrap_surface(struct pipe_screen *screen,
-				 struct pipe_texture *base,
-				 enum SVGA3dSurfaceFormat format,
-				 struct svga_winsys_surface *srf);
+svga_screen_buffer_get_winsys_surface(struct pipe_resource *buffer);
 
 #endif /* SVGA_WINSYS_H_ */

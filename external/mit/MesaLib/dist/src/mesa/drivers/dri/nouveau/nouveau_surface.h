@@ -39,14 +39,14 @@ struct nouveau_surface {
 
 	enum nouveau_surface_layout layout;
 
-	gl_format format;
+	mesa_format format;
 	unsigned cpp, pitch;
 
 	unsigned width, height;
 };
 
 void
-nouveau_surface_alloc(GLcontext *ctx, struct nouveau_surface *s,
+nouveau_surface_alloc(struct gl_context *ctx, struct nouveau_surface *s,
 		      enum nouveau_surface_layout layout,
 		      unsigned flags, unsigned format,
 		      unsigned width, unsigned height);

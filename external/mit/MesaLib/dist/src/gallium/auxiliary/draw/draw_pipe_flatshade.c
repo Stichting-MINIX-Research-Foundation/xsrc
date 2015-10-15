@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,14 +18,14 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 #include "util/u_math.h"
@@ -257,9 +257,6 @@ struct draw_stage *draw_flatshade_stage( struct draw_context *draw )
    if (flatshade == NULL)
       goto fail;
 
-   if (!draw_alloc_temp_verts( &flatshade->stage, 2 ))
-      goto fail;
-
    flatshade->stage.draw = draw;
    flatshade->stage.name = "flatshade";
    flatshade->stage.next = NULL;
@@ -269,6 +266,9 @@ struct draw_stage *draw_flatshade_stage( struct draw_context *draw )
    flatshade->stage.flush = flatshade_flush;
    flatshade->stage.reset_stipple_counter = flatshade_reset_stipple_counter;
    flatshade->stage.destroy = flatshade_destroy;
+
+   if (!draw_alloc_temp_verts( &flatshade->stage, 2 ))
+      goto fail;
 
    return &flatshade->stage;
 

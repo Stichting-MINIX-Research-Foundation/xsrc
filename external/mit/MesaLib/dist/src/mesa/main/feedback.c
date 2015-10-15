@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -39,9 +39,6 @@
 #include "main/dispatch.h"
 
 
-#if FEATURE_feedback
-
-
 #define FB_3D		0x01
 #define FB_4D		0x02
 #define FB_COLOR	0x04
@@ -49,11 +46,10 @@
 
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_FeedbackBuffer( GLsizei size, GLenum type, GLfloat *buffer )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (ctx->RenderMode==GL_FEEDBACK) {
       _mesa_error( ctx, GL_INVALID_OPERATION, "glFeedbackBuffer" );
@@ -63,7 +59,7 @@ _mesa_FeedbackBuffer( GLsizei size, GLenum type, GLfloat *buffer )
       _mesa_error( ctx, GL_INVALID_VALUE, "glFeedbackBuffer(size<0)" );
       return;
    }
-   if (!buffer) {
+   if (!buffer && size > 0) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glFeedbackBuffer(buffer==NULL)" );
       ctx->Feedback.BufferSize = 0;
       return;
@@ -98,11 +94,10 @@ _mesa_FeedbackBuffer( GLsizei size, GLenum type, GLfloat *buffer )
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_PassThrough( GLfloat token )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (ctx->RenderMode==GL_FEEDBACK) {
       FLUSH_VERTICES(ctx, 0);
@@ -116,7 +111,7 @@ _mesa_PassThrough( GLfloat token )
  * Put a vertex into the feedback buffer.
  */
 void
-_mesa_feedback_vertex(GLcontext *ctx,
+_mesa_feedback_vertex(struct gl_context *ctx,
                       const GLfloat win[4],
                       const GLfloat color[4],
                       const GLfloat texcoord[4])
@@ -159,13 +154,17 @@ _mesa_feedback_vertex(GLcontext *ctx,
  * \note this function can't be put in a display list.
  * 
  * Verifies we're not in selection mode, flushes the vertices and initialize
- * the fields in __GLcontextRec::Select with the given buffer.
+ * the fields in __struct gl_contextRec::Select with the given buffer.
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SelectBuffer( GLsizei size, GLuint *buffer )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
+
+   if (size < 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glSelectBuffer(size)");
+      return;
+   }
 
    if (ctx->RenderMode==GL_SELECT) {
       _mesa_error( ctx, GL_INVALID_OPERATION, "glSelectBuffer" );
@@ -191,8 +190,8 @@ _mesa_SelectBuffer( GLsizei size, GLuint *buffer )
  * Verifies there is free space in the buffer to write the value and
  * increments the pointer.
  */
-static INLINE void
-write_record(GLcontext *ctx, GLuint value)
+static inline void
+write_record(struct gl_context *ctx, GLuint value)
 {
    if (ctx->Select.BufferCount < ctx->Select.BufferSize) {
       ctx->Select.Buffer[ctx->Select.BufferCount] = value;
@@ -211,7 +210,7 @@ write_record(GLcontext *ctx, GLuint value)
  * gl_selection::HitMaxZ.
  */
 void
-_mesa_update_hitflag(GLcontext *ctx, GLfloat z)
+_mesa_update_hitflag(struct gl_context *ctx, GLfloat z)
 {
    ctx->Select.HitFlag = GL_TRUE;
    if (z < ctx->Select.HitMinZ) {
@@ -235,7 +234,7 @@ _mesa_update_hitflag(GLcontext *ctx, GLfloat z)
  * \sa gl_selection.
  */
 static void
-write_hit_record(GLcontext *ctx)
+write_hit_record(struct gl_context *ctx)
 {
    GLuint i;
    GLuint zmin, zmax, zscale = (~0u);
@@ -266,13 +265,13 @@ write_hit_record(GLcontext *ctx)
  *
  * Verifies we are in select mode and resets the name stack depth and resets
  * the hit record data in gl_selection. Marks new render mode in
- * __GLcontextRec::NewState.
+ * __struct gl_contextRec::NewState.
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_InitNames( void )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+   FLUSH_VERTICES(ctx, 0);
 
    /* Record the hit before the HitFlag is wiped out again. */
    if (ctx->RenderMode == GL_SELECT) {
@@ -297,13 +296,12 @@ _mesa_InitNames( void )
  * Flushes vertices. If there is a hit flag writes it (via write_hit_record()),
  * and replace the top-most name in the stack.
  *
- * sa __GLcontextRec::Select.
+ * sa __struct gl_contextRec::Select.
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_LoadName( GLuint name )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (ctx->RenderMode != GL_SELECT) {
       return;
@@ -336,13 +334,12 @@ _mesa_LoadName( GLuint name )
  * Flushes vertices. If there is a hit flag writes it (via write_hit_record()),
  * and adds the name to the top of the name stack.
  *
- * sa __GLcontextRec::Select.
+ * sa __struct gl_contextRec::Select.
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_PushName( GLuint name )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (ctx->RenderMode != GL_SELECT) {
       return;
@@ -367,13 +364,12 @@ _mesa_PushName( GLuint name )
  * Flushes vertices. If there is a hit flag writes it (via write_hit_record()),
  * and removes top-most name in the name stack.
  *
- * sa __GLcontextRec::Select.
+ * sa __struct gl_contextRec::Select.
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_PopName( void )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (ctx->RenderMode != GL_SELECT) {
       return;
@@ -409,10 +405,10 @@ _mesa_PopName( void )
  * Flushes the vertices and do the necessary cleanup according to the previous
  * rasterization mode, such as writing the hit record or resent the select
  * buffer index when exiting the select mode. Updates
- * __GLcontextRec::RenderMode and notifies the driver via the
+ * __struct gl_contextRec::RenderMode and notifies the driver via the
  * dd_function_table::RenderMode callback.
  */
-static GLint GLAPIENTRY
+GLint GLAPIENTRY
 _mesa_RenderMode( GLenum mode )
 {
    GET_CURRENT_CONTEXT(ctx);
@@ -446,7 +442,6 @@ _mesa_RenderMode( GLenum mode )
 	 ctx->Select.Hits = 0;
 	 ctx->Select.NameStackDepth = 0;
 	 break;
-#if _HAVE_FULL_GL
       case GL_FEEDBACK:
 	 if (ctx->Feedback.Count > ctx->Feedback.BufferSize) {
 	    /* overflow */
@@ -457,7 +452,6 @@ _mesa_RenderMode( GLenum mode )
 	 }
 	 ctx->Feedback.Count = 0;
 	 break;
-#endif
       default:
 	 _mesa_error( ctx, GL_INVALID_ENUM, "glRenderMode" );
 	 return 0;
@@ -472,14 +466,12 @@ _mesa_RenderMode( GLenum mode )
 	    _mesa_error( ctx, GL_INVALID_OPERATION, "glRenderMode" );
 	 }
 	 break;
-#if _HAVE_FULL_GL
       case GL_FEEDBACK:
 	 if (ctx->Feedback.BufferSize==0) {
 	    /* haven't called glFeedbackBuffer yet */
 	    _mesa_error( ctx, GL_INVALID_OPERATION, "glRenderMode" );
 	 }
 	 break;
-#endif
       default:
 	 _mesa_error( ctx, GL_INVALID_ENUM, "glRenderMode" );
 	 return 0;
@@ -495,23 +487,6 @@ _mesa_RenderMode( GLenum mode )
 /*@}*/
 
 
-void
-_mesa_init_feedback_dispatch(struct _glapi_table *disp)
-{
-   SET_InitNames(disp, _mesa_InitNames);
-   SET_FeedbackBuffer(disp, _mesa_FeedbackBuffer);
-   SET_LoadName(disp, _mesa_LoadName);
-   SET_PassThrough(disp, _mesa_PassThrough);
-   SET_PopName(disp, _mesa_PopName);
-   SET_PushName(disp, _mesa_PushName);
-   SET_SelectBuffer(disp, _mesa_SelectBuffer);
-   SET_RenderMode(disp, _mesa_RenderMode);
-}
-
-
-#endif /* FEATURE_feedback */
-
-
 /**********************************************************************/
 /** \name Initialization */
 /*@{*/
@@ -519,7 +494,7 @@ _mesa_init_feedback_dispatch(struct _glapi_table *disp)
 /**
  * Initialize context feedback data.
  */
-void _mesa_init_feedback( GLcontext * ctx )
+void _mesa_init_feedback( struct gl_context * ctx )
 {
    /* Feedback */
    ctx->Feedback.Type = GL_2D;   /* TODO: verify */

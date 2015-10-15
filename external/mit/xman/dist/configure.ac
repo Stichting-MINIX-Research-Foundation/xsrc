@@ -21,11 +21,15 @@ dnl  PERFORMANCE OF THIS SOFTWARE.
 dnl
 dnl Process this file with autoconf to create configure.
 
+# Initialize Autoconf
 AC_PREREQ([2.60])
-AC_INIT([xman], [1.1.2],
+AC_INIT([xman], [1.1.4],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg], [xman])
+AC_CONFIG_SRCDIR([Makefile.am])
+AC_CONFIG_HEADERS([config.h])
+
+# Initialize Automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
-AM_MAINTAINER_MODE
 
 # Require X.Org macros 1.8 or later for MAN_SUBSTS set by XORG_MANPAGE_SECTIONS
 m4_ifndef([XORG_MACROS_VERSION],
@@ -33,12 +37,14 @@ m4_ifndef([XORG_MACROS_VERSION],
 XORG_MACROS_VERSION(1.8)
 XORG_DEFAULT_OPTIONS
 
-AC_CONFIG_HEADERS([config.h])
-
 AC_CANONICAL_HOST
 
-AC_CHECK_FUNC([mkstemp], 
-   AC_DEFINE(HAS_MKSTEMP,1,[Define to 1 if you have the "mkstemp" function.]))
+AC_CHECK_PROG([GROFF], [groff], [found], [missing])
+if test "x$GROFF" = "xfound" ; then
+   AC_DEFINE([HAS_GROFF], 1, [Define to 1 if you have the groff package.])
+fi
+
+AC_CHECK_FUNCS([mkstemp])
 
 AC_ARG_WITH(helpdir,
         AS_HELP_STRING([--with-helpdir=<path>],
@@ -66,7 +72,7 @@ if test x$LOCALMANPATH != x; then
 fi
 
 # Obtain compiler/linker options from depedencies
-PKG_CHECK_MODULES(XMAN, xproto xaw7 xt)
+PKG_CHECK_MODULES(XMAN, [xproto >= 7.0.17 xaw7 xt])
 
 AC_ARG_WITH(manconfig,
         AS_HELP_STRING([--with-manconfig=<filename>],

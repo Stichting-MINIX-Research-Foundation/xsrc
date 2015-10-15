@@ -26,10 +26,15 @@
  **************************************************************************/
 
 
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "libdrm_macros.h"
 #include "internal.h"
 
 int kms_create(int fd, struct kms_driver **out)
@@ -80,7 +85,7 @@ int kms_bo_create(struct kms_driver *kms, const unsigned *attr, struct kms_bo **
 			type = value;
 			break;
 		default:
-			return EINVAL;
+			return -EINVAL;
 		}
 	}
 

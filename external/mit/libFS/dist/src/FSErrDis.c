@@ -70,7 +70,7 @@ static const char *FSErrorList[] = {
      /* FSBadLength	 */ "BadLength, request too large or internal FSlib length error",
      /* FSBadImplementation */ "BadImplementation, request unsupported",
 };
-static int FSErrorListSize = sizeof(FSErrorList);
+#define FSErrorListSize sizeof(FSErrorList)
 
 
 /* ARGSUSED */
@@ -84,9 +84,14 @@ int FSGetErrorDatabaseText(
 {
     if (nbytes == 0)
 	return 0;
+#ifdef HAVE_STRLCPY
+    if (strlcpy(buffer, defaultp, nbytes) >= nbytes)
+	return 0;
+#else
     (void) strncpy(buffer, defaultp, nbytes);
     if ((strlen(defaultp) + 1) > nbytes)
 	buffer[nbytes - 1] = '\0';
+#endif
     return 1;
 }
 
@@ -96,8 +101,6 @@ int FSGetErrorText(
     char		*buffer,
     int			 nbytes)
 {
-
-    const char *defaultp = NULL;
     char        buf[32];
     register _FSExtension *ext;
 
@@ -105,7 +108,7 @@ int FSGetErrorText(
 	return 0;
     snprintf(buf, sizeof(buf), "%d", code);
     if (code < (FSErrorListSize / sizeof(char *)) && code >= 0) {
-	defaultp = FSErrorList[code];
+	const char *defaultp = FSErrorList[code];
 	FSGetErrorDatabaseText(svr, "FSProtoError", buf, defaultp, buffer, nbytes);
     }
     ext = svr->ext_procs;

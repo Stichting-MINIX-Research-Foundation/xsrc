@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -113,8 +113,24 @@ tgsi_parse_token(
          next_token(ctx, &decl->Dim);
       }
 
+      if( decl->Declaration.Interpolate ) {
+         next_token( ctx, &decl->Interp );
+      }
+
       if( decl->Declaration.Semantic ) {
          next_token( ctx, &decl->Semantic );
+      }
+
+      if (decl->Declaration.File == TGSI_FILE_RESOURCE) {
+         next_token(ctx, &decl->Resource);
+      }
+
+      if (decl->Declaration.File == TGSI_FILE_SAMPLER_VIEW) {
+         next_token(ctx, &decl->SamplerView);
+      }
+
+      if( decl->Declaration.Array ) {
+         next_token(ctx, &decl->Array);
       }
 
       break;
@@ -173,6 +189,9 @@ tgsi_parse_token(
 
       if (inst->Instruction.Texture) {
          next_token( ctx, &inst->Texture);
+         for( i = 0; i < inst->Texture.NumOffsets; i++ ) {
+            next_token( ctx, &inst->TexOffsets[i] );
+         }
       }
 
       assert( inst->Instruction.NumDstRegs <= TGSI_FULL_MAX_DST_REGISTERS );
@@ -181,19 +200,19 @@ tgsi_parse_token(
 
          next_token( ctx, &inst->Dst[i].Register );
 
-         /*
-          * No support for indirect or multi-dimensional addressing.
-          */
-         assert( !inst->Dst[i].Register.Dimension );
-
-         if( inst->Dst[i].Register.Indirect ) {
+         if( inst->Dst[i].Register.Indirect )
             next_token( ctx, &inst->Dst[i].Indirect );
 
+         if( inst->Dst[i].Register.Dimension ) {
+            next_token( ctx, &inst->Dst[i].Dimension );
+
             /*
-             * No support for indirect or multi-dimensional addressing.
+             * No support for multi-dimensional addressing.
              */
-            assert( !inst->Dst[i].Indirect.Dimension );
-            assert( !inst->Dst[i].Indirect.Indirect );
+            assert( !inst->Dst[i].Dimension.Dimension );
+
+            if( inst->Dst[i].Dimension.Indirect )
+               next_token( ctx, &inst->Dst[i].DimIndirect );
          }
       }
 
@@ -203,15 +222,8 @@ tgsi_parse_token(
 
          next_token( ctx, &inst->Src[i].Register );
 
-         if( inst->Src[i].Register.Indirect ) {
+         if( inst->Src[i].Register.Indirect )
             next_token( ctx, &inst->Src[i].Indirect );
-
-            /*
-             * No support for indirect or multi-dimensional addressing.
-             */
-            assert( !inst->Src[i].Indirect.Indirect );
-            assert( !inst->Src[i].Indirect.Dimension );
-         }
 
          if( inst->Src[i].Register.Dimension ) {
             next_token( ctx, &inst->Src[i].Dimension );
@@ -221,15 +233,8 @@ tgsi_parse_token(
              */
             assert( !inst->Src[i].Dimension.Dimension );
 
-            if( inst->Src[i].Dimension.Indirect ) {
+            if( inst->Src[i].Dimension.Indirect )
                next_token( ctx, &inst->Src[i].DimIndirect );
-
-               /*
-               * No support for indirect or multi-dimensional addressing.
-               */
-               assert( !inst->Src[i].Indirect.Indirect );
-               assert( !inst->Src[i].Indirect.Dimension );
-            }
          }
       }
 
@@ -258,17 +263,6 @@ tgsi_parse_token(
 }
 
 
-unsigned
-tgsi_num_tokens(const struct tgsi_token *tokens)
-{
-   struct tgsi_parse_context ctx;
-   if (tgsi_parse_init(&ctx, tokens) == TGSI_PARSE_OK) {
-      unsigned len = (ctx.FullHeader.Header.HeaderSize +
-                      ctx.FullHeader.Header.BodySize);
-      return len;
-   }
-   return 0;
-}
 
 
 /**
@@ -294,4 +288,20 @@ tgsi_alloc_tokens(unsigned num_tokens)
 {
    unsigned bytes = num_tokens * sizeof(struct tgsi_token);
    return (struct tgsi_token *) MALLOC(bytes);
+}
+
+
+void
+tgsi_dump_tokens(const struct tgsi_token *tokens)
+{
+   const unsigned *dwords = (const unsigned *)tokens;
+   int nr = tgsi_num_tokens(tokens);
+   int i;
+   
+   assert(sizeof(*tokens) == sizeof(unsigned));
+
+   debug_printf("const unsigned tokens[%d] = {\n", nr);
+   for (i = 0; i < nr; i++)
+      debug_printf("0x%08x,\n", dwords[i]);
+   debug_printf("};\n");
 }

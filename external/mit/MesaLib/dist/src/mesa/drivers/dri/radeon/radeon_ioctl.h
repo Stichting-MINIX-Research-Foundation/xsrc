@@ -37,8 +37,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __RADEON_IOCTL_H__
 
 #include "main/simple_list.h"
-#include "radeon_lock.h"
-#include "radeon_bocs_wrapper.h"
+#include "radeon_bo_gem.h"
+#include "radeon_cs_gem.h"
 
 extern void radeonEmitVertexAOS( r100ContextPtr rmesa,
 				 GLuint vertex_size,
@@ -50,7 +50,7 @@ extern void radeonEmitVbufPrim( r100ContextPtr rmesa,
 				GLuint primitive,
 				GLuint vertex_nr );
 
-extern void radeonFlushElts( GLcontext *ctx );
+extern void radeonFlushElts( struct gl_context *ctx );
 			    
 
 extern GLushort *radeonAllocEltsOpenEnded( r100ContextPtr rmesa,
@@ -77,9 +77,9 @@ extern void radeonEmitWait( r100ContextPtr rmesa, GLuint flags );
 
 extern void radeonFlushCmdBuf( r100ContextPtr rmesa, const char * );
 
-extern void radeonFlush( GLcontext *ctx );
-extern void radeonFinish( GLcontext *ctx );
-extern void radeonInitIoctlFuncs( GLcontext *ctx );
+extern void radeonFlush( struct gl_context *ctx );
+extern void radeonFinish( struct gl_context *ctx );
+extern void radeonInitIoctlFuncs( struct gl_context *ctx );
 extern void radeonGetAllParams( r100ContextPtr rmesa );
 extern void radeonSetUpAtomList( r100ContextPtr rmesa );
 
@@ -92,7 +92,7 @@ extern void radeonSetUpAtomList( r100ContextPtr rmesa );
 #define RADEON_NEWPRIM( rmesa )			\
 do {						\
    if ( rmesa->radeon.dma.flush )			\
-      rmesa->radeon.dma.flush( rmesa->radeon.glCtx );	\
+      rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );	\
 } while (0)
 
 /* Can accomodate several state changes and primitive changes without
@@ -158,23 +158,13 @@ static inline uint32_t cmdpacket3(int cmd_type)
 }
 
 #define OUT_BATCH_PACKET3(packet, num_extra) do {	      \
-    if (!b_l_rmesa->radeonScreen->kernel_mm) {		      \
-      OUT_BATCH(cmdpacket3(RADEON_CMD_PACKET3));				      \
-      OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
-    } else {						      \
-      OUT_BATCH(CP_PACKET2);				      \
-      OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
-    }							      \
+    OUT_BATCH(CP_PACKET2);				      \
+    OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
   } while(0)
 
 #define OUT_BATCH_PACKET3_CLIP(packet, num_extra) do {	      \
-    if (!b_l_rmesa->radeonScreen->kernel_mm) {		      \
-      OUT_BATCH(cmdpacket3(RADEON_CMD_PACKET3_CLIP));	      \
-      OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
-    } else {						      \
-      OUT_BATCH(CP_PACKET2);				      \
-      OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
-    }							      \
+    OUT_BATCH(CP_PACKET2);				      \
+    OUT_BATCH(CP_PACKET3((packet), (num_extra)));	      \
   } while(0)
 
 

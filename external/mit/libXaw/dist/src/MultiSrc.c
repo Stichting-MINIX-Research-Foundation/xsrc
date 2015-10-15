@@ -78,14 +78,6 @@ in this Software without prior written authorization from The Open Group.
 #define MAGIC_VALUE	((XawTextPosition)-1)
 #define streq(a, b)	(strcmp((a), (b)) == 0)
 
-#ifdef X_NOT_POSIX
-#define Off_t long
-#define Size_t unsigned int
-#else
-#define Off_t off_t
-#define Size_t size_t
-#endif
-
 
 /*
  * Class Methods
@@ -1092,15 +1084,18 @@ static Bool
 WriteToFile(String string, String name)
 {
     int fd;
+    Bool result = True;
 
-    if (((fd = creat(name, 0666)) == -1)
-	|| (write(fd, string, strlen(string)) == -1))
+    if ((fd = creat(name, 0666)) == -1)
 	return (False);
+
+    if (write(fd, string, strlen(string)) == -1)
+        result = False;
 
     if (close(fd) == -1)
 	return (False);
 
-    return (True);
+    return (result);
 }
 
 
@@ -1260,6 +1255,8 @@ InitStringOrFile(MultiSrcObject src, Bool newString)
 		src->multi_src.length = (XawTextPosition)ftell(file);
 		return(file);
 	    }
+	    else
+		close(fd);
 	}
 	{
 	    String params[2];
@@ -1324,10 +1321,10 @@ LoadPieces(MultiSrcObject src, FILE *file, char *string)
 	if (src->multi_src.length != 0) {
 	    temp_mb_holder =
 		XtMalloc((src->multi_src.length + 1) * sizeof(unsigned char));
-	    fseek(file, 0, 0);
+	    fseek(file, 0, SEEK_SET);
 	    src->multi_src.length = fread(temp_mb_holder,
-					  (Size_t)sizeof(unsigned char),
-					  (Size_t)src->multi_src.length, file);
+					  sizeof(unsigned char),
+					  (size_t)src->multi_src.length, file);
 	    if (src->multi_src.length <= 0)
 		XtAppErrorMsg(XtWidgetToApplicationContext ((Widget) src),
 			      "readError", "multiSource", "XawError",

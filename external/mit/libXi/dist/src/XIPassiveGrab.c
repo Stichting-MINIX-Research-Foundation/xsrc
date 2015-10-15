@@ -30,6 +30,7 @@
 #include <X11/extensions/XI2proto.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/extensions/extutil.h>
+#include <limits.h>
 #include "XIint.h"
 
 static int
@@ -43,6 +44,7 @@ _XIPassiveGrabDevice(Display* dpy, int deviceid, int grabtype, int detail,
     xXIPassiveGrabDeviceReply reply;
     xXIGrabModifierInfo *failed_mods;
     int len = 0, i;
+    int ret = -1;
     char *buff;
 
     XExtDisplayInfo *extinfo = XInput_find_display(dpy);
@@ -50,6 +52,14 @@ _XIPassiveGrabDevice(Display* dpy, int deviceid, int grabtype, int detail,
     LockDisplay(dpy);
     if (_XiCheckExtInit(dpy, XInput_2_0, extinfo) == -1)
 	return -1;
+
+    if (mask->mask_len > INT_MAX - 3 ||
+        (mask->mask_len + 3)/4 >= 0xffff)
+        goto out;
+
+    buff = calloc(4, (mask->mask_len + 3)/4);
+    if (!buff)
+        goto out;
 
     GetReq(XIPassiveGrabDevice, req);
     req->reqType = extinfo->codes->major_opcode;
@@ -68,7 +78,6 @@ _XIPassiveGrabDevice(Display* dpy, int deviceid, int grabtype, int detail,
     len = req->mask_len + num_modifiers;
     SetReqLen(req, len, len);
 
-    buff = calloc(4, req->mask_len);
     memcpy(buff, mask->mask, mask->mask_len);
     Data(dpy, buff, req->mask_len * 4);
     for (i = 0; i < num_modifiers; i++)
@@ -77,15 +86,11 @@ _XIPassiveGrabDevice(Display* dpy, int deviceid, int grabtype, int detail,
     free(buff);
 
     if (!_XReply(dpy, (xReply *)&reply, 0, xFalse))
-    {
-	UnlockDisplay(dpy);
-	SyncHandle();
-	return -1;
-    }
+        goto out;
 
     failed_mods = calloc(reply.num_modifiers, sizeof(xXIGrabModifierInfo));
     if (!failed_mods)
-        return -1;
+        goto out;
     _XRead(dpy, (char*)failed_mods, reply.num_modifiers * sizeof(xXIGrabModifierInfo));
 
     for (i = 0; i < reply.num_modifiers && i < num_modifiers; i++)
@@ -95,9 +100,12 @@ _XIPassiveGrabDevice(Display* dpy, int deviceid, int grabtype, int detail,
     }
     free(failed_mods);
 
+    ret = reply.num_modifiers;
+
+ out:
     UnlockDisplay(dpy);
     SyncHandle();
-    return reply.num_modifiers;
+    return ret;
 }
 
 int
@@ -158,6 +166,7 @@ XIGrabTouchBegin(Display *dpy, int deviceid, Window grab_window,
     LockDisplay(dpy);
     if (_XiCheckExtInit(dpy, XInput_2_2, extinfo) == -1)
 	return -1;
+    UnlockDisplay(dpy);
 
     /* FIXME: allow selection of GrabMode for paired devices? */
     return _XIPassiveGrabDevice(dpy, deviceid, XIGrabtypeTouchBegin, 0,
@@ -240,6 +249,7 @@ XIUngrabTouchBegin(Display* display, int deviceid, Window grab_window,
     LockDisplay(display);
     if (_XiCheckExtInit(display, XInput_2_2, extinfo) == -1)
 	return -1;
+    UnlockDisplay(display);
 
     return _XIPassiveUngrabDevice(display, deviceid, XIGrabtypeTouchBegin, 0,
                                   grab_window, num_modifiers, modifiers);

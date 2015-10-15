@@ -1,4 +1,3 @@
-/* $Xorg: dsimple.h,v 1.4 2001/02/09 02:05:54 xorgcvs Exp $ */
 /*
 
 Copyright 1993, 1998  The Open Group
@@ -26,7 +25,6 @@ other dealings in this Software without prior written authorization
 from The Open Group.
 
 */
-/* $XFree86: xc/programs/xlsfonts/dsimple.h,v 1.8 2002/12/24 17:43:01 tsi Exp $ */
 
 /*
  * dsimple.h:      This file contains the definitions needed to use the
@@ -39,6 +37,8 @@ from The Open Group.
  * Send bugs, etc. to chariot@athena.mit.edu.
  */
 
+#include <X11/Xfuncproto.h>
+
     /* Simple helper macros */
 #ifndef MAX
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -49,7 +49,7 @@ from The Open Group.
 
     /* Global variables used by routines in just_display.c */
 
-extern char *program_name;                   /* Name of this program */
+extern const char *program_name;             /* Name of this program */
 extern Display *dpy;                         /* The current display */
 extern int screen;                           /* The current screen */
 
@@ -58,17 +58,11 @@ extern int screen;                           /* The current screen */
 
 /* Declarations for functions in dsimple.c */
 
-char *Malloc(unsigned);
-char *Realloc(char *, int);
 void Setup_Display_And_Screen(int *, char **);
 void Close_Display(void);
-void usage(void);
+void usage(const char *errmsg) _X_NORETURN;
 
 #define X_USAGE "[host:display]"              /* X arguments handled by
 						 Get_Display_Name */
 
-#ifdef __GNUC__
-void Fatal_Error(char *, ...) __attribute__((__noreturn__));
-#else
-void Fatal_Error(char *, ...);
-#endif
+void Fatal_Error(const char *, ...) _X_NORETURN _X_ATTRIBUTE_PRINTF(1,2);

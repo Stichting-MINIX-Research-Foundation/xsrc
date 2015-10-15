@@ -53,7 +53,7 @@ enum lazy_reply_tag
 
 #define XCB_PAD(i) (-(i) & 3)
 
-#define XCB_SEQUENCE_COMPARE(a,op,b)	((int64_t) ((a) - (b)) op 0)
+#define XCB_SEQUENCE_COMPARE(a,op,b)    ((int64_t) ((a) - (b)) op 0)
 
 #ifndef offsetof
 #define offsetof(type,member) ((size_t) &((type *)0)->member)
@@ -79,6 +79,16 @@ void *_xcb_map_remove(_xcb_map *q, unsigned int key);
 
 /* xcb_out.c */
 
+#if HAVE_SENDMSG
+#define XCB_MAX_PASS_FD 16
+
+typedef struct _xcb_fd {
+    int fd[XCB_MAX_PASS_FD];
+    int nfd;
+    int ifd;
+} _xcb_fd;
+#endif
+
 typedef struct _xcb_out {
     pthread_cond_t cond;
     int writing;
@@ -100,6 +110,9 @@ typedef struct _xcb_out {
         xcb_big_requests_enable_cookie_t cookie;
         uint32_t value;
     } maximum_request_length;
+#if HAVE_SENDMSG
+    _xcb_fd out_fd;
+#endif
 } _xcb_out;
 
 int _xcb_out_init(_xcb_out *out);
@@ -132,6 +145,10 @@ typedef struct _xcb_in {
 
     struct pending_reply *pending_replies;
     struct pending_reply **pending_replies_tail;
+#if HAVE_SENDMSG
+    _xcb_fd in_fd;
+#endif
+    struct xcb_special_event *special_events;
 } _xcb_in;
 
 int _xcb_in_init(_xcb_in *in);
@@ -175,6 +192,7 @@ void _xcb_ext_destroy(xcb_connection_t *c);
 /* xcb_conn.c */
 
 struct xcb_connection_t {
+    /* This must be the first field; see _xcb_conn_ret_error(). */
     int has_error;
 
     /* constant data */

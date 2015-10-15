@@ -43,7 +43,7 @@ ZS = 'zs'
 
 
 def is_pot(x):
-   return (x & (x - 1)) == 0;
+   return (x & (x - 1)) == 0
 
 
 VERY_LARGE = 99999999999999999999999
@@ -52,9 +52,10 @@ VERY_LARGE = 99999999999999999999999
 class Channel:
     '''Describe the channel of a color channel.'''
     
-    def __init__(self, type, norm, size, name = ''):
+    def __init__(self, type, norm, pure, size, name = ''):
         self.type = type
         self.norm = norm
+        self.pure = pure
         self.size = size
         self.sign = type in (SIGNED, FIXED, FLOAT)
         self.name = name
@@ -63,28 +64,34 @@ class Channel:
         s = str(self.type)
         if self.norm:
             s += 'n'
+        if self.pure:
+            s += 'p'
         s += str(self.size)
         return s
 
     def __eq__(self, other):
-        return self.type == other.type and self.norm == other.norm and self.size == other.size
+        return self.type == other.type and self.norm == other.norm and self.pure == other.pure and self.size == other.size
 
     def max(self):
         '''Maximum representable number.'''
         if self.type == FLOAT:
             return VERY_LARGE
+        if self.type == FIXED:
+            return (1 << (self.size/2)) - 1
         if self.norm:
             return 1
         if self.type == UNSIGNED:
             return (1 << self.size) - 1
         if self.type == SIGNED:
-            return self.size - 1
+            return (1 << (self.size - 1)) - 1
         assert False
     
     def min(self):
         '''Minimum representable number.'''
         if self.type == FLOAT:
             return -VERY_LARGE
+        if self.type == FIXED:
+            return -(1 << (self.size/2))
         if self.type == UNSIGNED:
             return 0
         if self.norm:
@@ -97,13 +104,15 @@ class Channel:
 class Format:
     '''Describe a pixel format.'''
 
-    def __init__(self, name, layout, block_width, block_height, channels, swizzles, colorspace):
+    def __init__(self, name, layout, block_width, block_height, le_channels, le_swizzles, be_channels, be_swizzles, colorspace):
         self.name = name
         self.layout = layout
         self.block_width = block_width
         self.block_height = block_height
-        self.channels = channels
-        self.swizzles = swizzles
+        self.le_channels = le_channels
+        self.le_swizzles = le_swizzles
+        self.be_channels = be_channels
+        self.be_swizzles = be_swizzles
         self.name = name
         self.colorspace = colorspace
 
@@ -122,31 +131,51 @@ class Format:
 
     def block_size(self):
         size = 0
-        for channel in self.channels:
+        for channel in self.le_channels:
             size += channel.size
         return size
 
     def nr_channels(self):
         nr_channels = 0
-        for channel in self.channels:
+        for channel in self.le_channels:
             if channel.size:
                 nr_channels += 1
         return nr_channels
 
-    def is_array(self):
-        ref_channel = self.channels[0]
-        for channel in self.channels[1:]:
+    def array_element(self):
+        if self.layout != PLAIN:
+            return None
+        ref_channel = self.le_channels[0]
+        if ref_channel.type == VOID:
+           ref_channel = self.le_channels[1]
+        for channel in self.le_channels:
             if channel.size and (channel.size != ref_channel.size or channel.size % 8):
-                return False
-        return True
+                return None
+            if channel.type != VOID:
+                if channel.type != ref_channel.type:
+                    return None
+                if channel.norm != ref_channel.norm:
+                    return None
+                if channel.pure != ref_channel.pure:
+                    return None
+        return ref_channel
+
+    def is_array(self):
+        return self.array_element() != None
 
     def is_mixed(self):
-        ref_channel = self.channels[0]
-        for channel in self.channels[1:]:
+        if self.layout != PLAIN:
+            return False
+        ref_channel = self.le_channels[0]
+        if ref_channel.type == VOID:
+           ref_channel = self.le_channels[1]
+        for channel in self.le_channels[1:]:
             if channel.type != VOID:
                 if channel.type != ref_channel.type:
                     return True
                 if channel.norm != ref_channel.norm:
+                    return True
+                if channel.pure != ref_channel.pure:
                     return True
         return False
 
@@ -154,39 +183,63 @@ class Format:
         return is_pot(self.block_size())
 
     def is_int(self):
-        for channel in self.channels:
+        if self.layout != PLAIN:
+            return False
+        for channel in self.le_channels:
             if channel.type not in (VOID, UNSIGNED, SIGNED):
                 return False
         return True
 
     def is_float(self):
-        for channel in self.channels:
+        if self.layout != PLAIN:
+            return False
+        for channel in self.le_channels:
             if channel.type not in (VOID, FLOAT):
                 return False
         return True
 
     def is_bitmask(self):
-        if self.block_size() > 32:
+        if self.layout != PLAIN:
             return False
-        if not self.is_pot():
+        if self.block_size() not in (8, 16, 32):
             return False
-        for channel in self.channels:
-            if not is_pot(channel.size):
-                return True
+        for channel in self.le_channels:
             if channel.type not in (VOID, UNSIGNED, SIGNED):
-                return False
-            if channel.size >= 32:
                 return False
         return True
 
-    def inv_swizzles(self):
-        '''Return an array[4] of inverse swizzle terms'''
-        inv_swizzle = [None]*4
-        for i in range(4):
-            swizzle = self.swizzles[i]
-            if swizzle < 4:
-                inv_swizzle[swizzle] = i
-        return inv_swizzle
+    def is_pure_color(self):
+        if self.layout != PLAIN or self.colorspace == ZS:
+            return False
+        pures = [channel.pure
+                 for channel in self.le_channels
+                 if channel.type != VOID]
+        for x in pures:
+           assert x == pures[0]
+        return pures[0]
+
+    def channel_type(self):
+        types = [channel.type
+                 for channel in self.le_channels
+                 if channel.type != VOID]
+        for x in types:
+           assert x == types[0]
+        return types[0]
+
+    def is_pure_signed(self):
+        return self.is_pure_color() and self.channel_type() == SIGNED
+
+    def is_pure_unsigned(self):
+        return self.is_pure_color() and self.channel_type() == UNSIGNED
+
+    def has_channel(self, id):
+        return self.le_swizzles[id] != SWIZZLE_NONE
+
+    def has_depth(self):
+        return self.colorspace == ZS and self.has_channel(0)
+
+    def has_stencil(self):
+        return self.colorspace == ZS and self.has_channel(1)
 
     def stride(self):
         return self.block_size()/8
@@ -211,6 +264,54 @@ _swizzle_parse_map = {
     '_': SWIZZLE_NONE,
 }
 
+def _parse_channels(fields, layout, colorspace, swizzles):
+    if layout == PLAIN:
+        names = ['']*4
+        if colorspace in (RGB, SRGB):
+            for i in range(4):
+                swizzle = swizzles[i]
+                if swizzle < 4:
+                    names[swizzle] += 'rgba'[i]
+        elif colorspace == ZS:
+            for i in range(4):
+                swizzle = swizzles[i]
+                if swizzle < 4:
+                    names[swizzle] += 'zs'[i]
+        else:
+            assert False
+        for i in range(4):
+            if names[i] == '':
+                names[i] = 'x'
+    else:
+        names = ['x', 'y', 'z', 'w']
+
+    channels = []
+    for i in range(0, 4):
+        field = fields[i]
+        if field:
+            type = _type_parse_map[field[0]]
+            if field[1] == 'n':
+                norm = True
+                pure = False
+                size = int(field[2:])
+            elif field[1] == 'p':
+                pure = True
+                norm = False
+                size = int(field[2:])
+            else:
+                norm = False
+                pure = False
+                size = int(field[1:])
+        else:
+            type = VOID
+            norm = False
+            pure = False
+            size = 0
+        channel = Channel(type, norm, pure, size, names[i])
+        channels.append(channel)
+
+    return channels
+
 def parse(filename):
     '''Parse the format descrition in CSV format in terms of the 
     Channel and Format classes above.'''
@@ -233,49 +334,27 @@ def parse(filename):
         name = fields[0]
         layout = fields[1]
         block_width, block_height = map(int, fields[2:4])
-
-        swizzles = [_swizzle_parse_map[swizzle] for swizzle in fields[8]]
         colorspace = fields[9]
-        
-        if layout == PLAIN:
-            names = ['']*4
-            if colorspace in (RGB, SRGB):
-                for i in range(4):
-                    swizzle = swizzles[i]
-                    if swizzle < 4:
-                        names[swizzle] += 'rgba'[i]
-            elif colorspace == ZS:
-                for i in range(4):
-                    swizzle = swizzles[i]
-                    if swizzle < 4:
-                        names[swizzle] += 'zs'[i]
-            else:
-                assert False
-            for i in range(4):
-                if names[i] == '':
-                    names[i] = 'x'
-        else:
-            names = ['x', 'y', 'z', 'w']
 
-        channels = []
-        for i in range(0, 4):
-            field = fields[4 + i]
-            if field:
-                type = _type_parse_map[field[0]]
-                if field[1] == 'n':
-                    norm = True
-                    size = int(field[2:])
-                else:
-                    norm = False
-                    size = int(field[1:])
-            else:
-                type = VOID
-                norm = False
-                size = 0
-            channel = Channel(type, norm, size, names[i])
-            channels.append(channel)
+        le_swizzles = [_swizzle_parse_map[swizzle] for swizzle in fields[8]]
+        le_channels = _parse_channels(fields[4:8], layout, colorspace, le_swizzles)
 
-        format = Format(name, layout, block_width, block_height, channels, swizzles, colorspace)
+        be_swizzles = [_swizzle_parse_map[swizzle] for swizzle in fields[8]]
+        be_channels = _parse_channels(fields[4:8], layout, colorspace, be_swizzles)
+
+        le_shift = 0
+        for channel in le_channels:
+            channel.shift = le_shift
+            le_shift += channel.size
+
+        be_shift = 0
+        for channel in be_channels[3::-1]:
+            channel.shift = be_shift
+            be_shift += channel.size
+
+        assert le_shift == be_shift
+
+        format = Format(name, layout, block_width, block_height, le_channels, le_swizzles, be_channels, be_swizzles, colorspace)
         formats.append(format)
     return formats
 

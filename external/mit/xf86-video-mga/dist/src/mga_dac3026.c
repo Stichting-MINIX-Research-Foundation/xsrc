@@ -727,7 +727,7 @@ MGA3026Restore(ScrnInfoPtr pScrn, vgaRegPtr vgaReg, MGARegPtr mgaReg,
 		OUTREG16(0x1FDE, (mgaReg->ExtVga[i] << 8) | i);
 
 #ifdef XSERVER_LIBPCIACCESS
-	pci_device_cfg_write_bits(pMga->PciInfo, OPTION_MASK, (uint32_t)mgaReg->Option,
+	pci_device_cfg_write_bits(pMga->PciInfo, OPTION_MASK, mgaReg->Option,
 				  PCI_OPTION_REG);
 #else
 	pciSetBitsLong(pMga->PciTag, PCI_OPTION_REG, OPTION_MASK,

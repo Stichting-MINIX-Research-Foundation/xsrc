@@ -73,6 +73,23 @@ util_dump_enum_continuous(unsigned value,
    }
 
 
+/**
+ * Same as DEFINE_UTIL_DUMP_CONTINUOUS but with static assertions to detect
+ * failures to update lists.
+ */
+#define DEFINE_UTIL_DUMP_CONTINUOUS_COUNT(_name, _count) \
+   const char * \
+   util_dump_##_name(unsigned value, boolean shortened) \
+   { \
+      STATIC_ASSERT(Elements(util_dump_##_name##_names) == _count); \
+      STATIC_ASSERT(Elements(util_dump_##_name##_short_names) == _count); \
+      if(shortened) \
+         return util_dump_enum_continuous(value, Elements(util_dump_##_name##_short_names), util_dump_##_name##_short_names); \
+      else \
+         return util_dump_enum_continuous(value, Elements(util_dump_##_name##_names), util_dump_##_name##_names); \
+   }
+
+
 static const char *
 util_dump_blend_factor_names[] = {
    UTIL_DUMP_INVALID_NAME, /* 0x0 */
@@ -160,6 +177,49 @@ DEFINE_UTIL_DUMP_CONTINUOUS(blend_func)
 
 
 static const char *
+util_dump_logicop_names[] = {
+   "PIPE_LOGICOP_CLEAR",
+   "PIPE_LOGICOP_NOR",
+   "PIPE_LOGICOP_AND_INVERTED",
+   "PIPE_LOGICOP_COPY_INVERTED",
+   "PIPE_LOGICOP_AND_REVERSE",
+   "PIPE_LOGICOP_INVERT",
+   "PIPE_LOGICOP_XOR",
+   "PIPE_LOGICOP_NAND",
+   "PIPE_LOGICOP_AND",
+   "PIPE_LOGICOP_EQUIV",
+   "PIPE_LOGICOP_NOOP",
+   "PIPE_LOGICOP_OR_INVERTED",
+   "PIPE_LOGICOP_COPY",
+   "PIPE_LOGICOP_OR_REVERSE",
+   "PIPE_LOGICOP_OR",
+   "PIPE_LOGICOP_SET"
+};
+
+static const char *
+util_dump_logicop_short_names[] = {
+   "clear",
+   "nor",
+   "and_inverted",
+   "copy_inverted",
+   "and_reverse",
+   "invert",
+   "xor",
+   "nand",
+   "and",
+   "equiv",
+   "noop",
+   "or_inverted",
+   "copy",
+   "or_reverse",
+   "or",
+   "set"
+};
+
+DEFINE_UTIL_DUMP_CONTINUOUS(logicop)
+
+
+static const char *
 util_dump_func_names[] = {
    "PIPE_FUNC_NEVER",
    "PIPE_FUNC_LESS",
@@ -187,22 +247,59 @@ DEFINE_UTIL_DUMP_CONTINUOUS(func)
 
 
 static const char *
+util_dump_stencil_op_names[] = {
+   "PIPE_STENCIL_OP_KEEP",
+   "PIPE_STENCIL_OP_ZERO",
+   "PIPE_STENCIL_OP_REPLACE",
+   "PIPE_STENCIL_OP_INCR",
+   "PIPE_STENCIL_OP_DECR",
+   "PIPE_STENCIL_OP_INCR_WRAP",
+   "PIPE_STENCIL_OP_DECR_WRAP",
+   "PIPE_STENCIL_OP_INVERT"
+};
+
+static const char *
+util_dump_stencil_op_short_names[] = {
+   "keep",
+   "zero",
+   "replace",
+   "incr",
+   "decr",
+   "incr_wrap",
+   "decr_wrap",
+   "invert"
+};
+
+DEFINE_UTIL_DUMP_CONTINUOUS(stencil_op)
+
+
+static const char *
 util_dump_tex_target_names[] = {
+   "PIPE_BUFFER",
    "PIPE_TEXTURE_1D",
    "PIPE_TEXTURE_2D",
    "PIPE_TEXTURE_3D",
-   "PIPE_TEXTURE_CUBE"
+   "PIPE_TEXTURE_CUBE",
+   "PIPE_TEXTURE_RECT",
+   "PIPE_TEXTURE_1D_ARRAY",
+   "PIPE_TEXTURE_2D_ARRAY",
+   "PIPE_TEXTURE_CUBE_ARRAY",
 };
 
 static const char *
 util_dump_tex_target_short_names[] = {
+   "buffer",
    "1d",
    "2d",
    "3d",
-   "cube"
+   "cube",
+   "rect",
+   "1d_array",
+   "2d_array",
+   "cube_array",
 };
 
-DEFINE_UTIL_DUMP_CONTINUOUS(tex_target)
+DEFINE_UTIL_DUMP_CONTINUOUS_COUNT(tex_target, PIPE_MAX_TEXTURE_TYPES)
 
 
 static const char *
@@ -262,3 +359,36 @@ util_dump_tex_filter_short_names[] = {
 };
 
 DEFINE_UTIL_DUMP_CONTINUOUS(tex_filter)
+
+
+static const char *
+util_dump_query_type_names[] = {
+   "PIPE_QUERY_OCCLUSION_COUNTER",
+   "PIPE_QUERY_OCCLUSION_PREDICATE",
+   "PIPE_QUERY_TIMESTAMP",
+   "PIPE_QUERY_TIMESTAMP_DISJOINT",
+   "PIPE_QUERY_TIME_ELAPSED",
+   "PIPE_QUERY_PRIMITIVES_GENERATED",
+   "PIPE_QUERY_PRIMITIVES_EMITTED",
+   "PIPE_QUERY_SO_STATISTICS",
+   "PIPE_QUERY_SO_OVERFLOW_PREDICATE",
+   "PIPE_QUERY_GPU_FINISHED",
+   "PIPE_QUERY_PIPELINE_STATISTICS",
+};
+
+static const char *
+util_dump_query_type_short_names[] = {
+   "occlusion_counter",
+   "occlusion_predicate",
+   "timestamp",
+   "timestamp_disjoint",
+   "time_elapsed",
+   "primitives_generated",
+   "primitives_emitted",
+   "so_statistics",
+   "so_overflow_predicate",
+   "gpu_finished",
+   "pipeline_statistics",
+};
+
+DEFINE_UTIL_DUMP_CONTINUOUS(query_type)

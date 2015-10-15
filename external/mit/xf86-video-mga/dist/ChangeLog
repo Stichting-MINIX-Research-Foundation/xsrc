@@ -1,3 +1,211 @@
+commit 8ed77eb7920f375e9490a31f907eccb02fb123cd
+Author: Matt Turner <mattst88@gmail.com>
+Date:   Thu Feb 19 13:39:18 2015 -0800
+
+    xf86-video-mga 1.6.4
+
+commit 132dee029e36c9a91a85f178885e94a9f9b5ee37
+Author: Adam Jackson <ajax@redhat.com>
+Date:   Tue Jul 29 14:35:46 2014 -0400
+
+    undef DISABLE_VGA_IO
+    
+    Dead conditional ever since m12n, must not be needed.
+    
+    Signed-off-by: Adam Jackson <ajax@redhat.com>
+
+commit cf46b1017a2663c59f07abd417573b9580f0145f
+Author: Adam Jackson <ajax@redhat.com>
+Date:   Tue Jul 29 09:14:15 2014 -0400
+
+    dri: Stop (uselessly) initializing the ValidateTree hooks
+    
+    Signed-off-by: Adam Jackson <ajax@redhat.com>
+
+commit 1a5bc65f27e76263818a44ddbc4197f6083077cf
+Author: Adam Jackson <ajax@redhat.com>
+Date:   Thu May 22 12:48:27 2014 -0400
+
+    man: Don't mention the HAL
+    
+    I mentioned it once, but I think I got away with it all right.
+    
+    Signed-off-by: Adam Jackson <ajax@redhat.com>
+
+commit d2c65c24e94dca1e8fb16c851d0e2fe41bf5d1c6
+Author: Mikulas Patocka <mpatocka@redhat.com>
+Date:   Thu Mar 13 23:17:52 2014 -0400
+
+    fix a type in previous lockup in the mga driver fix
+    
+    Oh, I had a typo in that patch - so please commit this to fix it.
+    
+    Signed-off-by: Dave Airlie <airlied@redhat.com>
+
+commit 0789f3f2799e6497e9e2e7488da679c03b7fa468
+Author: Mikulas Patocka <mpatocka@redhat.com>
+Date:   Thu Mar 13 18:25:56 2014 -0400
+
+    xf86-video-mga: fix a lockup in the mga driver
+    
+    I've had a Xserver lockup in the mga driver, examining it with gdb showed
+    this obviously broken loop:
+    	count = INREG(MGAREG_VCOUNT) + 2;
+    	while(INREG(MGAREG_VCOUNT) < count);
+    
+    It reads the line counter and waits until the counter advances by two. The
+    cause of the lockup is this - if the kernel reschedules the Xorg process
+    and lets it run in such a moment when INREG(MGAREG_VCOUNT) returns the
+    maximum (or maximum minus 1) line count, the loop never exits.
+    
+    Signed-off-by: Dave Airlie <airlied@redhat.com>
+
+commit 62ba63f687d7b99aff7c88ffd2774f15a2471ce0
+Author: Mikulas Patocka <mpatocka@redhat.com>
+Date:   Fri Jan 17 16:04:26 2014 -0500
+
+    xf86-video-mga: set the pan_ctl register
+    
+    On my Matrox G550 most videomodes in Xorg didn't work. I found out that it
+    works if Xorg pixel clock is similar to the pixel clock set on framebuffer
+    console.
+    
+    Further analysis showed that the Linux framebuffer driver sets the pan_ctl
+    register (the register 0xa2) according to the pixel clock, the Xorg driver
+    doesn't set it.
+    
+    I copied the code to set the pan_ctl register from the Linux kernel to the
+    Xorg driver, and most videomodes in Xorg work.
+    
+    The pan_ctl register is required for both analog and digital output.
+    
+    The pan_ctl register is saved and restored, this is required so that we
+    restore text-mode screen or Linux framebuffer correctly.
+    
+    Signed-off-by: Dave Airlie <airlied@redhat.com>
+
+commit f647727a2c1d4c2a9261c411cd3df71c3c9f0c06
+Author: Dave Airlie <airlied@redhat.com>
+Date:   Thu Dec 5 12:09:27 2013 +1000
+
+    mga: bump release to 1.6.3
+
+commit 55525bdfc00b0b746401f6ea6ed289048e9d06eb
+Author: Dave Airlie <airlied@redhat.com>
+Date:   Thu Dec 5 11:51:39 2013 +1000
+
+    mga: fix XAA runtime
+    
+    XAA->USE_XAA add USE_XAA.
+    
+    Tested-by: Avengence on #xorg-devel
+    Signed-off-by: Dave Airlie <airlied@redhat.com>
+
+commit 6aa94687233f55a8044efe83cac82b04ab19609f
+Author: Alan Coopersmith <alan.coopersmith@oracle.com>
+Date:   Sun Nov 17 10:27:42 2013 -0800
+
+    Remove mga_esc.c vestigal stub
+    
+    Previously contained MGA HAL code, was left an empty shell by the
+    removal of USEMGAHAL in commit 94bbeb132c7eda.
+    
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+    Reviewed-by: Ian Romanick <ian.d.romanick@intel.com>
+
+commit e9109a0b04695d6971c94abe271dda2dc1a5e886
+Author: Tormod Volden <debian.tormod@gmail.com>
+Date:   Thu Oct 31 22:48:18 2013 +0100
+
+    mga: Use exaGetPixmapFirstPixel() instead of devPrivate.ptr
+    
+    Signed-off-by: Tormod Volden <debian.tormod@gmail.com>
+
+commit a77b9c5143591672fbe56f4428ced439c1f4d0f3
+Author: Egbert Eich <eich@freedesktop.org>
+Date:   Mon Jul 29 13:02:21 2013 +0200
+
+    Disable HW cursor by default on G200 server chips
+    
+    Disable HW cursor by default on G200 server chips as these chips a
+    re often used with a remote graphics link which cannot display
+    the HW cursor.
+    This can be overridden by a config option.
+    Most desktops today use ARGB cursors anyhow which are not
+    supported by this driver anyhow. Thus the performance penalty
+    should be irrelevant.
+    
+    Signed-off-by: Egbert Eich <eich@freedesktop.org>
+
+commit dba8778b9214dc3794198029fc6d59b3e97700d4
+Author: Egbert Eich <eich@freedesktop.org>
+Date:   Mon Jul 29 13:01:45 2013 +0200
+
+    Restructure code to make it more readable
+    
+    With the previous structure it wasn't immediately clear when SecondCrtc
+    and HWCursor were set to which value. Make the code more readable.
+    
+    Signed-off-by: Egbert Eich <eich@freedesktop.org>
+
+commit cbcee5de1ba02c8a58bae932a0cb98093dccefd9
+Author: Tormod Volden <debian.tormod@gmail.com>
+Date:   Thu Oct 17 22:01:20 2013 +0200
+
+    Fix dual head crash without XAA
+    
+    https://launchpad.net/bugs/1180986
+    
+    Signed-off-by: Tormod Volden <debian.tormod@gmail.com>
+    Reviewed-by: Robert Jacobs <robert.n.jacobs@gmail.com>
+    Tested-by: Robert Jacobs <robert.n.jacobs@gmail.com>
+
+commit 15815c8612694a89d0d8593b3e603fdcdeacdd05
+Author: Andy MacLean <andy-ub1@themacleans.org.uk>
+Date:   Thu Oct 17 19:51:36 2013 +0200
+
+    Unbreak dual head (xinerama)
+    
+    This patch has been used in Debian, Ubuntu and Gentoo for years.
+    
+    https://bugs.freedesktop.org/show_bug.cgi?id=18472
+    https://launchpad.net/bugs/292214
+    https://bugs.gentoo.org/show_bug.cgi?id=265100
+    
+    Signed-off-by: Andy MacLean <andy-ub1@themacleans.org.uk>
+    Reviewed-by: Cyril Brulebois <kibi@debian.org>
+    Reviewed-by: Robert Jacobs <robert.n.jacobs@gmail.com>
+    Tested-by: Robert Jacobs <robert.n.jacobs@gmail.com>
+
+commit 12af175fee1d3f6f17f8391ec642d904deca3783
+Author: Egbert Eich <eich@freedesktop.org>
+Date:   Tue Jun 7 19:31:16 2011 +0200
+
+    Disable Linear Expansion on BE
+    
+    Linear Expansion doesn't work on BE as the bit order in
+    a word is reversed. ScreenToScreenColorExpansion allows
+    to adjust the bit order in a byte, still the bytes have
+    the wrong order.
+    
+    Reviewed-by:  <wharms@bfs.de>
+    Signed-off-by: Egbert Eich <eich@freedesktop.org>
+
+commit 49381ff2c3aa98be5bb84494b2ad3f81a0d31bcc
+Author: Julien Cristau <jcristau@debian.org>
+Date:   Mon Jan 7 23:04:36 2013 +0100
+
+    Restrict kernel driver matching to g200 server chips
+    
+    Otherwise we might catch devices handled by matroxfb, not the mgag200
+    kms driver.
+    
+    Debian bug#697532
+    
+    Reported-by: olafBuddenhagen@gmx.net
+    Reviewed-by: Dave Airlie <airlied@redhat.com>
+    Signed-off-by: Julien Cristau <jcristau@debian.org>
+
 commit fcd27b2b4ab2a181d5263296e71cda2d8772ba2d
 Author: Dave Airlie <airlied@redhat.com>
 Date:   Fri Sep 28 11:36:44 2012 +1000

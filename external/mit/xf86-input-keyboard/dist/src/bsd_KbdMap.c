@@ -260,7 +260,6 @@ static CARD8 wsUsbMap[] = {
 	/* 47 */ KEY_LBrace,	/* [ { */
 	/* 48 */ KEY_RBrace,	/* ] } */
 	/* 49 */ KEY_BSlash,	/* \ | */
-	/* this was KEY_BSlash2 which seems bogus */
 	/* 50 */ KEY_BSlash,    /* \ _ # ~ on some keyboards */
 	/* 51 */ KEY_SemiColon,	/* ; : */
 	/* 52 */ KEY_Quote,	/* ' " */
@@ -346,17 +345,33 @@ static CARD8 wsUsbMap[] = {
 	/* 132 */ KEY_NOTUSED,
 	/* 133 */ KEY_NOTUSED,
 	/* 134 */ KEY_NOTUSED,
-	/* 135 */ KEY_NOTUSED,
-	/* 136 */ KEY_NOTUSED,
-	/* 137 */ KEY_NOTUSED,
-	/* 138 */ KEY_NOTUSED,
-	/* 139 */ KEY_NOTUSED,
+/*
+ * Special keycode for For Japanese keyboard
+ * Override atKeyname HKTG and BSlash2 code to unique for JP106 keybaord
+ */
+#undef KEY_HKTG
+#define KEY_HKTG	200	/* Japanee Hiragana Katakana Toggle */
+#undef KEY_BSlash2
+#define KEY_BSlash2	203	/* Japanese '\_' key */
+
+	/* 135 */ KEY_BSlash2,	/* Japanese 106 kbd: '\_' */
+	/* 136 */ KEY_HKTG,	/* Japanese 106 kbd: Hiragana Katakana toggle */
+	/* 137 */ KEY_Yen,	/* Japanese 106 kbd: '\|' */
+	/* 138 */ KEY_XFER,	/* Japanese 106 kbd: Henkan */
+	/* 139 */ KEY_NFER,	/* Japanese 106 kbd: Muhenkan */
 	/* 140 */ KEY_NOTUSED,
 	/* 141 */ KEY_NOTUSED,
 	/* 142 */ KEY_NOTUSED,
 	/* 143 */ KEY_NOTUSED,
-	/* 144 */ KEY_NOTUSED,
-	/* 145 */ KEY_NOTUSED,
+/*
+ * Special keycode for For Korean keyboard
+ * Define Hangul and Hangul_Hanja unique key code
+ * These keys also use KANA and EISU on some Macintosh Japanese USB Keyboards
+ */
+#define KEY_Hangul		201	/* Also KANA Key on Mac JP USB kbd */
+#define KEY_Hangul_Hanja	202	/* Also EISU Key on Mac JP USB kbd */
+	/* 144 */ KEY_Hangul,		/* Korean 106 kbd: Hangul */
+	/* 145 */ KEY_Hangul_Hanja,	/* Korean 106 kbd: Hangul Hanja */
 	/* 146 */ KEY_NOTUSED,
 	/* 147 */ KEY_NOTUSED,
 	/* 148 */ KEY_NOTUSED,
@@ -444,7 +459,7 @@ static CARD8 wsUsbMap[] = {
 	/* 230 */ KEY_AltLang,	/* Right Alt, AKA AltGr */
 	/* 231 */ KEY_LMeta,	/* Right Meta XXX */
 };
-#define WS_USB_MAP_SIZE (sizeof(wsUsbMap)/sizeof(unsigned char))
+#define WS_USB_MAP_SIZE (sizeof(wsUsbMap)/sizeof(*wsUsbMap))
 
 static
 TransMapRec wsUsb = {
@@ -458,7 +473,7 @@ static CARD8 wsXtMap[] = {
 	/* 1 */ KEY_Escape,
 	/* 2 */ KEY_1,
 	/* 3 */ KEY_2,
-	/* 4 */ KEY_3,		
+	/* 4 */ KEY_3,
 	/* 5 */ KEY_4,
 	/* 6 */ KEY_5,
 	/* 7 */ KEY_6,
@@ -677,7 +692,7 @@ static CARD8 wsXtMap[] = {
 	/* 220 */ KEY_RMeta,
 	/* 221 */ KEY_Menu,
 };
-#define WS_XT_MAP_SIZE (sizeof(wsXtMap)/sizeof(unsigned char))
+#define WS_XT_MAP_SIZE (sizeof(wsXtMap)/sizeof(*wsXtMap))
 
 static
 TransMapRec wsXt = {
@@ -817,7 +832,7 @@ static CARD8 wsAdbMap[] = {
 	/* 126 */ KEY_NOTUSED,
 	/* 127 */ KEY_Power
 };
-#define WS_ADB_MAP_SIZE (sizeof(wsAdbMap)/sizeof(unsigned char))
+#define WS_ADB_MAP_SIZE (sizeof(wsAdbMap)/sizeof(*wsAdbMap))
 
 static
 TransMapRec wsAdb = {
@@ -1081,7 +1096,7 @@ static CARD8 wsLk201Map[] = {
 	/* 250 */ KEY_NOTUSED,
 	/* 251 */ KEY_NOTUSED,
 };
-#define WS_LK201_MAP_SIZE (sizeof(wsLk201Map)/sizeof(unsigned char))
+#define WS_LK201_MAP_SIZE (sizeof(wsLk201Map)/sizeof(*wsLk201Map))
 
 static
 TransMapRec wsLk201 = {
@@ -1220,7 +1235,7 @@ static CARD8 wsSunMap[] = {
 	/* 0x7e */ KEY_NOTUSED,
 	/* 0x7f */ KEY_NOTUSED
 };
-#define WS_SUN_MAP_SIZE (sizeof(wsSunMap)/sizeof(unsigned char))
+#define WS_SUN_MAP_SIZE (sizeof(wsSunMap)/sizeof(*wsSunMap))
 
 static
 TransMapRec wsSun = {
@@ -1373,7 +1388,7 @@ KbdGetMapping (InputInfoPtr pInfo, KeySymsPtr pKeySyms, CARD8 *pModMap)
 #endif
 #ifdef WSKBD_TYPE_LK201
 	       case WSKBD_TYPE_LK201:
-                    pKbd->scancodeMap = &wsLk201; 
+                    pKbd->scancodeMap = &wsLk201;
                     break;
 #endif
 #ifdef WSKBD_TYPE_SUN

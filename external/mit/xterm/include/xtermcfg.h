@@ -1,8 +1,8 @@
 /* xtermcfg.h.  Generated automatically by configure.  */
-/* $XTermId: xtermcfg.hin,v 1.199 2013/05/27 21:05:23 tom Exp $ */
+/* $XTermId: xtermcfg.hin,v 1.208 2015/02/15 18:00:55 tom Exp $ */
 
 /*
- * Copyright 1997-2012,2013 by Thomas E. Dickey
+ * Copyright 1997-2014,2015 by Thomas E. Dickey
  *
  *                         All Rights Reserved
  *
@@ -45,6 +45,7 @@
 #define DEF_ALT_SENDS_ESC False	/* CF_ARG_ENABLE(alt-sends-esc) */
 #define DEF_BACKARO_BS True		/* CF_ARG_DISABLE(backarrow-key) */
 #define DEF_BACKARO_ERASE False	/* CF_ARG_ENABLE(backarrow-is-erase) */
+#define DEF_INITIAL_ERASE False /* CF_ARG_DISABLE(initial-erase) */
 #define DEF_META_SENDS_ESC False	/* CF_ARG_ENABLE(meta-sends-esc) */
 /* #undef DFT_COLORMODE */		/* AC_ARG_WITH(default-color-mode) */
 #define DFT_DECID "420"		/* AC_ARG_WITH(default-terminal-id) */
@@ -54,6 +55,7 @@
 #define HAVE_GETHOSTNAME 1		/* AC_CHECK_FUNCS(gethostname) */
 #define HAVE_GETLOGIN 1		/* AC_CHECK_FUNCS(getlogin) */
 #define HAVE_GRANTPT 1		/* CF_FUNC_GRANTPT */
+#define HAVE_INITGROUPS 1		/* AC_CHECK_FUNCS(initgroups) */
 /* #undef HAVE_GRANTPT_PTY_ISATTY */	/* CF_FUNC_GRANTPT */
 #define HAVE_LANGINFO_CODESET 1	/* AM_LANGINFO_CODESET */
 /* #undef HAVE_LASTLOG_H */		/* CF_LASTLOG */
@@ -62,7 +64,10 @@
 /* #undef HAVE_LIB_PCRE */		/* CF_WITH_PCRE */
 #define HAVE_LIB_XAW 1		/* CF_X_ATHENA */
 /* #undef HAVE_LIB_XAW3D */		/* CF_X_ATHENA(--with-Xaw3d) */
+/* #undef HAVE_LIB_XAW3DXFT */		/* CF_X_ATHENA(--with-Xaw3dxft) */
 /* #undef HAVE_LIB_XAWPLUS */		/* CF_X_ATHENA(--with-XawPlus) */
+#define HAVE_LIB_XCURSOR 1		/* AC_CHECK_LIB(Xcursor) */
+#define HAVE_MKDTEMP 1		/* AC_CHECK_FUNCS(mkdtemp) */
 /* #undef HAVE_NCURSES_CURSES_H */	/* AC_CHECK_HEADERS(ncurses/curses.h) */
 /* #undef HAVE_NCURSES_TERM_H */	/* AC_CHECK_HEADERS(ncurses/term.h) */
 #define HAVE_PATHS_H 1		/* CF_LASTLOG */
@@ -98,6 +103,7 @@
 #define HAVE_WCSWIDTH 1		/* AC_CHECK_FUNCS(wcswidth) */
 #define HAVE_WCWIDTH 1		/* AC_CHECK_FUNCS(wcwidth) */
 #define HAVE_X11_DECKEYSYM_H 1	/* AC_CHECK_HEADERS(X11/DECkeysym.h) */
+#define HAVE_X11_EXTENSIONS_XINERAMA_H 1	 /* AC_CHECK_HEADERS(X11/extensions/Xinerama.h) */
 #define HAVE_X11_EXTENSIONS_XKB_H 1 /* AC_CHECK_HEADERS(X11/extensions/XKB.h) */
 #define HAVE_X11_SUNKEYSYM_H 1	/* AC_CHECK_HEADERS(X11/Sunkeysym.h) */
 #define HAVE_X11_XF86KEYSYM_H 1	/* AC_CHECK_HEADERS(X11/XF86keysym.h) */
@@ -148,6 +154,8 @@
 /* #undef OPT_SELECTION_OPS */	/* CF_ARG_DISABLE(selection-ops) */
 #define OPT_SELECT_REGEX 1		/* CF_ARG_DISABLE(regex) */
 /* #undef OPT_SESSION_MGT */		/* CF_ARG_DISABLE(session-mgt) */
+/* #undef OPT_REGIS_GRAPHICS */	/* CF_ARG_ENABLE(regis-graphics) */
+/* #undef OPT_SIXEL_GRAPHICS */	/* CF_ARG_ENABLE(sixel-graphics) */
 /* #undef OPT_SUN_FUNC_KEYS */	/* CF_ARG_ENABLE(sun-fkeys) */
 #define OPT_TCAP_FKEYS 1		/* CF_ARG_ENABLE(tcap-fkeys) */
 #define OPT_TCAP_QUERY 1		/* CF_ARG_ENABLE(tcap-query) */
@@ -155,6 +163,7 @@
 /* #undef OPT_TOOLBAR */		/* CF_ARG_ENABLE(toolbar) */
 /* #undef OPT_VT52_MODE */		/* CF_ARG_DISABLE(vt52) */
 /* #undef OPT_WIDER_ICHAR */		/* CF_ARG_ENABLE(16bit-chars) */
+#define OPT_WIDE_ATTRS 1		/* CF_ARG_OPTION(wide-attrs) */
 #define OPT_WIDE_CHARS 1		/* CF_ARG_OPTION(wide-chars) */
 /* #undef OPT_XMC_GLITCH */		/* CF_ARG_ENABLE(xmc-glitch) */
 /* #undef OPT_ZICONBEEP */		/* CF_ARG_DISABLE(ziconbeep) */

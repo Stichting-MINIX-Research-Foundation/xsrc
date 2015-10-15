@@ -41,9 +41,6 @@
 #include <X11/Xmu/CharSet.h>
 #include "Private.h"
 
-#ifdef __UNIXOS2__
-static char dummy;
-#endif
 
 #ifndef OLDXAW
 
@@ -290,7 +287,7 @@ _XawDisplayList *XawCreateDisplayList(String string, Screen *screen,
 	}
       if (fp)
 	{
-	  snprintf(cname, fp - fname + 1, fname);
+	  snprintf(cname, fp - fname + 1, "%s", fname);
 	  memmove(fname, fp + 1, strlen(fp));
 	  lc = cname[0] ? XawGetDisplayListClass(cname) : xlibc;
 	  if (!lc)

@@ -1,7 +1,7 @@
-/* $XTermId: trace.h,v 1.68 2013/02/06 09:52:14 tom Exp $ */
+/* $XTermId: trace.h,v 1.75 2015/03/02 02:01:01 tom Exp $ */
 
 /*
- * Copyright 1997-2011,2012 by Thomas E. Dickey
+ * Copyright 1997-2014,2015 by Thomas E. Dickey
  *
  *                         All Rights Reserved
  *
@@ -41,7 +41,7 @@
 
 #if OPT_TRACE
 
-extern	void	Trace ( const char *, ... ) GCC_PRINTFLIKE(1,2);
+extern	void	Trace ( const char *, ... )  GCC_PRINTFLIKE(1,2);
 
 #undef  TRACE
 #define TRACE(p) Trace p
@@ -56,12 +56,13 @@ extern	void	TraceClose (void);
 #endif
 
 extern	char *	visibleChars (const Char * /* buf */, unsigned /* len */);
-extern	char *	visibleIChar (IChar *, unsigned);
-extern	char *	visibleIChars (IChar * /* buf */, unsigned /* len */);
-extern	const char * visibleChrsetName(unsigned /* chrset */);
+extern	char *	visibleIChars (const IChar * /* buf */, unsigned /* len */);
+extern	char *	visibleUChar (unsigned);
+extern	const char * visibleDblChrset(unsigned /* chrset */);
 extern	const char * visibleEventType (int);
 extern	const char * visibleNotifyDetail(int /* code */);
 extern	const char * visibleNotifyMode (int /* code */);
+extern	const char * visibleScsCode(int /* chrset */);
 extern	const char * visibleSelectionTarget(Display * /* d */, Atom /* a */);
 extern	const char * visibleXError (int /* code */);
 
@@ -158,6 +159,9 @@ extern void TraceScreen(XtermWidget /* xw */, int /* whichBuf */);
 #define init_Ires(name) \
 	TRACE(("init " #name " = %d\n", \
 		wnew->name = request->name))
+#define init_Mres(name) \
+	TRACE(("init " #name " = %s\n", \
+		MtoS(wnew->name = request->name)))
 #define init_Sres(name) \
 	TRACE(("init " #name " = \"%s\"\n", \
 		(wnew->name = x_strtrim(request->name)) != NULL \
@@ -174,6 +178,7 @@ extern void TraceScreen(XtermWidget /* xw */, int /* whichBuf */);
 #define init_Dres(name)    wnew->name = request->name
 #define init_Dres2(name,i) wnew->name[i] = request->name[i]
 #define init_Ires(name)    wnew->name = request->name
+#define init_Mres(name)    wnew->name = request->name
 #define init_Sres(name)    wnew->name = x_strtrim(request->name)
 #define init_Sres2(name,i) wnew->name(i) = x_strtrim(request->name(i))
 #define init_Tres(offset)  fill_Tres(wnew, request, offset)

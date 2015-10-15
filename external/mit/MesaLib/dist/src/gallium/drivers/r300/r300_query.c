@@ -25,41 +25,46 @@
 
 #include "r300_context.h"
 #include "r300_screen.h"
-#include "r300_cs.h"
 #include "r300_emit.h"
-#include "r300_query.h"
-#include "r300_reg.h"
+
+#include <stdio.h>
 
 static struct pipe_query *r300_create_query(struct pipe_context *pipe,
-                                            unsigned query_type)
+                                            unsigned query_type,
+                                            unsigned index)
 {
     struct r300_context *r300 = r300_context(pipe);
-    struct r300_screen *r300screen = r300_screen(r300->context.screen);
-    unsigned query_size;
-    struct r300_query *q, *qptr;
+    struct r300_screen *r300screen = r300->screen;
+    struct r300_query *q;
+
+    if (query_type != PIPE_QUERY_OCCLUSION_COUNTER &&
+        query_type != PIPE_QUERY_OCCLUSION_PREDICATE &&
+        query_type != PIPE_QUERY_GPU_FINISHED) {
+        return NULL;
+    }
 
     q = CALLOC_STRUCT(r300_query);
+    if (!q)
+        return NULL;
 
     q->type = query_type;
-    assert(q->type == PIPE_QUERY_OCCLUSION_COUNTER);
 
-    q->active = FALSE;
+    if (query_type == PIPE_QUERY_GPU_FINISHED) {
+        return (struct pipe_query*)q;
+    }
 
-    if (r300screen->caps->family == CHIP_FAMILY_RV530)
-	query_size = r300screen->caps->num_z_pipes * sizeof(uint32_t);
+    if (r300screen->caps.family == CHIP_RV530)
+        q->num_pipes = r300screen->info.r300_num_z_pipes;
     else
-	query_size = r300screen->caps->num_frag_pipes * sizeof(uint32_t);
+        q->num_pipes = r300screen->info.r300_num_gb_pipes;
 
-    if (!is_empty_list(&r300->query_list)) {
-        qptr = last_elem(&r300->query_list);
-        q->offset = qptr->offset + query_size;
+    q->buf = r300->rws->buffer_create(r300->rws, 4096, 4096, TRUE,
+                                      RADEON_DOMAIN_GTT, 0);
+    if (!q->buf) {
+        FREE(q);
+        return NULL;
     }
-    insert_at_tail(&r300->query_list, q);
-
-    /* XXX */
-    if (q->offset >= 4096) {
-        q->offset = 0;
-    }
+    q->cs_buf = r300->rws->buffer_get_cs_handle(q->buf);
 
     return (struct pipe_query*)q;
 }
@@ -67,98 +72,142 @@ static struct pipe_query *r300_create_query(struct pipe_context *pipe,
 static void r300_destroy_query(struct pipe_context* pipe,
                                struct pipe_query* query)
 {
-    struct r300_query* q = (struct r300_query*)query;
+    struct r300_query* q = r300_query(query);
 
-    remove_from_list(q);
+    pb_reference(&q->buf, NULL);
     FREE(query);
+}
+
+void r300_resume_query(struct r300_context *r300,
+                       struct r300_query *query)
+{
+    r300->query_current = query;
+    r300_mark_atom_dirty(r300, &r300->query_start);
 }
 
 static void r300_begin_query(struct pipe_context* pipe,
                              struct pipe_query* query)
 {
-    uint32_t* map;
     struct r300_context* r300 = r300_context(pipe);
-    struct r300_query* q = (struct r300_query*)query;
+    struct r300_query* q = r300_query(query);
 
-    assert(r300->query_current == NULL);
+    if (q->type == PIPE_QUERY_GPU_FINISHED)
+        return;
 
-    map = pipe->screen->buffer_map(pipe->screen, r300->oqbo,
-            PIPE_BUFFER_USAGE_CPU_WRITE);
-    map += q->offset / 4;
-    *map = ~0U;
-    pipe->screen->buffer_unmap(pipe->screen, r300->oqbo);
+    if (r300->query_current != NULL) {
+        fprintf(stderr, "r300: begin_query: "
+                "Some other query has already been started.\n");
+        assert(0);
+        return;
+    }
 
-    q->flushed = FALSE;
-    r300->query_current = q;
-    r300->dirty_state |= R300_NEW_QUERY;
+    q->num_results = 0;
+    r300_resume_query(r300, q);
+}
+
+void r300_stop_query(struct r300_context *r300)
+{
+    r300_emit_query_end(r300);
+    r300->query_current = NULL;
 }
 
 static void r300_end_query(struct pipe_context* pipe,
 	                   struct pipe_query* query)
 {
     struct r300_context* r300 = r300_context(pipe);
+    struct r300_query *q = r300_query(query);
 
-    r300_emit_query_end(r300);
-    r300->query_current = NULL;
+    if (q->type == PIPE_QUERY_GPU_FINISHED) {
+        pb_reference(&q->buf, NULL);
+        r300_flush(pipe, RADEON_FLUSH_ASYNC,
+                   (struct pipe_fence_handle**)&q->buf);
+        return;
+    }
+
+    if (q != r300->query_current) {
+        fprintf(stderr, "r300: end_query: Got invalid query.\n");
+        assert(0);
+        return;
+    }
+
+    r300_stop_query(r300);
 }
 
 static boolean r300_get_query_result(struct pipe_context* pipe,
                                      struct pipe_query* query,
                                      boolean wait,
-                                     uint64_t* result)
+                                     union pipe_query_result *vresult)
 {
     struct r300_context* r300 = r300_context(pipe);
-    struct r300_screen* r300screen = r300_screen(r300->context.screen);
-    struct r300_query *q = (struct r300_query*)query;
-    unsigned flags = PIPE_BUFFER_USAGE_CPU_READ;
-    uint32_t* map;
-    uint32_t temp = 0;
-    unsigned i, num_results;
+    struct r300_query *q = r300_query(query);
+    unsigned i;
+    uint32_t temp, *map;
 
-    if (q->flushed == FALSE)
-        pipe->flush(pipe, 0, NULL);
-    if (!wait) {
-        flags |= PIPE_BUFFER_USAGE_DONTBLOCK;
+    if (q->type == PIPE_QUERY_GPU_FINISHED) {
+        if (wait) {
+            r300->rws->buffer_wait(q->buf, RADEON_USAGE_READWRITE);
+            vresult->b = TRUE;
+        } else {
+            vresult->b = !r300->rws->buffer_is_busy(q->buf, RADEON_USAGE_READWRITE);
+        }
+        return vresult->b;
     }
 
-    map = pipe->screen->buffer_map(pipe->screen, r300->oqbo, flags);
+    map = r300->rws->buffer_map(q->cs_buf, r300->cs,
+                                PIPE_TRANSFER_READ |
+                                (!wait ? PIPE_TRANSFER_DONTBLOCK : 0));
     if (!map)
         return FALSE;
-    map += q->offset / 4;
 
-    if (r300screen->caps->family == CHIP_FAMILY_RV530)
-        num_results = r300screen->caps->num_z_pipes;
-    else
-        num_results = r300screen->caps->num_frag_pipes;
-
-    for (i = 0; i < num_results; i++) {
-        if (*map == ~0U) {
-            /* Looks like our results aren't ready yet. */
-            if (wait) {
-                debug_printf("r300: Despite waiting, OQ results haven't"
-                        " come in yet.\n");
-            }
-            temp = ~0U;
-            break;
-        }
-        temp += *map;
+    /* Sum up the results. */
+    temp = 0;
+    for (i = 0; i < q->num_results; i++) {
+        /* Convert little endian values written by GPU to CPU byte order */
+        temp += util_le32_to_cpu(*map);
         map++;
     }
-    pipe->screen->buffer_unmap(pipe->screen, r300->oqbo);
 
-    if (temp == ~0U) {
-        /* Our results haven't been written yet... */
-        return FALSE;
+    r300->rws->buffer_unmap(q->cs_buf);
+
+    if (q->type == PIPE_QUERY_OCCLUSION_PREDICATE) {
+        vresult->b = temp != 0;
+    } else {
+        vresult->u64 = temp;
     }
-
-    *result = temp;
     return TRUE;
 }
 
-void r300_init_query_functions(struct r300_context* r300) {
+static void r300_render_condition(struct pipe_context *pipe,
+                                  struct pipe_query *query,
+                                  boolean condition,
+                                  uint mode)
+{
+    struct r300_context *r300 = r300_context(pipe);
+    union pipe_query_result result;
+    boolean wait;
+
+    r300->skip_rendering = FALSE;
+
+    if (query) {
+        wait = mode == PIPE_RENDER_COND_WAIT ||
+               mode == PIPE_RENDER_COND_BY_REGION_WAIT;
+
+        if (r300_get_query_result(pipe, query, wait, &result)) {
+            if (r300_query(query)->type == PIPE_QUERY_OCCLUSION_PREDICATE) {
+                r300->skip_rendering = condition == result.b;
+            } else {
+                r300->skip_rendering = condition == !!result.u64;
+            }
+        }
+    }
+}
+
+void r300_init_query_functions(struct r300_context* r300)
+{
     r300->context.create_query = r300_create_query;
     r300->context.destroy_query = r300_destroy_query;
     r300->context.begin_query = r300_begin_query;
     r300->context.end_query = r300_end_query;
     r300->context.get_query_result = r300_get_query_result;
+    r300->context.render_condition = r300_render_condition;
 }

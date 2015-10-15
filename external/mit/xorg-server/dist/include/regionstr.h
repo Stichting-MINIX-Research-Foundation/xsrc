@@ -108,7 +108,10 @@ static inline BoxPtr RegionEnd(RegionPtr reg) {
 }
 
 static inline size_t RegionSizeof(int n) {
-    return (sizeof(RegDataRec) + ((n) * sizeof(BoxRec)));
+    if ((size_t)n < ((INT_MAX - sizeof(RegDataRec)) / sizeof(BoxRec)))
+        return (sizeof(RegDataRec) + ((n) * sizeof(BoxRec)));
+    else
+        return 0;
 }
 
 static inline void RegionInit(RegionPtr _pReg, BoxPtr _rect, int _size)
@@ -120,16 +123,21 @@ static inline void RegionInit(RegionPtr _pReg, BoxPtr _rect, int _size)
     }
     else
     {
+        size_t rgnSize;
         (_pReg)->extents = RegionEmptyBox;
-        if (((_size) > 1) && ((_pReg)->data =
-			      (RegDataPtr)malloc(RegionSizeof(_size))))
-        {
+        if (((_size) > 1) && ((rgnSize = RegionSizeof(_size)) > 0) &&
+            (((_pReg)->data = malloc(rgnSize)) != NULL)) {
             (_pReg)->data->size = (_size);
             (_pReg)->data->numRects = 0;
         }
         else
             (_pReg)->data = &RegionEmptyData;
     }
+}
+
+static inline Bool RegionInitBoxes(RegionPtr pReg, BoxPtr boxes, int nBoxes)
+{
+    return pixman_region_init_rects (pReg, boxes, nBoxes);
 }
 
 static inline void RegionUninit(RegionPtr _pReg)

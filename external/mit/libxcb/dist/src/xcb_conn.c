@@ -64,21 +64,30 @@ typedef struct {
     uint16_t length;
 } xcb_setup_generic_t;
 
+/* Keep this list in sync with is_static_error_conn()! */
 static const int xcb_con_error = XCB_CONN_ERROR;
 static const int xcb_con_closed_mem_er = XCB_CONN_CLOSED_MEM_INSUFFICIENT;
 static const int xcb_con_closed_parse_er = XCB_CONN_CLOSED_PARSE_ERR;
 static const int xcb_con_closed_screen_er = XCB_CONN_CLOSED_INVALID_SCREEN;
+
+static int is_static_error_conn(xcb_connection_t *c)
+{
+    return c == (xcb_connection_t *) &xcb_con_error ||
+           c == (xcb_connection_t *) &xcb_con_closed_mem_er ||
+           c == (xcb_connection_t *) &xcb_con_closed_parse_er ||
+           c == (xcb_connection_t *) &xcb_con_closed_screen_er;
+}
 
 static int set_fd_flags(const int fd)
 {
 /* Win32 doesn't have file descriptors and the fcntl function. This block sets the socket in non-blocking mode */
 
 #ifdef _WIN32
-   u_long iMode = 1; /* non-zero puts it in non-blocking mode, 0 in blocking mode */   
+   u_long iMode = 1; /* non-zero puts it in non-blocking mode, 0 in blocking mode */
    int ret = 0;
 
    ret = ioctlsocket(fd, FIONBIO, &iMode);
-   if(ret != 0) 
+   if(ret != 0)
        return 0;
    return 1;
 #else
@@ -195,8 +204,8 @@ static int write_vec(xcb_connection_t *c, struct iovec **vector, int *count)
        an iovec would require more work and I'm not sure of the benefit....works for now */
     vec = *vector;
     while(i < *count)
-    {         	 
-         ret = send(c->fd,vec->iov_base,vec->iov_len,0);	 
+    {
+         ret = send(c->fd,vec->iov_base,vec->iov_len,0);
          if(ret == SOCKET_ERROR)
          {
              err  = WSAGetLastError();
@@ -212,12 +221,45 @@ static int write_vec(xcb_connection_t *c, struct iovec **vector, int *count)
 #else
     n = *count;
     if (n > IOV_MAX)
-	n = IOV_MAX;
+        n = IOV_MAX;
 
-    n = writev(c->fd, *vector, n);
-    if(n < 0 && errno == EAGAIN)
-        return 1;
-#endif /* _WIN32 */    
+#if HAVE_SENDMSG
+    if (c->out.out_fd.nfd) {
+        union {
+            struct cmsghdr cmsghdr;
+            char buf[CMSG_SPACE(XCB_MAX_PASS_FD * sizeof(int))];
+        } cmsgbuf;
+        struct msghdr msg = {
+            .msg_name = NULL,
+            .msg_namelen = 0,
+            .msg_iov = *vector,
+            .msg_iovlen = n,
+            .msg_control = cmsgbuf.buf,
+            .msg_controllen = CMSG_LEN(c->out.out_fd.nfd * sizeof (int)),
+        };
+        int i;
+        struct cmsghdr *hdr = CMSG_FIRSTHDR(&msg);
+
+        hdr->cmsg_len = msg.msg_controllen;
+        hdr->cmsg_level = SOL_SOCKET;
+        hdr->cmsg_type = SCM_RIGHTS;
+        memcpy(CMSG_DATA(hdr), c->out.out_fd.fd, c->out.out_fd.nfd * sizeof (int));
+
+        n = sendmsg(c->fd, &msg, 0);
+        if(n < 0 && errno == EAGAIN)
+            return 1;
+        for (i = 0; i < c->out.out_fd.nfd; i++)
+            close(c->out.out_fd.fd[i]);
+        c->out.out_fd.nfd = 0;
+    } else
+#endif
+    {
+        n = writev(c->fd, *vector, n);
+        if(n < 0 && errno == EAGAIN)
+            return 1;
+    }
+
+#endif /* _WIN32 */
 
     if(n <= 0)
     {
@@ -308,7 +350,7 @@ xcb_connection_t *xcb_connect_to_fd(int fd, xcb_auth_info_t *auth_info)
 
 void xcb_disconnect(xcb_connection_t *c)
 {
-    if(c->has_error)
+    if(c == NULL || is_static_error_conn(c))
         return;
 
     free(c->setup);
@@ -341,6 +383,9 @@ void _xcb_conn_shutdown(xcb_connection_t *c, int err)
 /* Return connection error state.
  * To make thread-safe, I need a seperate static
  * variable for every possible error.
+ * has_error is the first field in xcb_connection_t, so just
+ * return a casted int here; checking has_error (and only
+ * has_error) will be safe.
  */
 xcb_connection_t *_xcb_conn_ret_error(int err)
 {
@@ -443,14 +488,14 @@ int _xcb_conn_wait(xcb_connection_t *c, pthread_cond_t *cond, struct iovec **vec
          */
         int may_read = c->in.reading == 1 || !count;
 #if USE_POLL
-        if(may_read && (fd.revents & POLLIN) == POLLIN)
+        if(may_read && (fd.revents & POLLIN) != 0)
 #else
         if(may_read && FD_ISSET(c->fd, &rfds))
 #endif
             ret = ret && _xcb_in_read(c);
 
 #if USE_POLL
-        if((fd.revents & POLLOUT) == POLLOUT)
+        if((fd.revents & POLLOUT) != 0)
 #else
         if(FD_ISSET(c->fd, &wfds))
 #endif

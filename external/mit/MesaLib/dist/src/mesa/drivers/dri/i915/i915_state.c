@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,11 +30,12 @@
 #include "main/context.h"
 #include "main/macros.h"
 #include "main/enums.h"
+#include "main/fbobject.h"
 #include "main/dd.h"
+#include "main/state.h"
+#include "main/stencil.h"
 #include "tnl/tnl.h"
 #include "tnl/t_context.h"
-
-#include "texmem.h"
 
 #include "drivers/common/driverfuncs.h"
 
@@ -49,29 +50,28 @@
 #define FILE_DEBUG_FLAG DEBUG_STATE
 
 void
-i915_update_stencil(GLcontext * ctx)
+i915_update_stencil(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    GLuint front_ref, front_writemask, front_mask;
    GLenum front_func, front_fail, front_pass_z_fail, front_pass_z_pass;
    GLuint back_ref, back_writemask, back_mask;
    GLenum back_func, back_fail, back_pass_z_fail, back_pass_z_pass;
-
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+   GLuint dirty = 0;
 
    /* The 915 considers CW to be "front" for two-sided stencil, so choose
     * appropriately.
     */
    /* _NEW_POLYGON | _NEW_STENCIL */
    if (ctx->Polygon.FrontFace == GL_CW) {
-      front_ref = ctx->Stencil.Ref[0];
+      front_ref = _mesa_get_stencil_ref(ctx, 0);
       front_mask = ctx->Stencil.ValueMask[0];
       front_writemask = ctx->Stencil.WriteMask[0];
       front_func = ctx->Stencil.Function[0];
       front_fail = ctx->Stencil.FailFunc[0];
       front_pass_z_fail = ctx->Stencil.ZFailFunc[0];
       front_pass_z_pass = ctx->Stencil.ZPassFunc[0];
-      back_ref = ctx->Stencil.Ref[ctx->Stencil._BackFace];
+      back_ref = _mesa_get_stencil_ref(ctx, ctx->Stencil._BackFace);
       back_mask = ctx->Stencil.ValueMask[ctx->Stencil._BackFace];
       back_writemask = ctx->Stencil.WriteMask[ctx->Stencil._BackFace];
       back_func = ctx->Stencil.Function[ctx->Stencil._BackFace];
@@ -79,14 +79,14 @@ i915_update_stencil(GLcontext * ctx)
       back_pass_z_fail = ctx->Stencil.ZFailFunc[ctx->Stencil._BackFace];
       back_pass_z_pass = ctx->Stencil.ZPassFunc[ctx->Stencil._BackFace];
    } else {
-      front_ref = ctx->Stencil.Ref[ctx->Stencil._BackFace];
+      front_ref = _mesa_get_stencil_ref(ctx, ctx->Stencil._BackFace);
       front_mask = ctx->Stencil.ValueMask[ctx->Stencil._BackFace];
       front_writemask = ctx->Stencil.WriteMask[ctx->Stencil._BackFace];
       front_func = ctx->Stencil.Function[ctx->Stencil._BackFace];
       front_fail = ctx->Stencil.FailFunc[ctx->Stencil._BackFace];
       front_pass_z_fail = ctx->Stencil.ZFailFunc[ctx->Stencil._BackFace];
       front_pass_z_pass = ctx->Stencil.ZPassFunc[ctx->Stencil._BackFace];
-      back_ref = ctx->Stencil.Ref[0];
+      back_ref = _mesa_get_stencil_ref(ctx, 0);
       back_mask = ctx->Stencil.ValueMask[0];
       back_writemask = ctx->Stencil.WriteMask[0];
       back_func = ctx->Stencil.Function[0];
@@ -94,90 +94,105 @@ i915_update_stencil(GLcontext * ctx)
       back_pass_z_fail = ctx->Stencil.ZFailFunc[0];
       back_pass_z_pass = ctx->Stencil.ZPassFunc[0];
    }
+#define set_ctx_bits(reg, mask, set) do{ \
+   GLuint dw = i915->state.Ctx[reg]; \
+   dw &= ~(mask); \
+   dw |= (set); \
+   dirty |= dw != i915->state.Ctx[reg]; \
+   i915->state.Ctx[reg] = dw; \
+} while(0)
 
    /* Set front state. */
-   i915->state.Ctx[I915_CTXREG_STATE4] &= ~(MODE4_ENABLE_STENCIL_TEST_MASK |
-					    MODE4_ENABLE_STENCIL_WRITE_MASK);
-   i915->state.Ctx[I915_CTXREG_STATE4] |= (ENABLE_STENCIL_TEST_MASK |
-					   ENABLE_STENCIL_WRITE_MASK |
-					   STENCIL_TEST_MASK(front_mask) |
-					   STENCIL_WRITE_MASK(front_writemask));
+   set_ctx_bits(I915_CTXREG_STATE4,
+                MODE4_ENABLE_STENCIL_TEST_MASK |
+                MODE4_ENABLE_STENCIL_WRITE_MASK,
+                ENABLE_STENCIL_TEST_MASK |
+                ENABLE_STENCIL_WRITE_MASK |
+                STENCIL_TEST_MASK(front_mask) |
+                STENCIL_WRITE_MASK(front_writemask));
 
-   i915->state.Ctx[I915_CTXREG_LIS5] &= ~(S5_STENCIL_REF_MASK |
-					  S5_STENCIL_TEST_FUNC_MASK |
-					  S5_STENCIL_FAIL_MASK |
-					  S5_STENCIL_PASS_Z_FAIL_MASK |
-					  S5_STENCIL_PASS_Z_PASS_MASK);
-
-   i915->state.Ctx[I915_CTXREG_LIS5] |=
-      (front_ref << S5_STENCIL_REF_SHIFT) |
-      (intel_translate_compare_func(front_func) << S5_STENCIL_TEST_FUNC_SHIFT) |
-      (intel_translate_stencil_op(front_fail) << S5_STENCIL_FAIL_SHIFT) |
-      (intel_translate_stencil_op(front_pass_z_fail) <<
-       S5_STENCIL_PASS_Z_FAIL_SHIFT) |
-      (intel_translate_stencil_op(front_pass_z_pass) <<
-       S5_STENCIL_PASS_Z_PASS_SHIFT);
+   set_ctx_bits(I915_CTXREG_LIS5,
+                S5_STENCIL_REF_MASK |
+                S5_STENCIL_TEST_FUNC_MASK |
+                S5_STENCIL_FAIL_MASK |
+                S5_STENCIL_PASS_Z_FAIL_MASK |
+                S5_STENCIL_PASS_Z_PASS_MASK,
+                (front_ref << S5_STENCIL_REF_SHIFT) |
+                (intel_translate_compare_func(front_func) << S5_STENCIL_TEST_FUNC_SHIFT) |
+                (intel_translate_stencil_op(front_fail) << S5_STENCIL_FAIL_SHIFT) |
+                (intel_translate_stencil_op(front_pass_z_fail) <<
+                 S5_STENCIL_PASS_Z_FAIL_SHIFT) |
+                (intel_translate_stencil_op(front_pass_z_pass) <<
+                 S5_STENCIL_PASS_Z_PASS_SHIFT));
 
    /* Set back state if different from front. */
    if (ctx->Stencil._TestTwoSide) {
-      i915->state.Ctx[I915_CTXREG_BF_STENCIL_OPS] &=
-	 ~(BFO_STENCIL_REF_MASK |
-	   BFO_STENCIL_TEST_MASK |
-	   BFO_STENCIL_FAIL_MASK |
-	   BFO_STENCIL_PASS_Z_FAIL_MASK |
-	   BFO_STENCIL_PASS_Z_PASS_MASK);
-      i915->state.Ctx[I915_CTXREG_BF_STENCIL_OPS] |= BFO_STENCIL_TWO_SIDE |
-	 (back_ref << BFO_STENCIL_REF_SHIFT) |
-	 (intel_translate_compare_func(back_func) << BFO_STENCIL_TEST_SHIFT) |
-	 (intel_translate_stencil_op(back_fail) << BFO_STENCIL_FAIL_SHIFT) |
-	 (intel_translate_stencil_op(back_pass_z_fail) <<
-	  BFO_STENCIL_PASS_Z_FAIL_SHIFT) |
-	 (intel_translate_stencil_op(back_pass_z_pass) <<
-	  BFO_STENCIL_PASS_Z_PASS_SHIFT);
+      set_ctx_bits(I915_CTXREG_BF_STENCIL_OPS,
+                   BFO_STENCIL_REF_MASK |
+                   BFO_STENCIL_TEST_MASK |
+                   BFO_STENCIL_FAIL_MASK |
+                   BFO_STENCIL_PASS_Z_FAIL_MASK |
+                   BFO_STENCIL_PASS_Z_PASS_MASK,
+                   BFO_STENCIL_TWO_SIDE |
+                   (back_ref << BFO_STENCIL_REF_SHIFT) |
+                   (intel_translate_compare_func(back_func) << BFO_STENCIL_TEST_SHIFT) |
+                   (intel_translate_stencil_op(back_fail) << BFO_STENCIL_FAIL_SHIFT) |
+                   (intel_translate_stencil_op(back_pass_z_fail) <<
+                    BFO_STENCIL_PASS_Z_FAIL_SHIFT) |
+                   (intel_translate_stencil_op(back_pass_z_pass) <<
+                    BFO_STENCIL_PASS_Z_PASS_SHIFT));
 
-      i915->state.Ctx[I915_CTXREG_BF_STENCIL_MASKS] &=
-	 ~(BFM_STENCIL_TEST_MASK_MASK |
-	   BFM_STENCIL_WRITE_MASK_MASK);
-      i915->state.Ctx[I915_CTXREG_BF_STENCIL_MASKS] |=
-	 BFM_STENCIL_TEST_MASK(back_mask) |
-	 BFM_STENCIL_WRITE_MASK(back_writemask);
+      set_ctx_bits(I915_CTXREG_BF_STENCIL_MASKS,
+                   BFM_STENCIL_TEST_MASK_MASK |
+                   BFM_STENCIL_WRITE_MASK_MASK,
+                   BFM_STENCIL_TEST_MASK(back_mask) |
+                   BFM_STENCIL_WRITE_MASK(back_writemask));
    } else {
-      i915->state.Ctx[I915_CTXREG_BF_STENCIL_OPS] &= ~BFO_STENCIL_TWO_SIDE;
+      set_ctx_bits(I915_CTXREG_BF_STENCIL_OPS,
+                   BFO_STENCIL_TWO_SIDE, 0);
    }
+
+#undef set_ctx_bits
+
+   if (dirty)
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
 }
 
 static void
-i915StencilFuncSeparate(GLcontext * ctx, GLenum face, GLenum func, GLint ref,
+i915StencilFuncSeparate(struct gl_context * ctx, GLenum face, GLenum func, GLint ref,
                         GLuint mask)
 {
 }
 
 static void
-i915StencilMaskSeparate(GLcontext * ctx, GLenum face, GLuint mask)
+i915StencilMaskSeparate(struct gl_context * ctx, GLenum face, GLuint mask)
 {
 }
 
 static void
-i915StencilOpSeparate(GLcontext * ctx, GLenum face, GLenum fail, GLenum zfail,
+i915StencilOpSeparate(struct gl_context * ctx, GLenum face, GLenum fail, GLenum zfail,
                       GLenum zpass)
 {
 }
 
 static void
-i915AlphaFunc(GLcontext * ctx, GLenum func, GLfloat ref)
+i915AlphaFunc(struct gl_context * ctx, GLenum func, GLfloat ref)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int test = intel_translate_compare_func(func);
    GLubyte refByte;
+   GLuint dw;
 
    UNCLAMPED_FLOAT_TO_UBYTE(refByte, ref);
 
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-   i915->state.Ctx[I915_CTXREG_LIS6] &= ~(S6_ALPHA_TEST_FUNC_MASK |
-                                          S6_ALPHA_REF_MASK);
-   i915->state.Ctx[I915_CTXREG_LIS6] |= ((test << S6_ALPHA_TEST_FUNC_SHIFT) |
-                                         (((GLuint) refByte) <<
-                                          S6_ALPHA_REF_SHIFT));
+   dw = i915->state.Ctx[I915_CTXREG_LIS6];
+   dw &= ~(S6_ALPHA_TEST_FUNC_MASK | S6_ALPHA_REF_MASK);
+   dw |= ((test << S6_ALPHA_TEST_FUNC_SHIFT) |
+	  (((GLuint) refByte) << S6_ALPHA_REF_SHIFT));
+   if (dw != i915->state.Ctx[I915_CTXREG_LIS6]) {
+      i915->state.Ctx[I915_CTXREG_LIS6] = dw;
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+   }
 }
 
 /* This function makes sure that the proper enables are
@@ -187,33 +202,43 @@ i915AlphaFunc(GLcontext * ctx, GLenum func, GLfloat ref)
  * calls to glEnable.
  */
 static void
-i915EvalLogicOpBlendState(GLcontext * ctx)
+i915EvalLogicOpBlendState(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
+   GLuint dw0, dw1;
 
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+   dw0 = i915->state.Ctx[I915_CTXREG_LIS5];
+   dw1 = i915->state.Ctx[I915_CTXREG_LIS6];
 
-   if (RGBA_LOGICOP_ENABLED(ctx)) {
-      i915->state.Ctx[I915_CTXREG_LIS5] |= S5_LOGICOP_ENABLE;
-      i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_CBUF_BLEND_ENABLE;
+   if (ctx->Color.ColorLogicOpEnabled) {
+      dw0 |= S5_LOGICOP_ENABLE;
+      dw1 &= ~S6_CBUF_BLEND_ENABLE;
    }
    else {
-      i915->state.Ctx[I915_CTXREG_LIS5] &= ~S5_LOGICOP_ENABLE;
+      dw0 &= ~S5_LOGICOP_ENABLE;
 
       if (ctx->Color.BlendEnabled) {
-         i915->state.Ctx[I915_CTXREG_LIS6] |= S6_CBUF_BLEND_ENABLE;
+         dw1 |= S6_CBUF_BLEND_ENABLE;
       }
       else {
-         i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_CBUF_BLEND_ENABLE;
+         dw1 &= ~S6_CBUF_BLEND_ENABLE;
       }
+   }
+   if (dw0 != i915->state.Ctx[I915_CTXREG_LIS5] ||
+       dw1 != i915->state.Ctx[I915_CTXREG_LIS6]) {
+      i915->state.Ctx[I915_CTXREG_LIS5] = dw0;
+      i915->state.Ctx[I915_CTXREG_LIS6] = dw1;
+
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
    }
 }
 
 static void
-i915BlendColor(GLcontext * ctx, const GLfloat color[4])
+i915BlendColor(struct gl_context * ctx, const GLfloat color[4])
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    GLubyte r, g, b, a;
+   GLuint dw;
 
    DBG("%s\n", __FUNCTION__);
    
@@ -222,9 +247,11 @@ i915BlendColor(GLcontext * ctx, const GLfloat color[4])
    UNCLAMPED_FLOAT_TO_UBYTE(b, color[BCOMP]);
    UNCLAMPED_FLOAT_TO_UBYTE(a, color[ACOMP]);
 
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-   i915->state.Ctx[I915_CTXREG_BLENDCOLOR1] =
-      (a << 24) | (r << 16) | (g << 8) | b;
+   dw = (a << 24) | (r << 16) | (g << 8) | b;
+   if (dw != i915->state.Blend[I915_BLENDREG_BLENDCOLOR1]) {
+      i915->state.Blend[I915_BLENDREG_BLENDCOLOR1] = dw;
+      I915_STATECHANGE(i915, I915_UPLOAD_BLEND);
+   }
 }
 
 
@@ -255,10 +282,10 @@ translate_blend_equation(GLenum mode)
 }
 
 static void
-i915UpdateBlendState(GLcontext * ctx)
+i915UpdateBlendState(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
-   GLuint iab = (i915->state.Ctx[I915_CTXREG_IAB] &
+   GLuint iab = (i915->state.Blend[I915_BLENDREG_IAB] &
                  ~(IAB_SRC_FACTOR_MASK |
                    IAB_DST_FACTOR_MASK |
                    (BLENDFUNC_MASK << IAB_FUNC_SHIFT) | IAB_ENABLE));
@@ -267,12 +294,12 @@ i915UpdateBlendState(GLcontext * ctx)
                   ~(S6_CBUF_SRC_BLEND_FACT_MASK |
                     S6_CBUF_DST_BLEND_FACT_MASK | S6_CBUF_BLEND_FUNC_MASK));
 
-   GLuint eqRGB = ctx->Color.BlendEquationRGB;
-   GLuint eqA = ctx->Color.BlendEquationA;
-   GLuint srcRGB = ctx->Color.BlendSrcRGB;
-   GLuint dstRGB = ctx->Color.BlendDstRGB;
-   GLuint srcA = ctx->Color.BlendSrcA;
-   GLuint dstA = ctx->Color.BlendDstA;
+   GLuint eqRGB = ctx->Color.Blend[0].EquationRGB;
+   GLuint eqA = ctx->Color.Blend[0].EquationA;
+   GLuint srcRGB = ctx->Color.Blend[0].SrcRGB;
+   GLuint dstRGB = ctx->Color.Blend[0].DstRGB;
+   GLuint srcA = ctx->Color.Blend[0].SrcA;
+   GLuint dstA = ctx->Color.Blend[0].DstA;
 
    if (eqRGB == GL_MIN || eqRGB == GL_MAX) {
       srcRGB = dstRGB = GL_ONE;
@@ -293,11 +320,13 @@ i915UpdateBlendState(GLcontext * ctx)
    if (srcA != srcRGB || dstA != dstRGB || eqA != eqRGB)
       iab |= IAB_ENABLE;
 
-   if (iab != i915->state.Ctx[I915_CTXREG_IAB] ||
-       lis6 != i915->state.Ctx[I915_CTXREG_LIS6]) {
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-      i915->state.Ctx[I915_CTXREG_IAB] = iab;
+   if (iab != i915->state.Blend[I915_BLENDREG_IAB]) {
+      i915->state.Blend[I915_BLENDREG_IAB] = iab;
+      I915_STATECHANGE(i915, I915_UPLOAD_BLEND);
+   }
+   if (lis6 != i915->state.Ctx[I915_CTXREG_LIS6]) {
       i915->state.Ctx[I915_CTXREG_LIS6] = lis6;
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
    }
 
    /* This will catch a logicop blend equation */
@@ -306,7 +335,7 @@ i915UpdateBlendState(GLcontext * ctx)
 
 
 static void
-i915BlendFuncSeparate(GLcontext * ctx, GLenum srcRGB,
+i915BlendFuncSeparate(struct gl_context * ctx, GLenum srcRGB,
                       GLenum dstRGB, GLenum srcA, GLenum dstA)
 {
    i915UpdateBlendState(ctx);
@@ -314,38 +343,50 @@ i915BlendFuncSeparate(GLcontext * ctx, GLenum srcRGB,
 
 
 static void
-i915BlendEquationSeparate(GLcontext * ctx, GLenum eqRGB, GLenum eqA)
+i915BlendEquationSeparate(struct gl_context * ctx, GLenum eqRGB, GLenum eqA)
 {
    i915UpdateBlendState(ctx);
 }
 
 
 static void
-i915DepthFunc(GLcontext * ctx, GLenum func)
+i915DepthFunc(struct gl_context * ctx, GLenum func)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int test = intel_translate_compare_func(func);
+   GLuint dw;
 
    DBG("%s\n", __FUNCTION__);
    
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-   i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_DEPTH_TEST_FUNC_MASK;
-   i915->state.Ctx[I915_CTXREG_LIS6] |= test << S6_DEPTH_TEST_FUNC_SHIFT;
+   dw = i915->state.Ctx[I915_CTXREG_LIS6];
+   dw &= ~S6_DEPTH_TEST_FUNC_MASK;
+   dw |= test << S6_DEPTH_TEST_FUNC_SHIFT;
+   if (dw != i915->state.Ctx[I915_CTXREG_LIS6]) {
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      i915->state.Ctx[I915_CTXREG_LIS6] = dw;
+   }
 }
 
 static void
-i915DepthMask(GLcontext * ctx, GLboolean flag)
+i915DepthMask(struct gl_context * ctx, GLboolean flag)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
+   GLuint dw;
 
    DBG("%s flag (%d)\n", __FUNCTION__, flag);
-   
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
 
+   if (!ctx->DrawBuffer || !ctx->DrawBuffer->Visual.depthBits)
+      flag = false;
+
+   dw = i915->state.Ctx[I915_CTXREG_LIS6];
    if (flag && ctx->Depth.Test)
-      i915->state.Ctx[I915_CTXREG_LIS6] |= S6_DEPTH_WRITE_ENABLE;
+      dw |= S6_DEPTH_WRITE_ENABLE;
    else
-      i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_DEPTH_WRITE_ENABLE;
+      dw &= ~S6_DEPTH_WRITE_ENABLE;
+   if (dw != i915->state.Ctx[I915_CTXREG_LIS6]) {
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      i915->state.Ctx[I915_CTXREG_LIS6] = dw;
+   }
 }
 
 
@@ -357,51 +398,35 @@ i915DepthMask(GLcontext * ctx, GLboolean flag)
  *  - window pos/size or FBO size
  */
 void
-intelCalcViewport(GLcontext * ctx)
+intelCalcViewport(struct gl_context * ctx)
 {
    struct intel_context *intel = intel_context(ctx);
-   const GLfloat *v = ctx->Viewport._WindowMap.m;
-   const GLfloat depthScale = 1.0F / ctx->DrawBuffer->_DepthMaxF;
-   GLfloat *m = intel->ViewportMatrix.m;
-   GLfloat yScale, yBias;
 
-   if (ctx->DrawBuffer->Name) {
-      /* User created FBO */
-      /* y=0=bottom */
-      yScale = 1.0;
-      yBias = 0.0;
+   if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
+      _math_matrix_viewport(&intel->ViewportMatrix,
+			    ctx->ViewportArray[0].X,
+			    ctx->DrawBuffer->Height - ctx->ViewportArray[0].Y,
+			    ctx->ViewportArray[0].Width,
+			    -ctx->ViewportArray[0].Height,
+			    ctx->ViewportArray[0].Near,
+			    ctx->ViewportArray[0].Far,
+			    1.0);
+   } else {
+      _math_matrix_viewport(&intel->ViewportMatrix,
+			    ctx->ViewportArray[0].X,
+			    ctx->ViewportArray[0].Y,
+			    ctx->ViewportArray[0].Width,
+			    ctx->ViewportArray[0].Height,
+			    ctx->ViewportArray[0].Near,
+			    ctx->ViewportArray[0].Far,
+			    1.0);
    }
-   else {
-      /* window buffer, y=0=top */
-      yScale = -1.0;
-      yBias = (intel->driDrawable) ? intel->driDrawable->h : 0.0F;
-   }
-
-   m[MAT_SX] = v[MAT_SX];
-   m[MAT_TX] = v[MAT_TX];
-
-   m[MAT_SY] = v[MAT_SY] * yScale;
-   m[MAT_TY] = v[MAT_TY] * yScale + yBias;
-
-   m[MAT_SZ] = v[MAT_SZ] * depthScale;
-   m[MAT_TZ] = v[MAT_TZ] * depthScale;
-}
-
-
-/** Called from ctx->Driver.Viewport() */
-static void
-i915Viewport(GLcontext * ctx,
-              GLint x, GLint y, GLsizei width, GLsizei height)
-{
-   intelCalcViewport(ctx);
-
-   intel_viewport(ctx, x, y, width, height);
 }
 
 
 /** Called from ctx->Driver.DepthRange() */
 static void
-i915DepthRange(GLcontext * ctx, GLclampd nearval, GLclampd farval)
+i915DepthRange(struct gl_context *ctx)
 {
    intelCalcViewport(ctx);
 }
@@ -414,7 +439,7 @@ i915DepthRange(GLcontext * ctx, GLclampd nearval, GLclampd farval)
  * Fortunately stipple is usually a repeating pattern.
  */
 static void
-i915PolygonStipple(GLcontext * ctx, const GLubyte * mask)
+i915PolygonStipple(struct gl_context * ctx, const GLubyte * mask)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    const GLubyte *m;
@@ -476,7 +501,7 @@ i915PolygonStipple(GLcontext * ctx, const GLubyte * mask)
  * Hardware clipping
  */
 static void
-i915Scissor(GLcontext * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
+i915Scissor(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int x1, y1, x2, y2;
@@ -484,22 +509,28 @@ i915Scissor(GLcontext * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
    if (!ctx->DrawBuffer)
       return;
 
-   DBG("%s %d,%d %dx%d\n", __FUNCTION__, x, y, w, h);
+   DBG("%s %d,%d %dx%d\n", __FUNCTION__,
+       ctx->Scissor.ScissorArray[0].X,     ctx->Scissor.ScissorArray[0].Y,
+       ctx->Scissor.ScissorArray[0].Width, ctx->Scissor.ScissorArray[0].Height);
 
-   if (ctx->DrawBuffer->Name == 0) {
-      x1 = x;
-      y1 = ctx->DrawBuffer->Height - (y + h);
-      x2 = x + w - 1;
-      y2 = y1 + h - 1;
+   if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->DrawBuffer->Height - (ctx->Scissor.ScissorArray[0].Y
+                                      + ctx->Scissor.ScissorArray[0].Height);
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = y1 + ctx->Scissor.ScissorArray[0].Height - 1;
       DBG("%s %d..%d,%d..%d (inverted)\n", __FUNCTION__, x1, x2, y1, y2);
    }
    else {
       /* FBO - not inverted
        */
-      x1 = x;
-      y1 = y;
-      x2 = x + w - 1;
-      y2 = y + h - 1;
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->Scissor.ScissorArray[0].Y;
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = ctx->Scissor.ScissorArray[0].Y
+         + ctx->Scissor.ScissorArray[0].Height - 1;
       DBG("%s %d..%d,%d..%d (not inverted)\n", __FUNCTION__, x1, x2, y1, y2);
    }
    
@@ -516,7 +547,7 @@ i915Scissor(GLcontext * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
 }
 
 static void
-i915LogicOp(GLcontext * ctx, GLenum opcode)
+i915LogicOp(struct gl_context * ctx, GLenum opcode)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int tmp = intel_translate_logic_op(opcode);
@@ -531,10 +562,10 @@ i915LogicOp(GLcontext * ctx, GLenum opcode)
 
 
 static void
-i915CullFaceFrontFace(GLcontext * ctx, GLenum unused)
+i915CullFaceFrontFace(struct gl_context * ctx, GLenum unused)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
-   GLuint mode;
+   GLuint mode, dw;
 
    DBG("%s %d\n", __FUNCTION__,
        ctx->DrawBuffer ? ctx->DrawBuffer->Name : 0);
@@ -545,7 +576,7 @@ i915CullFaceFrontFace(GLcontext * ctx, GLenum unused)
    else if (ctx->Polygon.CullFaceMode != GL_FRONT_AND_BACK) {
       mode = S4_CULLMODE_CW;
 
-      if (ctx->DrawBuffer && ctx->DrawBuffer->Name != 0)
+      if (ctx->DrawBuffer && _mesa_is_user_fbo(ctx->DrawBuffer))
          mode ^= (S4_CULLMODE_CW ^ S4_CULLMODE_CCW);
       if (ctx->Polygon.CullFaceMode == GL_FRONT)
          mode ^= (S4_CULLMODE_CW ^ S4_CULLMODE_CCW);
@@ -556,13 +587,17 @@ i915CullFaceFrontFace(GLcontext * ctx, GLenum unused)
       mode = S4_CULLMODE_BOTH;
    }
 
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-   i915->state.Ctx[I915_CTXREG_LIS4] &= ~S4_CULLMODE_MASK;
-   i915->state.Ctx[I915_CTXREG_LIS4] |= mode;
+   dw = i915->state.Ctx[I915_CTXREG_LIS4];
+   dw &= ~S4_CULLMODE_MASK;
+   dw |= mode;
+   if (dw != i915->state.Ctx[I915_CTXREG_LIS4]) {
+      i915->state.Ctx[I915_CTXREG_LIS4] = dw;
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+   }
 }
 
 static void
-i915LineWidth(GLcontext * ctx, GLfloat widthf)
+i915LineWidth(struct gl_context * ctx, GLfloat widthf)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int lis4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_LINE_WIDTH_MASK;
@@ -581,7 +616,7 @@ i915LineWidth(GLcontext * ctx, GLfloat widthf)
 }
 
 static void
-i915PointSize(GLcontext * ctx, GLfloat size)
+i915PointSize(struct gl_context * ctx, GLfloat size)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int lis4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_POINT_WIDTH_MASK;
@@ -600,7 +635,7 @@ i915PointSize(GLcontext * ctx, GLfloat size)
 
 
 static void
-i915PointParameterfv(GLcontext * ctx, GLenum pname, const GLfloat *params)
+i915PointParameterfv(struct gl_context * ctx, GLenum pname, const GLfloat *params)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
 
@@ -616,13 +651,55 @@ i915PointParameterfv(GLcontext * ctx, GLenum pname, const GLfloat *params)
    }
 }
 
+void
+i915_update_sprite_point_enable(struct gl_context *ctx)
+{
+   struct intel_context *intel = intel_context(ctx);
+   /* _NEW_PROGRAM */
+   struct i915_fragment_program *p =
+      (struct i915_fragment_program *) ctx->FragmentProgram._Current;
+   const GLbitfield64 inputsRead = p->FragProg.Base.InputsRead;
+   struct i915_context *i915 = i915_context(ctx);
+   GLuint s4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_VFMT_MASK;
+   int i;
+   GLuint coord_replace_bits = 0x0;
+   GLuint tex_coord_unit_bits = 0x0;
+
+   for (i = 0; i < ctx->Const.MaxTextureCoordUnits; i++) {
+      /* _NEW_POINT */
+      if (ctx->Point.CoordReplace[i] && ctx->Point.PointSprite)
+         coord_replace_bits |= (1 << i);
+      if (inputsRead & VARYING_BIT_TEX(i))
+         tex_coord_unit_bits |= (1 << i);
+   }
+
+   /*
+    * Here we can't enable the SPRITE_POINT_ENABLE bit when the mis-match
+    * of tex_coord_unit_bits and coord_replace_bits, or this will make all
+    * the other non-point-sprite coords(like varying inputs, as we now use
+    * tex coord to implement varying inputs) be replaced to value (0, 0)-(1, 1).
+    *
+    * Thus, do fallback when needed.
+    */
+   FALLBACK(intel, I915_FALLBACK_COORD_REPLACE,
+            coord_replace_bits && coord_replace_bits != tex_coord_unit_bits);
+
+   s4 &= ~S4_SPRITE_POINT_ENABLE;
+   s4 |= (coord_replace_bits && coord_replace_bits == tex_coord_unit_bits) ?
+         S4_SPRITE_POINT_ENABLE : 0;
+   if (s4 != i915->state.Ctx[I915_CTXREG_LIS4]) {
+      i915->state.Ctx[I915_CTXREG_LIS4] = s4;
+      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+   }
+}
+
 
 /* =============================================================
  * Color masks
  */
 
 static void
-i915ColorMask(GLcontext * ctx,
+i915ColorMask(struct gl_context * ctx,
               GLboolean r, GLboolean g, GLboolean b, GLboolean a)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
@@ -647,7 +724,7 @@ i915ColorMask(GLcontext * ctx,
 }
 
 static void
-update_specular(GLcontext * ctx)
+update_specular(struct gl_context * ctx)
 {
    /* A hack to trigger the rebuild of the fragment program.
     */
@@ -655,7 +732,7 @@ update_specular(GLcontext * ctx)
 }
 
 static void
-i915LightModelfv(GLcontext * ctx, GLenum pname, const GLfloat * param)
+i915LightModelfv(struct gl_context * ctx, GLenum pname, const GLfloat * param)
 {
    DBG("%s\n", __FUNCTION__);
    
@@ -665,7 +742,7 @@ i915LightModelfv(GLcontext * ctx, GLenum pname, const GLfloat * param)
 }
 
 static void
-i915ShadeModel(GLcontext * ctx, GLenum mode)
+i915ShadeModel(struct gl_context * ctx, GLenum mode)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    I915_STATECHANGE(i915, I915_UPLOAD_CTX);
@@ -684,161 +761,27 @@ i915ShadeModel(GLcontext * ctx, GLenum mode)
 
 /* =============================================================
  * Fog
+ *
+ * This empty function remains because _mesa_init_driver_state calls
+ * dd_function_table::Fogfv unconditionally.  We have to have some function
+ * there so that it doesn't try to call a NULL pointer.
  */
-void
-i915_update_fog(GLcontext * ctx)
-{
-   struct i915_context *i915 = I915_CONTEXT(ctx);
-   GLenum mode;
-   GLboolean enabled;
-   GLboolean try_pixel_fog;
-
-   if (ctx->FragmentProgram._Current) {
-      /* Pull in static fog state from program */
-      mode = ctx->FragmentProgram._Current->FogOption;
-      enabled = (mode != GL_NONE);
-      try_pixel_fog = 0;
-   }
-   else {
-      enabled = ctx->Fog.Enabled;
-      mode = ctx->Fog.Mode;
-#if 0
-      /* XXX - DISABLED -- Need ortho fallback */
-      try_pixel_fog = (ctx->Fog.FogCoordinateSource == GL_FRAGMENT_DEPTH_EXT
-                       && ctx->Hint.Fog == GL_NICEST);
-#else
-      try_pixel_fog = 0;
-#endif
-   }
-
-   if (!enabled) {
-      i915->vertex_fog = I915_FOG_NONE;
-   }
-   else if (try_pixel_fog) {
-      I915_STATECHANGE(i915, I915_UPLOAD_FOG);
-      i915->state.Fog[I915_FOGREG_MODE1] &= ~FMC1_FOGFUNC_MASK;
-      i915->vertex_fog = I915_FOG_PIXEL;
-
-      switch (mode) {
-      case GL_LINEAR:
-         if (ctx->Fog.End <= ctx->Fog.Start) {
-            /* XXX - this won't work with fragment programs.  Need to
-             * either fallback or append fog instructions to end of
-             * program in the case of linear fog.
-             */
-            printf("vertex fog!\n");
-            i915->state.Fog[I915_FOGREG_MODE1] |= FMC1_FOGFUNC_VERTEX;
-            i915->vertex_fog = I915_FOG_VERTEX;
-         }
-         else {
-            GLfloat c2 = 1.0 / (ctx->Fog.End - ctx->Fog.Start);
-            GLfloat c1 = ctx->Fog.End * c2;
-
-            i915->state.Fog[I915_FOGREG_MODE1] &= ~FMC1_C1_MASK;
-            i915->state.Fog[I915_FOGREG_MODE1] |= FMC1_FOGFUNC_PIXEL_LINEAR;
-            i915->state.Fog[I915_FOGREG_MODE1] |=
-               ((GLuint) (c1 * FMC1_C1_ONE)) & FMC1_C1_MASK;
-
-            if (i915->state.Fog[I915_FOGREG_MODE1] & FMC1_FOGINDEX_Z) {
-               i915->state.Fog[I915_FOGREG_MODE2]
-                  = (GLuint) (c2 * FMC2_C2_ONE);
-            }
-            else {
-               fi_type fi;
-               fi.f = c2;
-               i915->state.Fog[I915_FOGREG_MODE2] = fi.i;
-            }
-         }
-         break;
-      case GL_EXP:
-         i915->state.Fog[I915_FOGREG_MODE1] |= FMC1_FOGFUNC_PIXEL_EXP;
-         break;
-      case GL_EXP2:
-         i915->state.Fog[I915_FOGREG_MODE1] |= FMC1_FOGFUNC_PIXEL_EXP2;
-         break;
-      default:
-         break;
-      }
-   }
-   else { /* if (i915->vertex_fog != I915_FOG_VERTEX) */
-      I915_STATECHANGE(i915, I915_UPLOAD_FOG);
-      i915->state.Fog[I915_FOGREG_MODE1] &= ~FMC1_FOGFUNC_MASK;
-      i915->state.Fog[I915_FOGREG_MODE1] |= FMC1_FOGFUNC_VERTEX;
-      i915->vertex_fog = I915_FOG_VERTEX;
-   }
-
-   I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-   I915_ACTIVESTATE(i915, I915_UPLOAD_FOG, enabled);
-   if (enabled)
-      i915->state.Ctx[I915_CTXREG_LIS5] |= S5_FOG_ENABLE;
-   else
-      i915->state.Ctx[I915_CTXREG_LIS5] &= ~S5_FOG_ENABLE;
-
-   /* Always enable pixel fog.  Vertex fog using fog coord will conflict
-    * with fog code appended onto fragment program.
-    */
-    _tnl_allow_vertex_fog( ctx, 0 );
-    _tnl_allow_pixel_fog( ctx, 1 );
-}
-
 static void
-i915Fogfv(GLcontext * ctx, GLenum pname, const GLfloat * param)
+i915Fogfv(struct gl_context * ctx, GLenum pname, const GLfloat * param)
 {
-   struct i915_context *i915 = I915_CONTEXT(ctx);
-
-   switch (pname) {
-   case GL_FOG_COORDINATE_SOURCE_EXT:
-   case GL_FOG_MODE:
-   case GL_FOG_START:
-   case GL_FOG_END:
-      break;
-
-   case GL_FOG_DENSITY:
-      I915_STATECHANGE(i915, I915_UPLOAD_FOG);
-
-      if (i915->state.Fog[I915_FOGREG_MODE1] & FMC1_FOGINDEX_Z) {
-         i915->state.Fog[I915_FOGREG_MODE3] =
-            (GLuint) (ctx->Fog.Density * FMC3_D_ONE);
-      }
-      else {
-         fi_type fi;
-         fi.f = ctx->Fog.Density;
-         i915->state.Fog[I915_FOGREG_MODE3] = fi.i;
-      }
-      break;
-
-   case GL_FOG_COLOR:
-      I915_STATECHANGE(i915, I915_UPLOAD_FOG);
-      i915->state.Fog[I915_FOGREG_COLOR] =
-         (_3DSTATE_FOG_COLOR_CMD |
-          ((GLubyte) (ctx->Fog.Color[0] * 255.0F) << 16) |
-          ((GLubyte) (ctx->Fog.Color[1] * 255.0F) << 8) |
-          ((GLubyte) (ctx->Fog.Color[2] * 255.0F) << 0));
-      break;
-
-   default:
-      break;
-   }
-}
-
-static void
-i915Hint(GLcontext * ctx, GLenum target, GLenum state)
-{
-   switch (target) {
-   case GL_FOG_HINT:
-      break;
-   default:
-      break;
-   }
+   (void) ctx;
+   (void) pname;
+   (void) param;
 }
 
 /* =============================================================
  */
 
 static void
-i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
+i915Enable(struct gl_context * ctx, GLenum cap, GLboolean state)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
+   GLuint dw;
 
    switch (cap) {
    case GL_TEXTURE_2D:
@@ -850,11 +793,15 @@ i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
       break;
 
    case GL_ALPHA_TEST:
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      dw = i915->state.Ctx[I915_CTXREG_LIS6];
       if (state)
-         i915->state.Ctx[I915_CTXREG_LIS6] |= S6_ALPHA_TEST_ENABLE;
+         dw |= S6_ALPHA_TEST_ENABLE;
       else
-         i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_ALPHA_TEST_ENABLE;
+         dw &= ~S6_ALPHA_TEST_ENABLE;
+      if (dw != i915->state.Ctx[I915_CTXREG_LIS6]) {
+	 i915->state.Ctx[I915_CTXREG_LIS6] = dw;
+	 I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      }
       break;
 
    case GL_BLEND:
@@ -874,19 +821,31 @@ i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
       break;
 
    case GL_DITHER:
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      dw = i915->state.Ctx[I915_CTXREG_LIS5];
       if (state)
-         i915->state.Ctx[I915_CTXREG_LIS5] |= S5_COLOR_DITHER_ENABLE;
+         dw |= S5_COLOR_DITHER_ENABLE;
       else
-         i915->state.Ctx[I915_CTXREG_LIS5] &= ~S5_COLOR_DITHER_ENABLE;
+         dw &= ~S5_COLOR_DITHER_ENABLE;
+      if (dw != i915->state.Ctx[I915_CTXREG_LIS5]) {
+	 i915->state.Ctx[I915_CTXREG_LIS5] = dw;
+	 I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      }
       break;
 
    case GL_DEPTH_TEST:
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      dw = i915->state.Ctx[I915_CTXREG_LIS6];
+
+      if (!ctx->DrawBuffer || !ctx->DrawBuffer->Visual.depthBits)
+	 state = false;
+
       if (state)
-         i915->state.Ctx[I915_CTXREG_LIS6] |= S6_DEPTH_TEST_ENABLE;
+         dw |= S6_DEPTH_TEST_ENABLE;
       else
-         i915->state.Ctx[I915_CTXREG_LIS6] &= ~S6_DEPTH_TEST_ENABLE;
+         dw &= ~S6_DEPTH_TEST_ENABLE;
+      if (dw != i915->state.Ctx[I915_CTXREG_LIS6]) {
+	 i915->state.Ctx[I915_CTXREG_LIS6] = dw;
+	 I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      }
 
       i915DepthMask(ctx, ctx->Depth.Mask);
       break;
@@ -902,14 +861,15 @@ i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
       break;
 
    case GL_LINE_SMOOTH:
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      dw = i915->state.Ctx[I915_CTXREG_LIS4];
       if (state)
-         i915->state.Ctx[I915_CTXREG_LIS4] |= S4_LINE_ANTIALIAS_ENABLE;
+         dw |= S4_LINE_ANTIALIAS_ENABLE;
       else
-         i915->state.Ctx[I915_CTXREG_LIS4] &= ~S4_LINE_ANTIALIAS_ENABLE;
-      break;
-
-   case GL_FOG:
+         dw &= ~S4_LINE_ANTIALIAS_ENABLE;
+      if (dw != i915->state.Ctx[I915_CTXREG_LIS4]) {
+	 i915->state.Ctx[I915_CTXREG_LIS4] = dw;
+	 I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      }
       break;
 
    case GL_CULL_FACE:
@@ -917,25 +877,17 @@ i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
       break;
 
    case GL_STENCIL_TEST:
-      {
-         GLboolean hw_stencil = GL_FALSE;
-         if (ctx->DrawBuffer) {
-            struct intel_renderbuffer *irbStencil
-               = intel_get_renderbuffer(ctx->DrawBuffer, BUFFER_STENCIL);
-            hw_stencil = (irbStencil && irbStencil->region);
-         }
-         if (hw_stencil) {
-            I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-            if (state)
-               i915->state.Ctx[I915_CTXREG_LIS5] |= (S5_STENCIL_TEST_ENABLE |
-                                                     S5_STENCIL_WRITE_ENABLE);
-            else
-               i915->state.Ctx[I915_CTXREG_LIS5] &= ~(S5_STENCIL_TEST_ENABLE |
-                                                      S5_STENCIL_WRITE_ENABLE);
-         }
-         else {
-            FALLBACK(&i915->intel, I915_FALLBACK_STENCIL, state);
-         }
+      if (!ctx->DrawBuffer || !ctx->DrawBuffer->Visual.stencilBits)
+	 state = false;
+
+      dw = i915->state.Ctx[I915_CTXREG_LIS5];
+      if (state)
+	 dw |= (S5_STENCIL_TEST_ENABLE | S5_STENCIL_WRITE_ENABLE);
+      else
+	 dw &= ~(S5_STENCIL_TEST_ENABLE | S5_STENCIL_WRITE_ENABLE);
+      if (dw != i915->state.Ctx[I915_CTXREG_LIS5]) {
+	 i915->state.Ctx[I915_CTXREG_LIS5] = dw;
+	 I915_STATECHANGE(i915, I915_UPLOAD_CTX);
       }
       break;
 
@@ -958,14 +910,7 @@ i915Enable(GLcontext * ctx, GLenum cap, GLboolean state)
       break;
 
    case GL_POINT_SPRITE:
-      /* This state change is handled in i915_reduced_primitive_state because
-       * the hardware bit should only be set when rendering points.
-       */
-      I915_STATECHANGE(i915, I915_UPLOAD_CTX);
-      if (state)
-	 i915->state.Ctx[I915_CTXREG_LIS4] |= S4_SPRITE_POINT_ENABLE;
-      else
-	 i915->state.Ctx[I915_CTXREG_LIS4] &= ~S4_SPRITE_POINT_ENABLE;
+      /* Handle it at i915_update_sprite_point_enable () */
       break;
 
    case GL_POINT_SMOOTH:
@@ -986,6 +931,7 @@ i915_init_packets(struct i915_context *i915)
 
    {
       I915_STATECHANGE(i915, I915_UPLOAD_CTX);
+      I915_STATECHANGE(i915, I915_UPLOAD_BLEND);
       /* Probably don't want to upload all this stuff every time one 
        * piece changes.
        */
@@ -1012,13 +958,13 @@ i915_init_packets(struct i915_context *i915)
                                              ENABLE_STENCIL_WRITE_MASK |
                                              STENCIL_WRITE_MASK(0xff));
 
-      i915->state.Ctx[I915_CTXREG_IAB] =
+      i915->state.Blend[I915_BLENDREG_IAB] =
          (_3DSTATE_INDEPENDENT_ALPHA_BLEND_CMD | IAB_MODIFY_ENABLE |
           IAB_MODIFY_FUNC | IAB_MODIFY_SRC_FACTOR | IAB_MODIFY_DST_FACTOR);
 
-      i915->state.Ctx[I915_CTXREG_BLENDCOLOR0] =
+      i915->state.Blend[I915_BLENDREG_BLENDCOLOR0] =
          _3DSTATE_CONST_BLEND_COLOR_CMD;
-      i915->state.Ctx[I915_CTXREG_BLENDCOLOR1] = 0;
+      i915->state.Blend[I915_BLENDREG_BLENDCOLOR1] = 0;
 
       i915->state.Ctx[I915_CTXREG_BF_STENCIL_MASKS] =
 	 _3DSTATE_BACKFACE_STENCIL_MASKS |
@@ -1036,19 +982,6 @@ i915_init_packets(struct i915_context *i915)
    {
       I915_STATECHANGE(i915, I915_UPLOAD_STIPPLE);
       i915->state.Stipple[I915_STPREG_ST0] = _3DSTATE_STIPPLE;
-   }
-
-
-   {
-      I915_STATECHANGE(i915, I915_UPLOAD_FOG);
-      i915->state.Fog[I915_FOGREG_MODE0] = _3DSTATE_FOG_MODE_CMD;
-      i915->state.Fog[I915_FOGREG_MODE1] = (FMC1_FOGFUNC_MODIFY_ENABLE |
-                                            FMC1_FOGFUNC_VERTEX |
-                                            FMC1_FOGINDEX_MODIFY_ENABLE |
-                                            FMC1_FOGINDEX_W |
-                                            FMC1_C1_C2_MODIFY_ENABLE |
-                                            FMC1_DENSITY_MODIFY_ENABLE);
-      i915->state.Fog[I915_FOGREG_COLOR] = _3DSTATE_FOG_COLOR_CMD;
    }
 
    {
@@ -1089,13 +1022,14 @@ i915_init_packets(struct i915_context *i915)
    i915->state.active = (I915_UPLOAD_PROGRAM |
                          I915_UPLOAD_STIPPLE |
                          I915_UPLOAD_CTX |
+                         I915_UPLOAD_BLEND |
                          I915_UPLOAD_BUFFERS |
 			 I915_UPLOAD_INVARIENT |
 			 I915_UPLOAD_RASTER_RULES);
 }
 
 void
-i915_update_provoking_vertex(GLcontext * ctx)
+i915_update_provoking_vertex(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
 
@@ -1118,6 +1052,15 @@ i915_update_provoking_vertex(GLcontext * ctx)
     }
 }
 
+/* Fallback to swrast for select and feedback.
+ */
+static void
+i915RenderMode(struct gl_context *ctx, GLenum mode)
+{
+   struct intel_context *intel = intel_context(ctx);
+   FALLBACK(intel, INTEL_FALLBACK_RENDERMODE, (mode != GL_RENDER));
+}
+
 void
 i915InitStateFunctions(struct dd_function_table *functions)
 {
@@ -1132,27 +1075,26 @@ i915InitStateFunctions(struct dd_function_table *functions)
    functions->Enable = i915Enable;
    functions->Fogfv = i915Fogfv;
    functions->FrontFace = i915CullFaceFrontFace;
-   functions->Hint = i915Hint;
    functions->LightModelfv = i915LightModelfv;
    functions->LineWidth = i915LineWidth;
    functions->LogicOpcode = i915LogicOp;
    functions->PointSize = i915PointSize;
    functions->PointParameterfv = i915PointParameterfv;
    functions->PolygonStipple = i915PolygonStipple;
+   functions->RenderMode = i915RenderMode;
    functions->Scissor = i915Scissor;
    functions->ShadeModel = i915ShadeModel;
    functions->StencilFuncSeparate = i915StencilFuncSeparate;
    functions->StencilMaskSeparate = i915StencilMaskSeparate;
    functions->StencilOpSeparate = i915StencilOpSeparate;
    functions->DepthRange = i915DepthRange;
-   functions->Viewport = i915Viewport;
 }
 
 
 void
 i915InitState(struct i915_context *i915)
 {
-   GLcontext *ctx = &i915->intel.ctx;
+   struct gl_context *ctx = &i915->intel.ctx;
 
    i915_init_packets(i915);
 

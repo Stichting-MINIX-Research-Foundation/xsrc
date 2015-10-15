@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -35,17 +35,12 @@
 
 
 #include "pipe/p_compiler.h"
+#include "pipe/p_format.h"
 
-
-struct pipe_buffer;
-struct pipe_texture;
+struct pipe_resource;
 struct pipe_surface;
 struct pipe_transfer;
-
-/*
- * Call before use.
- */
-void trace_dump_init(void);
+struct pipe_box;
 
 /*
  * Low level dumping controls.
@@ -54,7 +49,7 @@ void trace_dump_init(void);
  */
 boolean trace_dump_trace_begin(void);
 boolean trace_dump_trace_enabled(void);
-void trace_dump_trace_end(void);
+void trace_dump_trace_flush(void);
 
 /*
  * Lock and unlock the call mutex.
@@ -92,6 +87,11 @@ void trace_dump_int(long long int value);
 void trace_dump_uint(long long unsigned value);
 void trace_dump_float(double value);
 void trace_dump_bytes(const void *data, size_t size);
+void trace_dump_box_bytes(const void *data,
+                          struct pipe_resource *resource,
+			  const struct pipe_box *box,
+			  unsigned stride,
+			  unsigned slice_stride);
 void trace_dump_string(const char *str);
 void trace_dump_enum(const char *value);
 void trace_dump_array_begin(void);
@@ -105,8 +105,7 @@ void trace_dump_member_end(void);
 void trace_dump_null(void);
 void trace_dump_ptr(const void *value);
 /* will turn a wrapped object into the real one and dump ptr */
-void trace_dump_buffer_ptr(struct pipe_buffer *_buffer);
-void trace_dump_texture_ptr(struct pipe_texture *_texture);
+void trace_dump_resource_ptr(struct pipe_resource *_texture);
 void trace_dump_surface_ptr(struct pipe_surface *_surface);
 void trace_dump_transfer_ptr(struct pipe_transfer *_transfer);
 
@@ -121,6 +120,13 @@ void trace_dump_transfer_ptr(struct pipe_transfer *_transfer);
       trace_dump_arg_end(); \
    } while(0)
 
+#define trace_dump_arg_struct(_type, _arg) \
+   do { \
+      trace_dump_arg_begin(#_arg); \
+      trace_dump_##_type(&_arg); \
+      trace_dump_arg_end(); \
+   } while(0)
+
 #define trace_dump_ret(_type, _arg) \
    do { \
       trace_dump_ret_begin(); \
@@ -130,26 +136,34 @@ void trace_dump_transfer_ptr(struct pipe_transfer *_transfer);
 
 #define trace_dump_array(_type, _obj, _size) \
    do { \
-      size_t idx; \
-      trace_dump_array_begin(); \
-      for(idx = 0; idx < (_size); ++idx) { \
-         trace_dump_elem_begin(); \
-         trace_dump_##_type((_obj)[idx]); \
-         trace_dump_elem_end(); \
+      if (_obj) { \
+         size_t idx; \
+         trace_dump_array_begin(); \
+         for(idx = 0; idx < (_size); ++idx) { \
+            trace_dump_elem_begin(); \
+            trace_dump_##_type((_obj)[idx]); \
+            trace_dump_elem_end(); \
+         } \
+         trace_dump_array_end(); \
+      } else { \
+         trace_dump_null(); \
       } \
-      trace_dump_array_end(); \
    } while(0)
 
 #define trace_dump_struct_array(_type, _obj, _size) \
    do { \
-      size_t idx; \
-      trace_dump_array_begin(); \
-      for(idx = 0; idx < (_size); ++idx) { \
-         trace_dump_elem_begin(); \
-         trace_dump_##_type(&(_obj)[idx]); \
-         trace_dump_elem_end(); \
+      if (_obj) { \
+         size_t idx; \
+         trace_dump_array_begin(); \
+         for(idx = 0; idx < (_size); ++idx) { \
+            trace_dump_elem_begin(); \
+            trace_dump_##_type(&(_obj)[idx]); \
+            trace_dump_elem_end(); \
+         } \
+         trace_dump_array_end(); \
+      } else { \
+         trace_dump_null(); \
       } \
-      trace_dump_array_end(); \
    } while(0)
 
 #define trace_dump_member(_type, _obj, _member) \

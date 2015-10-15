@@ -29,14 +29,13 @@ AC_PREREQ([2.60])
 # digit in the version number to track changes which don't affect the
 # protocol, so Xrender version l.n.m corresponds to protocol version l.n
 #
-AC_INIT(libXrender, [0.9.7],
+AC_INIT(libXrender, [0.9.9],
 	[https://bugs.freedesktop.org/enter_bug.cgi?product=xorg], [libXrender])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
-AM_MAINTAINER_MODE
 
 # Initialize libtool
 AC_PROG_LIBTOOL
@@ -57,7 +56,7 @@ RENDER_VERSION=[`echo $VERSION | sed 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*$/\1/'`]
 AC_SUBST(RENDER_VERSION)
 
 # Obtain compiler/linker options for depedencies
-PKG_CHECK_MODULES(RENDER, x11 renderproto >= $RENDER_VERSION)
+PKG_CHECK_MODULES(RENDER, [x11 >= 1.6] renderproto >= $RENDER_VERSION)
 
 AC_CONFIG_FILES([Makefile
 		src/Makefile

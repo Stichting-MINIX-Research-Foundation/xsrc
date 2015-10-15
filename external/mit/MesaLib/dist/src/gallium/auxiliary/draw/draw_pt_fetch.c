@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,9 +27,9 @@
 
 #include "util/u_memory.h"
 #include "util/u_math.h"
+#include "util/u_format.h"
 #include "draw/draw_context.h"
 #include "draw/draw_private.h"
-#include "draw/draw_vbuf.h"
 #include "draw/draw_pt.h"
 #include "translate/translate.h"
 #include "translate/translate_cache.h"
@@ -46,7 +46,8 @@ struct pt_fetch {
 };
 
 
-/* Perform the fetch from API vertex elements & vertex buffers, to a
+/**
+ * Perform the fetch from API vertex elements & vertex buffers, to a
  * contiguous set of float[4] attributes as required for the
  * vertex_shader->run_linear() method.
  *
@@ -55,10 +56,11 @@ struct pt_fetch {
  * directly to hw vertices.
  *
  */
-void draw_pt_fetch_prepare( struct pt_fetch *fetch,
-                            unsigned vs_input_count,
-                            unsigned vertex_size,
-                            unsigned instance_id_index )
+void
+draw_pt_fetch_prepare(struct pt_fetch *fetch,
+                      unsigned vs_input_count,
+                      unsigned vertex_size,
+                      unsigned instance_id_index)
 {
    struct draw_context *draw = fetch->draw;
    unsigned nr_inputs;
@@ -69,31 +71,12 @@ void draw_pt_fetch_prepare( struct pt_fetch *fetch,
 
    fetch->vertex_size = vertex_size;
 
-   /* Always emit/leave space for a vertex header.
-    *
-    * It's worth considering whether the vertex headers should contain
-    * a pointer to the 'data', rather than having it inline.
-    * Something to look at after we've fully switched over to the pt
-    * paths.
+   /* Leave the clipmask/edgeflags/pad/vertex_id untouched
     */
-   {
-      /* Need to set header->vertex_id = 0xffff somehow.
-       */
-      key.element[nr].type = TRANSLATE_ELEMENT_NORMAL;
-      key.element[nr].input_format = PIPE_FORMAT_R32_FLOAT;
-      key.element[nr].input_buffer = draw->pt.nr_vertex_buffers;
-      key.element[nr].input_offset = 0;
-      key.element[nr].instance_divisor = 0;
-      key.element[nr].output_format = PIPE_FORMAT_R32_FLOAT;
-      key.element[nr].output_offset = dst_offset;
-      dst_offset += 1 * sizeof(float);
-      nr++;
-
-
-      /* Just leave the clip[] array untouched.
-       */
-      dst_offset += 4 * sizeof(float);
-   }
+   dst_offset += 1 * sizeof(float);
+   /* Just leave the clip[] and pre_clip_pos[] array untouched.
+    */
+   dst_offset += 8 * sizeof(float);
 
    if (instance_id_index != ~0) {
       num_extra_inputs++;
@@ -111,6 +94,28 @@ void draw_pt_fetch_prepare( struct pt_fetch *fetch,
          key.element[nr].output_offset = dst_offset;
 
          dst_offset += sizeof(uint);
+      } else if (util_format_is_pure_sint(draw->pt.vertex_element[i].src_format)) {
+         key.element[nr].type = TRANSLATE_ELEMENT_NORMAL;
+         key.element[nr].input_format = draw->pt.vertex_element[ei].src_format;
+         key.element[nr].input_buffer = draw->pt.vertex_element[ei].vertex_buffer_index;
+         key.element[nr].input_offset = draw->pt.vertex_element[ei].src_offset;
+         key.element[nr].instance_divisor = draw->pt.vertex_element[ei].instance_divisor;
+         key.element[nr].output_format = PIPE_FORMAT_R32G32B32A32_SINT;
+         key.element[nr].output_offset = dst_offset;
+
+         ei++;
+         dst_offset += 4 * sizeof(int);
+      } else if (util_format_is_pure_uint(draw->pt.vertex_element[i].src_format)) {
+         key.element[nr].type = TRANSLATE_ELEMENT_NORMAL;
+         key.element[nr].input_format = draw->pt.vertex_element[ei].src_format;
+         key.element[nr].input_buffer = draw->pt.vertex_element[ei].vertex_buffer_index;
+         key.element[nr].input_offset = draw->pt.vertex_element[ei].src_offset;
+         key.element[nr].instance_divisor = draw->pt.vertex_element[ei].instance_divisor;
+         key.element[nr].output_format = PIPE_FORMAT_R32G32B32A32_UINT;
+         key.element[nr].output_offset = dst_offset;
+
+         ei++;
+         dst_offset += 4 * sizeof(unsigned);
       } else {
          key.element[nr].type = TRANSLATE_ELEMENT_NORMAL;
          key.element[nr].input_format = draw->pt.vertex_element[ei].src_format;
@@ -132,62 +137,20 @@ void draw_pt_fetch_prepare( struct pt_fetch *fetch,
    key.nr_elements = nr;
    key.output_stride = vertex_size;
 
-
    if (!fetch->translate ||
        translate_key_compare(&fetch->translate->key, &key) != 0)
    {
       translate_key_sanitize(&key);
       fetch->translate = translate_cache_find(fetch->cache, &key);
-
-      {
-         static struct vertex_header vh = { 0,
-                                            1,
-                                            0,
-                                            UNDEFINED_VERTEX_ID,
-                                            { .0f, .0f, .0f, .0f } };
-
-	 fetch->translate->set_buffer(fetch->translate,
-				      draw->pt.nr_vertex_buffers,
-				      &vh,
-				      0);
-      }
    }
-
 }
 
 
-
-
-void draw_pt_fetch_run( struct pt_fetch *fetch,
-			const unsigned *elts,
-			unsigned count,
-			char *verts )
-{
-   struct draw_context *draw = fetch->draw;
-   struct translate *translate = fetch->translate;
-   unsigned i;
-
-   for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
-      translate->set_buffer(translate, 
-			    i, 
-			    ((char *)draw->pt.user.vbuffer[i] + 
-			     draw->pt.vertex_buffer[i].buffer_offset),
-			    draw->pt.vertex_buffer[i].stride );
-   }
-
-   translate->run_elts( translate,
-			elts, 
-			count,
-                        draw->instance_id,
-			verts );
-
-}
-
-
-void draw_pt_fetch_run_linear( struct pt_fetch *fetch,
-                               unsigned start,
-                               unsigned count,
-                               char *verts )
+void
+draw_pt_fetch_run(struct pt_fetch *fetch,
+                  const unsigned *elts,
+                  unsigned count,
+                  char *verts)
 {
    struct draw_context *draw = fetch->draw;
    struct translate *translate = fetch->translate;
@@ -196,20 +159,51 @@ void draw_pt_fetch_run_linear( struct pt_fetch *fetch,
    for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
       translate->set_buffer(translate,
 			    i,
-			    ((char *)draw->pt.user.vbuffer[i] +
+			    ((char *)draw->pt.user.vbuffer[i].map +
 			     draw->pt.vertex_buffer[i].buffer_offset),
-			    draw->pt.vertex_buffer[i].stride );
+			    draw->pt.vertex_buffer[i].stride,
+			    draw->pt.max_index);
+   }
+
+   translate->run_elts( translate,
+			elts,
+			count,
+                        draw->start_instance,
+                        draw->instance_id,
+			verts );
+}
+
+
+void
+draw_pt_fetch_run_linear(struct pt_fetch *fetch,
+                         unsigned start,
+                         unsigned count,
+                         char *verts)
+{
+   struct draw_context *draw = fetch->draw;
+   struct translate *translate = fetch->translate;
+   unsigned i;
+
+   for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
+      translate->set_buffer(translate,
+			    i,
+			    ((char *)draw->pt.user.vbuffer[i].map +
+			     draw->pt.vertex_buffer[i].buffer_offset),
+			    draw->pt.vertex_buffer[i].stride,
+			    draw->pt.max_index);
    }
 
    translate->run( translate,
                    start,
                    count,
+                   draw->start_instance,
                    draw->instance_id,
                    verts );
 }
 
 
-struct pt_fetch *draw_pt_fetch_create( struct draw_context *draw )
+struct pt_fetch *
+draw_pt_fetch_create(struct draw_context *draw)
 {
    struct pt_fetch *fetch = CALLOC_STRUCT(pt_fetch);
    if (!fetch)
@@ -225,11 +219,12 @@ struct pt_fetch *draw_pt_fetch_create( struct draw_context *draw )
    return fetch;
 }
 
-void draw_pt_fetch_destroy( struct pt_fetch *fetch )
+
+void
+draw_pt_fetch_destroy(struct pt_fetch *fetch)
 {
    if (fetch->cache)
       translate_cache_destroy(fetch->cache);
 
    FREE(fetch);
 }
-

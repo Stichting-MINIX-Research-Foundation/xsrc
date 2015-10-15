@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,18 +16,18 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
 #include "main/glheader.h"
 #include "main/colormac.h"
-#include "main/context.h"
 #include "main/macros.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
@@ -95,7 +94,7 @@ init_static_data( void )
  * Fog blend factors are in the range [0,1].
  */
 static void
-compute_fog_blend_factors(GLcontext *ctx, GLvector4f *out, const GLvector4f *in)
+compute_fog_blend_factors(struct gl_context *ctx, GLvector4f *out, const GLvector4f *in)
 {
    GLfloat end  = ctx->Fog.End;
    GLfloat *v = in->start;
@@ -141,7 +140,7 @@ compute_fog_blend_factors(GLcontext *ctx, GLvector4f *out, const GLvector4f *in)
 
 
 static GLboolean
-run_fog_stage(GLcontext *ctx, struct tnl_pipeline_stage *stage)
+run_fog_stage(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    struct vertex_buffer *VB = &tnl->vb;
@@ -236,11 +235,11 @@ run_fog_stage(GLcontext *ctx, struct tnl_pipeline_stage *stage)
 /* Called the first time stage->run() is invoked.
  */
 static GLboolean
-alloc_fog_data(GLcontext *ctx, struct tnl_pipeline_stage *stage)
+alloc_fog_data(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    struct fog_stage_data *store;
-   stage->privatePtr = MALLOC(sizeof(*store));
+   stage->privatePtr = malloc(sizeof(*store));
    store = FOG_STAGE_DATA(stage);
    if (!store)
       return GL_FALSE;
@@ -260,7 +259,7 @@ free_fog_data(struct tnl_pipeline_stage *stage)
    struct fog_stage_data *store = FOG_STAGE_DATA(stage);
    if (store) {
       _mesa_vector4f_free( &store->fogcoord );
-      FREE( store );
+      free( store );
       stage->privatePtr = NULL;
    }
 }

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -26,8 +26,12 @@
  **************************************************************************/
 
 #include "i915_context.h"
+#include "main/api_exec.h"
 #include "main/imports.h"
 #include "main/macros.h"
+#include "main/version.h"
+#include "main/vtxfmt.h"
+#include "intel_chipset.h"
 #include "intel_tris.h"
 #include "tnl/t_context.h"
 #include "tnl/t_pipeline.h"
@@ -36,12 +40,10 @@
 #include "swrast/swrast.h"
 #include "swrast_setup/swrast_setup.h"
 #include "tnl/tnl.h"
+#include "util/ralloc.h"
 
 #include "i915_reg.h"
 #include "i915_program.h"
-
-#include "intel_tris.h"
-#include "intel_span.h"
 
 /***************************************
  * Mesa's Driver Functions
@@ -50,7 +52,7 @@
 /* Override intel default.
  */
 static void
-i915InvalidateState(GLcontext * ctx, GLuint new_state)
+i915InvalidateState(struct gl_context * ctx, GLuint new_state)
 {
    _swrast_InvalidateState(ctx, new_state);
    _swsetup_InvalidateState(ctx, new_state);
@@ -70,14 +72,14 @@ i915InvalidateState(GLcontext * ctx, GLuint new_state)
          p->params_uptodate = 0;
    }
 
-   if (new_state & (_NEW_FOG | _NEW_HINT | _NEW_PROGRAM | _NEW_PROGRAM_CONSTANTS))
-      i915_update_fog(ctx);
    if (new_state & (_NEW_STENCIL | _NEW_BUFFERS | _NEW_POLYGON))
       i915_update_stencil(ctx);
    if (new_state & (_NEW_LIGHT))
        i915_update_provoking_vertex(ctx);
    if (new_state & (_NEW_PROGRAM | _NEW_PROGRAM_CONSTANTS))
        i915_update_program(ctx);
+   if (new_state & (_NEW_PROGRAM | _NEW_POINT))
+       i915_update_sprite_point_enable(ctx);
 }
 
 
@@ -90,40 +92,98 @@ i915InitDriverFunctions(struct dd_function_table *functions)
    functions->UpdateState = i915InvalidateState;
 }
 
+/* Note: this is shared with i830. */
+void
+intel_init_texture_formats(struct gl_context *ctx)
+{
+   struct intel_context *intel = intel_context(ctx);
+   struct intel_screen *intel_screen = intel->intelScreen;
+
+   ctx->TextureFormatSupported[MESA_FORMAT_B8G8R8A8_UNORM] = true;
+   if (intel_screen->deviceID != PCI_CHIP_I830_M &&
+       intel_screen->deviceID != PCI_CHIP_845_G)
+      ctx->TextureFormatSupported[MESA_FORMAT_B8G8R8X8_UNORM] = true;
+   if (intel->gen == 3)
+      ctx->TextureFormatSupported[MESA_FORMAT_B8G8R8A8_SRGB] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_B4G4R4A4_UNORM] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_B5G5R5A1_UNORM] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_B5G6R5_UNORM] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_L_UNORM8] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_A_UNORM8] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_I_UNORM8] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_L8A8_UNORM] = true;
+
+   /* Depth and stencil */
+   if (intel->gen == 3) {
+      ctx->TextureFormatSupported[MESA_FORMAT_Z24_UNORM_S8_UINT] = true;
+      ctx->TextureFormatSupported[MESA_FORMAT_Z24_UNORM_X8_UINT] = true;
+
+      /*
+       * This was disabled in initial FBO enabling to avoid combinations
+       * of depth+stencil that wouldn't work together.  We since decided
+       * that it was OK, since it's up to the app to come up with the
+       * combo that actually works, so this can probably be re-enabled.
+       */
+      /*
+      ctx->TextureFormatSupported[MESA_FORMAT_Z_UNORM16] = true;
+      ctx->TextureFormatSupported[MESA_FORMAT_Z24] = true;
+      */
+   }
+
+   /* ctx->Extensions.MESA_ycbcr_texture */
+   ctx->TextureFormatSupported[MESA_FORMAT_YCBCR] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_YCBCR_REV] = true;
+
+   /* GL_3DFX_texture_compression_FXT1 */
+   ctx->TextureFormatSupported[MESA_FORMAT_RGB_FXT1] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_RGBA_FXT1] = true;
+
+   /* GL_EXT_texture_compression_s3tc */
+   ctx->TextureFormatSupported[MESA_FORMAT_RGB_DXT1] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_RGBA_DXT1] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_RGBA_DXT3] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_RGBA_DXT5] = true;
+}
 
 extern const struct tnl_pipeline_stage *intel_pipeline[];
 
-GLboolean
-i915CreateContext(const __GLcontextModes * mesaVis,
+bool
+i915CreateContext(int api,
+		  const struct gl_config * mesaVis,
                   __DRIcontext * driContextPriv,
+                  unsigned major_version,
+                  unsigned minor_version,
+                  uint32_t flags,
+                  unsigned *error,
                   void *sharedContextPrivate)
 {
    struct dd_function_table functions;
-   struct i915_context *i915 =
-      (struct i915_context *) CALLOC_STRUCT(i915_context);
+   struct i915_context *i915 = rzalloc(NULL, struct i915_context);
    struct intel_context *intel = &i915->intel;
-   GLcontext *ctx = &intel->ctx;
+   struct gl_context *ctx = &intel->ctx;
 
-   if (!i915)
-      return GL_FALSE;
-
-   if (0)
-      printf("\ntexmem-0-3 branch\n\n");
+   if (!i915) {
+      *error = __DRI_CTX_ERROR_NO_MEMORY;
+      return false;
+   }
 
    i915InitVtbl(i915);
 
    i915InitDriverFunctions(&functions);
 
-   if (!intelInitContext(intel, mesaVis, driContextPriv,
-                         sharedContextPrivate, &functions)) {
-      FREE(i915);
-      return GL_FALSE;
+   if (!intelInitContext(intel, api, major_version, minor_version, flags,
+                         mesaVis, driContextPriv,
+                         sharedContextPrivate, &functions,
+                         error)) {
+      ralloc_free(i915);
+      return false;
    }
+
+   intel_init_texture_formats(ctx);
 
    _math_matrix_ctr(&intel->ViewportMatrix);
 
    /* Initialize swrast, tnl driver tables: */
-   intelInitSpanFuncs(ctx);
    intelInitTriFuncs(ctx);
 
    /* Install the customized pipeline: */
@@ -134,12 +194,15 @@ i915CreateContext(const __GLcontextModes * mesaVis,
       FALLBACK(intel, INTEL_FALLBACK_USER, 1);
 
    ctx->Const.MaxTextureUnits = I915_TEX_UNITS;
-   ctx->Const.MaxTextureImageUnits = I915_TEX_UNITS;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxTextureImageUnits = I915_TEX_UNITS;
+   ctx->Const.Program[MESA_SHADER_VERTEX].MaxTextureImageUnits = I915_TEX_UNITS;
    ctx->Const.MaxTextureCoordUnits = I915_TEX_UNITS;
    ctx->Const.MaxVarying = I915_TEX_UNITS;
+   ctx->Const.Program[MESA_SHADER_VERTEX].MaxOutputComponents =
+      ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxInputComponents = ctx->Const.MaxVarying * 4;
    ctx->Const.MaxCombinedTextureImageUnits =
-      ctx->Const.MaxVertexTextureImageUnits +
-      ctx->Const.MaxTextureImageUnits;
+      ctx->Const.Program[MESA_SHADER_VERTEX].MaxTextureImageUnits +
+      ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxTextureImageUnits;
 
    /* Advertise the full hardware capabilities.  The new memory
     * manager should cope much better with overload situations:
@@ -157,23 +220,54 @@ i915CreateContext(const __GLcontextModes * mesaVis,
     * instruction can translate to more than one HW instruction, so
     * we'll still have to check and fallback each time.
     */
-   ctx->Const.FragmentProgram.MaxNativeTemps = I915_MAX_TEMPORARY;
-   ctx->Const.FragmentProgram.MaxNativeAttribs = 11;    /* 8 tex, 2 color, fog */
-   ctx->Const.FragmentProgram.MaxNativeParameters = I915_MAX_CONSTANT;
-   ctx->Const.FragmentProgram.MaxNativeAluInstructions = I915_MAX_ALU_INSN;
-   ctx->Const.FragmentProgram.MaxNativeTexInstructions = I915_MAX_TEX_INSN;
-   ctx->Const.FragmentProgram.MaxNativeInstructions = (I915_MAX_ALU_INSN +
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeTemps = I915_MAX_TEMPORARY;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeAttribs = 11;    /* 8 tex, 2 color, fog */
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeParameters = I915_MAX_CONSTANT;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeAluInstructions = I915_MAX_ALU_INSN;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeTexInstructions = I915_MAX_TEX_INSN;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeInstructions = (I915_MAX_ALU_INSN +
                                                        I915_MAX_TEX_INSN);
-   ctx->Const.FragmentProgram.MaxNativeTexIndirections =
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeTexIndirections =
       I915_MAX_TEX_INDIRECT;
-   ctx->Const.FragmentProgram.MaxNativeAddressRegs = 0; /* I don't think we have one */
-   ctx->Const.FragmentProgram.MaxEnvParams =
-      MIN2(ctx->Const.FragmentProgram.MaxNativeParameters,
-	   ctx->Const.FragmentProgram.MaxEnvParams);
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeAddressRegs = 0; /* I don't think we have one */
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxEnvParams =
+      MIN2(ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxNativeParameters,
+	   ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxEnvParams);
 
-   ctx->FragmentProgram._MaintainTexEnvProgram = GL_TRUE;
+   /* i915 stores all values in single-precision floats.  Values aren't set
+    * for other program targets because software is used for those targets.
+    */
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumFloat.RangeMin = 127;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumFloat.RangeMax = 127;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumFloat.Precision = 23;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].LowFloat = ctx->Const.Program[MESA_SHADER_FRAGMENT].HighFloat =
+      ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumFloat;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumInt.RangeMin = 24;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumInt.RangeMax = 24;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumInt.Precision = 0;
+   ctx->Const.Program[MESA_SHADER_FRAGMENT].LowInt = ctx->Const.Program[MESA_SHADER_FRAGMENT].HighInt =
+      ctx->Const.Program[MESA_SHADER_FRAGMENT].MediumInt;
+
+   ctx->FragmentProgram._MaintainTexEnvProgram = true;
+
+   /* FINISHME: Are there other options that should be enabled for software
+    * FINISHME: vertex shaders?
+    */
+   ctx->Const.ShaderCompilerOptions[MESA_SHADER_VERTEX].EmitCondCodes = true;
+
+   struct gl_shader_compiler_options *const fs_options =
+      & ctx->Const.ShaderCompilerOptions[MESA_SHADER_FRAGMENT];
+   fs_options->MaxIfDepth = 0;
+   fs_options->EmitNoNoise = true;
+   fs_options->EmitNoPow = true;
+   fs_options->EmitNoMainReturn = true;
+   fs_options->EmitNoIndirectInput = true;
+   fs_options->EmitNoIndirectOutput = true;
+   fs_options->EmitNoIndirectUniform = true;
+   fs_options->EmitNoIndirectTemp = true;
 
    ctx->Const.MaxDrawBuffers = 1;
+   ctx->Const.QueryCounterBits.SamplesPassed = 0;
 
    _tnl_init_vertices(ctx, ctx->Const.MaxArrayLockSize + 12,
                       36 * sizeof(GLfloat));
@@ -182,5 +276,16 @@ i915CreateContext(const __GLcontextModes * mesaVis,
 
    i915InitState(i915);
 
-   return GL_TRUE;
+   /* Always enable pixel fog.  Vertex fog using fog coord will conflict
+    * with fog code appended onto fragment program.
+    */
+   _tnl_allow_vertex_fog(ctx, 0);
+   _tnl_allow_pixel_fog(ctx, 1);
+
+   _mesa_compute_version(ctx);
+
+   _mesa_initialize_dispatch_tables(ctx);
+   _mesa_initialize_vbo_vtxfmt(ctx);
+
+   return true;
 }

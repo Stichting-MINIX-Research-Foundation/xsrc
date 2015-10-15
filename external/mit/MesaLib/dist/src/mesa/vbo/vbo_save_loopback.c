@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2005 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2005 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -36,30 +36,29 @@
 #include "vbo_context.h"
 
 
-
-typedef void (*attr_func)( GLcontext *ctx, GLint target, const GLfloat * );
+typedef void (*attr_func)( struct gl_context *ctx, GLint target, const GLfloat * );
 
 
 /* This file makes heavy use of the aliasing of NV vertex attributes
  * with the legacy attributes, and also with ARB and Material
  * attributes as currently implemented.
  */
-static void VertexAttrib1fvNV(GLcontext *ctx, GLint target, const GLfloat *v)
+static void VertexAttrib1fvNV(struct gl_context *ctx, GLint target, const GLfloat *v)
 {
    CALL_VertexAttrib1fvNV(ctx->Exec, (target, v));
 }
 
-static void VertexAttrib2fvNV(GLcontext *ctx, GLint target, const GLfloat *v)
+static void VertexAttrib2fvNV(struct gl_context *ctx, GLint target, const GLfloat *v)
 {
    CALL_VertexAttrib2fvNV(ctx->Exec, (target, v));
 }
 
-static void VertexAttrib3fvNV(GLcontext *ctx, GLint target, const GLfloat *v)
+static void VertexAttrib3fvNV(struct gl_context *ctx, GLint target, const GLfloat *v)
 {
    CALL_VertexAttrib3fvNV(ctx->Exec, (target, v));
 }
 
-static void VertexAttrib4fvNV(GLcontext *ctx, GLint target, const GLfloat *v)
+static void VertexAttrib4fvNV(struct gl_context *ctx, GLint target, const GLfloat *v)
 {
    CALL_VertexAttrib4fvNV(ctx->Exec, (target, v));
 }
@@ -81,7 +80,7 @@ struct loopback_attr {
  * wrapped vertices.  If we get here, it's probably because the
  * precalculated wrapping is wrong.
  */
-static void loopback_prim( GLcontext *ctx,
+static void loopback_prim( struct gl_context *ctx,
 			   const GLfloat *buffer,
 			   const struct _mesa_prim *prim,
 			   GLuint wrap_count,
@@ -136,7 +135,7 @@ static void loopback_prim( GLcontext *ctx,
  * normally, otherwise need to track and discard the generated
  * primitives.
  */
-static void loopback_weak_prim( GLcontext *ctx,
+static void loopback_weak_prim( struct gl_context *ctx,
 				const struct _mesa_prim *prim )
 {
    /* Use the prim_weak flag to ensure that if this primitive
@@ -153,7 +152,7 @@ static void loopback_weak_prim( GLcontext *ctx,
 }
 
 
-void vbo_loopback_vertex_list( GLcontext *ctx,
+void vbo_loopback_vertex_list( struct gl_context *ctx,
 			       const GLfloat *buffer,
 			       const GLubyte *attrsz,
 			       const struct _mesa_prim *prim,
@@ -178,7 +177,7 @@ void vbo_loopback_vertex_list( GLcontext *ctx,
 
    for (i = 0 ; i < prim_count ; i++) {
       if ((prim[i].mode & VBO_SAVE_PRIM_WEAK) &&
-	  (ctx->Driver.CurrentExecPrimitive != PRIM_OUTSIDE_BEGIN_END))
+          _mesa_inside_begin_end(ctx))
       {
 	 loopback_weak_prim( ctx, &prim[i] );
       }

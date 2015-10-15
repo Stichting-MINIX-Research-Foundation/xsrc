@@ -30,8 +30,9 @@ To create a pixmap of a given size, use
   <funcdef>Pixmap <function>XCreatePixmap</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedint<parameter> depth</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned int <parameter> depth</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -53,7 +54,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies which screen the pixmap is created on. 
-<!-- .ds Wh , which define the dimensions of the pixmap -->
       </para>
     </listitem>
   </varlistentry>
@@ -74,7 +74,7 @@ Specifies which screen the pixmap is created on.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which define the dimensions of the pixmap.
       </para>
     </listitem>
   </varlistentry>
@@ -232,7 +232,7 @@ To create a cursor from the standard cursor font, use
 <funcprototype>
   <funcdef>Cursor <function>XCreateFontCursor</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
-  <paramdef>unsignedint<parameter> shape</parameter></paramdef>
+  <paramdef>unsigned int <parameter> shape</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 
@@ -301,7 +301,7 @@ To create a cursor from font glyphs, use
   <funcdef>Cursor <function>XCreateGlyphCursor</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Fontsource_font,<parameter> mask_font</parameter></paramdef>
-  <paramdef>unsignedintsource_char,<parameter> mask_char</parameter></paramdef>
+  <paramdef>unsigned int source_char,<parameter> mask_char</parameter></paramdef>
   <paramdef>XColor<parameter> *foreground_color</parameter></paramdef>
   <paramdef>XColor<parameter> *background_color</parameter></paramdef>
 </funcprototype>
@@ -443,7 +443,7 @@ use
   <paramdef>Pixmap<parameter> mask</parameter></paramdef>
   <paramdef>XColor<parameter> *foreground_color</parameter></paramdef>
   <paramdef>XColor<parameter> *background_color</parameter></paramdef>
-  <paramdef>unsignedintx,<parameter> y</parameter></paramdef>
+  <paramdef>unsigned int x,<parameter> y</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -497,7 +497,6 @@ Specifies the <acronym>RGB</acronym> values for the foreground of the source.
     <listitem>
       <para>
 Specifies the <acronym>RGB</acronym> values for the background of the source.
-<!-- .ds Xy , which indicate the hotspot relative to the source's origin -->
       </para>
     </listitem>
   </varlistentry>
@@ -518,7 +517,8 @@ Specifies the <acronym>RGB</acronym> values for the background of the source.
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which indicate the hotspot relative to the
+source's origin.
     </para>
   </listitem>
   </varlistentry>
@@ -587,8 +587,10 @@ To determine useful cursor sizes, use
   <funcdef>Status <function>XQueryBestCursor</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedint*width_return,<parameter> *height_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*width_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*height_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -600,7 +602,6 @@ To determine useful cursor sizes, use
     <listitem>
       <para>
 Specifies the connection to the X server.
-<!-- .ds Dr , which indicates the screen -->
       </para>
     </listitem>
   </varlistentry>
@@ -610,8 +611,7 @@ Specifies the connection to the X server.
     </term>
     <listitem>
       <para>
-Specifies the drawable(Dr. 
-<!-- .ds Wh \ of the cursor that you want the size information for -->
+Specifies the drawable, which indicates the screen.
       </para>
     </listitem>
   </varlistentry>
@@ -632,7 +632,8 @@ Specifies the drawable(Dr.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height of the cursor that you want the size
+information for.
       </para>
     </listitem>
   </varlistentry>

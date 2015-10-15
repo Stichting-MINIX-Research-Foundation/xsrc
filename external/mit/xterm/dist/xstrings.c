@@ -1,7 +1,7 @@
-/* $XTermId: xstrings.c,v 1.57 2013/02/03 22:11:25 tom Exp $ */
+/* $XTermId: xstrings.c,v 1.61 2015/04/10 00:23:33 Ross.Combs Exp $ */
 
 /*
- * Copyright 2000-2012,2013 by Thomas E. Dickey
+ * Copyright 2000-2014,2015 by Thomas E. Dickey
  *
  *                         All Rights Reserved
  *
@@ -216,7 +216,7 @@ x_getlogin(uid_t uid, struct passwd *in_out)
  * result via the given pointer.  On failure, wipes the data to prevent use.
  */
 Boolean
-x_getpwnam(const char *name, struct passwd * result)
+x_getpwnam(const char *name, struct passwd *result)
 {
     struct passwd *ptr = getpwnam(name);
     Boolean code;
@@ -236,7 +236,7 @@ x_getpwnam(const char *name, struct passwd * result)
  * result via the given pointer.  On failure, wipes the data to prevent use.
  */
 Boolean
-x_getpwuid(uid_t uid, struct passwd * result)
+x_getpwuid(uid_t uid, struct passwd *result)
 {
     struct passwd *ptr = getpwuid((uid_t) uid);
     Boolean code;
@@ -289,7 +289,7 @@ x_nonempty(String s)
 String
 x_skip_blanks(String s)
 {
-    while (isspace(CharOf(*s)))
+    while (IsSpace(CharOf(*s)))
 	++s;
     return s;
 }
@@ -297,7 +297,7 @@ x_skip_blanks(String s)
 String
 x_skip_nonblanks(String s)
 {
-    while (*s != '\0' && !isspace(CharOf(*s)))
+    while (*s != '\0' && !IsSpace(CharOf(*s)))
 	++s;
     return s;
 }
@@ -305,7 +305,7 @@ x_skip_nonblanks(String s)
 static const char *
 skip_blanks(const char *s)
 {
-    while (isspace(CharOf(*s)))
+    while (IsSpace(CharOf(*s)))
 	++s;
     return s;
 }
@@ -331,7 +331,7 @@ x_splitargs(const char *command)
 		for (n = count = 0, state = 0; first[n] != '\0'; ++n) {
 		    switch (state) {
 		    case 0:
-			if (!isspace(CharOf(first[n]))) {
+			if (!IsSpace(CharOf(first[n]))) {
 			    state = 1;
 			    if (pass)
 				result[count] = blob + n;
@@ -341,7 +341,7 @@ x_splitargs(const char *command)
 			}
 			break;
 		    case 1:
-			if (isspace(CharOf(first[n]))) {
+			if (IsSpace(CharOf(first[n]))) {
 			    blob[n] = '\0';
 			    state = 0;
 			}
@@ -431,7 +431,7 @@ x_strindex(char *s1, const char *s2)
     char *s3;
     size_t s2len = strlen(s2);
 
-    while ((s3 = strchr(s1, *s2)) != NULL) {
+    while ((s3 = (strchr) (s1, *s2)) != NULL) {
 	if (strncmp(s3, s2, s2len) == 0)
 	    return (s3);
 	s1 = ++s3;
@@ -454,14 +454,14 @@ x_strtrim(const char *source)
 	if (t != 0) {
 	    s = t;
 	    d = s;
-	    while (isspace(CharOf(*s)))
+	    while (IsSpace(CharOf(*s)))
 		++s;
 	    while ((*d++ = *s++) != '\0') {
 		;
 	    }
 	    if (*t != '\0') {
 		s = t + strlen(t);
-		while (s != t && isspace(CharOf(s[-1]))) {
+		while (s != t && IsSpace(CharOf(s[-1]))) {
 		    *--s = '\0';
 		}
 	    }
@@ -485,7 +485,7 @@ x_toupper(int ch)
 
     if (result == '\0') {
 	unsigned n;
-	const char *s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	static const char s[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 	for (n = 0; n < sizeof(table); ++n) {
 	    table[n] = (char) n;

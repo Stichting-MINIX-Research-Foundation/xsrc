@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -26,47 +26,61 @@
  **************************************************************************/
 
 
-/**
- * Pipe copy/fill rect helpers.
- */
-
-
 #ifndef U_RECT_H
 #define U_RECT_H
 
+#include "pipe/p_compiler.h"
 
-#include "pipe/p_format.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-struct pipe_context;
-struct pipe_surface;
+struct u_rect {
+   int x0, x1;
+   int y0, y1;
+};
+
+/* Do two rectangles intersect?
+ */
+static INLINE boolean
+u_rect_test_intersection(const struct u_rect *a,
+                         const struct u_rect *b)
+{
+   return (!(a->x1 < b->x0 ||
+             b->x1 < a->x0 ||
+             a->y1 < b->y0 ||
+             b->y1 < a->y0));
+}
+
+/* Find the intersection of two rectangles known to intersect.
+ */
+static INLINE void
+u_rect_find_intersection(const struct u_rect *a,
+                         struct u_rect *b)
+{
+   /* Caller should verify intersection exists before calling.
+    */
+   if (b->x0 < a->x0) b->x0 = a->x0;
+   if (b->x1 > a->x1) b->x1 = a->x1;
+   if (b->y0 < a->y0) b->y0 = a->y0;
+   if (b->y1 > a->y1) b->y1 = a->y1;
+}
 
 
-extern void
-util_copy_rect(ubyte * dst, enum pipe_format format,
-               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
-               unsigned width, unsigned height, const ubyte * src,
-               int src_stride, unsigned src_x, unsigned src_y);
+static INLINE void
+u_rect_possible_intersection(const struct u_rect *a,
+                             struct u_rect *b)
+{
+   if (u_rect_test_intersection(a,b)) {
+      u_rect_find_intersection(a,b);
+   }
+   else {
+      b->x0 = b->x1 = b->y0 = b->y1 = 0;
+   }
+}
 
-extern void
-util_fill_rect(ubyte * dst, enum pipe_format format,
-               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
-               unsigned width, unsigned height, uint32_t value);
-
-
-extern void
-util_surface_copy(struct pipe_context *pipe,
-                  boolean do_flip,
-                  struct pipe_surface *dst,
-                  unsigned dst_x, unsigned dst_y,
-                  struct pipe_surface *src,
-                  unsigned src_x, unsigned src_y, 
-                  unsigned w, unsigned h);
-
-extern void
-util_surface_fill(struct pipe_context *pipe,
-                  struct pipe_surface *dst,
-                  unsigned dstx, unsigned dsty,
-                  unsigned width, unsigned height, unsigned value);
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* U_RECT_H */

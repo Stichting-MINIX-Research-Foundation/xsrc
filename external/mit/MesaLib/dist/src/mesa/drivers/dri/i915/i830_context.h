@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -131,7 +131,7 @@ struct i830_hw_state
     * be from a PBO or FBO.  Will have to do this for draw and depth for
     * FBO's...
     */
-   dri_bo *tex_buffer[I830_TEX_UNITS];
+   drm_intel_bo *tex_buffer[I830_TEX_UNITS];
    GLuint tex_offset[I830_TEX_UNITS];
 
    GLuint emitted;              /* I810_UPLOAD_* */
@@ -143,7 +143,7 @@ struct i830_context
    struct intel_context intel;
 
    GLuint lodbias_tm0s3[MAX_TEXTURE_UNITS];
-     DECLARE_RENDERINPUTS(last_index_bitset);
+   GLbitfield64 last_index_bitset;
 
    struct i830_hw_state state;
 };
@@ -177,9 +177,14 @@ i830_state_draw_region(struct intel_context *intel,
                        struct intel_region *depth_region);
 /* i830_context.c
  */
-extern GLboolean
-i830CreateContext(const __GLcontextModes * mesaVis,
+extern bool
+i830CreateContext(int api,
+                  const struct gl_config * mesaVis,
                   __DRIcontext * driContextPriv,
+                  unsigned major_version,
+                  unsigned minor_version,
+                  uint32_t flags,
+                  unsigned *error,
                   void *sharedContextPrivate);
 
 /* i830_tex.c, i830_texstate.c
@@ -205,14 +210,14 @@ extern void i830InitStateFuncs(struct dd_function_table *functions);
 extern void i830EmitState(struct i830_context *i830);
 
 extern void i830InitState(struct i830_context *i830);
-extern void i830_update_provoking_vertex(GLcontext *ctx);
+extern void i830_update_provoking_vertex(struct gl_context *ctx);
 
 /*======================================================================
  * Inline conversion functions.  These are better-typed than the
  * macros used previously:
  */
 static INLINE struct i830_context *
-i830_context(GLcontext * ctx)
+i830_context(struct gl_context * ctx)
 {
    return (struct i830_context *) ctx;
 }

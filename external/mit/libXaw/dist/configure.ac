@@ -1,14 +1,13 @@
 
 # Initialize Autoconf
 AC_PREREQ([2.60])
-AC_INIT([libXaw], [1.0.11],
+AC_INIT([libXaw], [1.0.13],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg], [libXaw])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
-AM_MAINTAINER_MODE
 
 # Initialize libtool
 AC_PROG_LIBTOOL
@@ -97,6 +96,15 @@ AC_CHECK_HEADERS([wctype.h wchar.h widec.h])
 
 # Checks for functions
 AC_CHECK_FUNCS([iswalnum getpagesize])
+
+# Link with winsock if mingw target
+case $host_os in
+	*mingw*)
+		AC_CHECK_LIB([ws2_32],[main])
+	;;
+	*)
+	;;
+esac
 
 AC_CONFIG_FILES([Makefile
 		include/Makefile

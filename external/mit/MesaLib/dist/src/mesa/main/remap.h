@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.7
  *
  * Copyright (C) 2009 Chia-I Wu <olv@0xlab.org>
  *
@@ -14,12 +13,13 @@
  * The above copyright notice and this permission notice shall be included
  * in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -27,20 +27,26 @@
 #define REMAP_H
 
 
-#include "main/mtypes.h"
+#include "main/compiler.h"
 
-struct gl_function_remap;
+struct gl_function_pool_remap {
+   int pool_index;
+   int remap_index;
+};
 
+struct gl_function_remap {
+   int func_index;
+   int dispatch_offset; /* for sanity check */
+};
 
-#if FEATURE_remap_table
 
 extern int
 driDispatchRemapTable[];
 
 extern const char *
-_mesa_get_function_spec(GLint func_index);
+_mesa_get_function_spec(int func_index);
 
-extern GLint
+extern int
 _mesa_map_function_spec(const char *spec);
 
 extern void
@@ -51,37 +57,6 @@ _mesa_map_static_functions(void);
 
 extern void
 _mesa_init_remap_table(void);
-
-#else /* FEATURE_remap_table */
-
-static INLINE const char *
-_mesa_get_function_spec(GLint func_index)
-{
-   return NULL;
-}
-
-static INLINE GLint
-_mesa_map_function_spec(const char *spec)
-{
-   return -1;
-}
-
-static INLINE void
-_mesa_map_function_array(const struct gl_function_remap *func_array)
-{
-}
-
-static INLINE void
-_mesa_map_static_functions(void)
-{
-}
-
-static INLINE void
-_mesa_init_remap_table(void)
-{
-}
-
-#endif /* FEATURE_remap_table */
 
 
 #endif /* REMAP_H */

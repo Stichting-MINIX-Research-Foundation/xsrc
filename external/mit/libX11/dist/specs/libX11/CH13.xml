@@ -862,7 +862,6 @@ To set output method attributes, use
     <listitem>
       <para>
 Specifies the output method.
-<!-- .ds Al \ to set <acronym>XOM</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -872,7 +871,8 @@ Specifies the output method.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to set <acronym>XOM</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -915,7 +915,6 @@ To query an output method, use
     <listitem>
       <para>
 Specifies the output method.
-<!-- .ds Al \ to get XOM values -->
       </para>
     </listitem>
   </varlistentry>
@@ -925,7 +924,7 @@ Specifies the output method.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to get XOM values.
     </para>
   </listitem>
   </varlistentry>
@@ -1337,7 +1336,6 @@ To create an output context, use
     <listitem>
       <para>
 Specifies the output method.
-<!-- .ds Al \ to set <acronym>XOC</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -1347,7 +1345,8 @@ Specifies the output method.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to set <acronym>XOC</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -1504,7 +1503,6 @@ To set <acronym>XOC</acronym> values, use
     <listitem>
       <para>
 Specifies the output context.
-<!-- .ds Al \ to set <acronym>XOC</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -1514,7 +1512,8 @@ Specifies the output context.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to set <acronym>XOC</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -1581,7 +1580,6 @@ To obtain <acronym>XOC</acronym> values, use
     <listitem>
       <para>
 Specifies the output context.
-<!-- .ds Al \ to get XOC values -->
       </para>
     </listitem>
   </varlistentry>
@@ -1591,7 +1589,7 @@ Specifies the output context.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to get XOC values.
     </para>
   </listitem>
   </varlistentry>
@@ -3170,7 +3168,6 @@ Specifies the number of bytes in the string argument.
     <listitem>
       <para>
 Specifies the number of characters in the string argument.
-<!-- .ds Ov dimensions -->
       </para>
     </listitem>
   </varlistentry>
@@ -3379,7 +3376,6 @@ The caller must pass in arrays of this size.
     <listitem>
       <para>
 Returns the number of characters in the string argument.
-<!-- .ds Ov extents of the entire string -->
       </para>
     </listitem>
   </varlistentry>
@@ -3559,7 +3555,8 @@ or
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XmbTextItem<parameter> *items</parameter></paramdef>
   <paramdef>int<parameter> nitems</parameter></paramdef>
 </funcprototype>
@@ -3571,7 +3568,8 @@ or
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XwcTextItem<parameter> *items</parameter></paramdef>
   <paramdef>int<parameter> nitems</parameter></paramdef>
 </funcprototype>
@@ -3626,7 +3624,7 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates of the position in the new parent window.
       </para>
     </listitem>
   </varlistentry>
@@ -3711,7 +3709,8 @@ or
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>XFontSet<parameter> font_set</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>char<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> num_bytes</parameter></paramdef>
 </funcprototype>
@@ -3724,7 +3723,8 @@ or
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>XFontSet<parameter> font_set</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>wchar_t<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> num_wchars</parameter></paramdef>
 </funcprototype>
@@ -3789,7 +3789,7 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates of the position in the new parent window.
       </para>
     </listitem>
   </varlistentry>
@@ -3857,7 +3857,8 @@ or
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>XFontSet<parameter> font_set</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>char<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> num_bytes</parameter></paramdef>
 </funcprototype>
@@ -3870,7 +3871,8 @@ or
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>XFontSet<parameter> font_set</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>wchar_t<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> num_wchars</parameter></paramdef>
 </funcprototype>
@@ -3935,7 +3937,7 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates of the position in the new parent window.
       </para>
     </listitem>
   </varlistentry>
@@ -5328,7 +5330,6 @@ To set input method attributes, use
     <listitem>
       <para>
 Specifies the input method.
-<!-- .ds Al \ to set <acronym>XIM</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -5338,7 +5339,8 @@ Specifies the input method.
     </term>
     <listitem>
       <para>
-Specifies the variable-length argument list(Al.
+Specifies the variable-length argument list to set <acronym>XIM</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -5381,7 +5383,6 @@ To query an input method, use
     <listitem>
       <para>
 Specifies the input method.
-<!-- .ds Al \ to get XIM values -->
       </para>
     </listitem>
   </varlistentry>
@@ -5391,7 +5392,7 @@ Specifies the input method.
     </term>
     <listitem>
       <para>
-Specifies the variable length argument list(Al.
+Specifies the variable length argument list to get XIM values.
     </para>
   </listitem>
   </varlistentry>
@@ -6339,7 +6340,6 @@ To create an input context, use
     <listitem>
       <para>
 Specifies the input method.
-<!-- .ds Al \ to set <acronym>XIC</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -6349,7 +6349,8 @@ Specifies the input method.
     </term>
     <listitem>
       <para>
-Specifies the variable length argument list(Al.
+Specifies the variable length argument list to set <acronym>XIC</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -6675,7 +6676,6 @@ To set <acronym>XIC</acronym> values, use
     <listitem>
       <para>
 Specifies the input context.
-<!-- .ds Al \ to set <acronym>XIC</acronym> values -->
       </para>
     </listitem>
   </varlistentry>
@@ -6685,7 +6685,8 @@ Specifies the input context.
     </term>
     <listitem>
       <para>
-Specifies the variable length argument list(Al.
+Specifies the variable length argument list to set <acronym>XIC</acronym>
+values.
     </para>
   </listitem>
   </varlistentry>
@@ -6758,7 +6759,6 @@ To obtain <acronym>XIC</acronym> values, use
     <listitem>
       <para>
 Specifies the input context.
-<!-- .ds Al \ to get XIC values -->
       </para>
     </listitem>
   </varlistentry>
@@ -6768,7 +6768,7 @@ Specifies the input context.
     </term>
     <listitem>
       <para>
-Specifies the variable length argument list(Al.
+Specifies the variable length argument list to get XIC values.
     </para>
   </listitem>
   </varlistentry>
@@ -9881,7 +9881,6 @@ To filter an event, use
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
-<!-- .ds Ev event to filter -->
 <variablelist>
   <varlistentry>
     <term>
@@ -9889,8 +9888,7 @@ To filter an event, use
     </term>
     <listitem>
       <para>
-Specifies the (Ev.
-<!-- .ds Wi for which the filter is to be applied -->
+Specifies the event to filter.
       </para>
     </listitem>
   </varlistentry>
@@ -9900,7 +9898,7 @@ Specifies the (Ev.
     </term>
     <listitem>
       <para>
-Specifies the window (Wi.
+Specifies the window for which the filter is to be applied.
     </para>
   </listitem>
   </varlistentry>
@@ -9989,7 +9987,6 @@ or
     <listitem>
       <para>
 Specifies the input context.
-<!-- .ds Ev key event to be used -->
       </para>
     </listitem>
   </varlistentry>
@@ -9999,7 +9996,7 @@ Specifies the input context.
     </term>
     <listitem>
       <para>
-Specifies the (Ev.
+Specifies the key event to be used.
       </para>
     </listitem>
   </varlistentry>

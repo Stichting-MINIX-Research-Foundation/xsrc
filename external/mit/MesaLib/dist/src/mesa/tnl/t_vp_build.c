@@ -1,8 +1,7 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
- * Copyright (C) 2007  Tungsten Graphics   All Rights Reserved.
+ * Copyright (C) 2007  VMware, Inc.   All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -17,7 +16,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * TUNGSTEN GRAPHICS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * VMWARE BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
  * WHETHER IN
  * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,14 +31,14 @@
 
 #include "main/glheader.h"
 #include "main/ffvertex_prog.h"
-#include "main/dd.h"
+#include "main/mtypes.h"
 #include "t_vp_build.h"
 
 
 /**
  * XXX This should go away someday, but still referenced by some drivers...
  */
-void _tnl_UpdateFixedFunctionProgram( GLcontext *ctx )
+void _tnl_UpdateFixedFunctionProgram( struct gl_context *ctx )
 {
    const struct gl_vertex_program *prev = ctx->VertexProgram._Current;
 

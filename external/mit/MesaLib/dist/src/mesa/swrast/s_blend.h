@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -27,15 +27,19 @@
 #define S_BLEND_H
 
 
-#include "s_context.h"
+#include "main/glheader.h"
+#include "s_span.h"
+
+struct gl_context;
+struct gl_renderbuffer;
 
 
 extern void
-_swrast_blend_span(GLcontext *ctx, struct gl_renderbuffer *rb, SWspan *span);
+_swrast_blend_span(struct gl_context *ctx, struct gl_renderbuffer *rb, SWspan *span);
 
 
 extern void
-_swrast_choose_blend_func(GLcontext *ctx, GLenum chanType);
+_swrast_choose_blend_func(struct gl_context *ctx, GLenum chanType);
 
 
 #endif

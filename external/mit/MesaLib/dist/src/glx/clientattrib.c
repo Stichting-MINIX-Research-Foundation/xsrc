@@ -39,7 +39,7 @@
 static void
 do_enable_disable(GLenum array, GLboolean val)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
    unsigned index = 0;
 
@@ -69,13 +69,17 @@ __indirect_glDisableClientState(GLenum array)
 void
 __indirect_glPushClientAttrib(GLuint mask)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
    __GLXattribute **spp = gc->attributes.stackPointer, *sp;
 
    if (spp < &gc->attributes.stack[__GL_CLIENT_ATTRIB_STACK_DEPTH]) {
       if (!(sp = *spp)) {
-         sp = (__GLXattribute *) Xmalloc(sizeof(__GLXattribute));
+         sp = malloc(sizeof(__GLXattribute));
+         if (sp == NULL) {
+            __glXSetError(gc, GL_OUT_OF_MEMORY);
+            return;
+         }
          *spp = sp;
       }
       sp->mask = mask;
@@ -97,7 +101,7 @@ __indirect_glPushClientAttrib(GLuint mask)
 void
 __indirect_glPopClientAttrib(void)
 {
-   __GLXcontext *gc = __glXGetCurrentContext();
+   struct glx_context *gc = __glXGetCurrentContext();
    __GLXattribute *state = (__GLXattribute *) (gc->client_state_private);
    __GLXattribute **spp = gc->attributes.stackPointer, *sp;
    GLuint mask;
@@ -127,7 +131,7 @@ __indirect_glPopClientAttrib(void)
 #endif
 
 void
-__glFreeAttributeState(__GLXcontext * gc)
+__glFreeAttributeState(struct glx_context * gc)
 {
    __GLXattribute *sp, **spp;
 
@@ -135,7 +139,7 @@ __glFreeAttributeState(__GLXcontext * gc)
         spp < &gc->attributes.stack[__GL_CLIENT_ATTRIB_STACK_DEPTH]; spp++) {
       sp = *spp;
       if (sp) {
-         XFree((char *) sp);
+         free((char *) sp);
       }
       else {
          break;

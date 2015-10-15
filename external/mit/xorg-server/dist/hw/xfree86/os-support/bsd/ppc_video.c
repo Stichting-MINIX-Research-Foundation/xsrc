@@ -87,7 +87,7 @@ ppcMapVidMem(int ScreenNum, unsigned long Base, unsigned long Size, int flags)
 		    MAP_SHARED, fd, Base);
 	if (base == MAP_FAILED)
 		xf86Msg(X_WARNING, 
-		    "%s: could not mmap screen [s=%x,a=%x] (%s)",
+		    "%s: could not mmap screen [s=%lx,a=%lx] (%s)",
 		    "xf86MapVidMem", Size, Base, strerror(errno));
 
 	return base;
@@ -157,9 +157,10 @@ Bool xf86EnableIO()
         xf86MsgVerb(X_WARNING, 3, "xf86EnableIO %d\n", fd);
         if (ioBase == MAP_FAILED)
         {
-                ioBase=mmap(NULL, 0x10000, PROT_READ|PROT_WRITE, MAP_SHARED, fd,
+                ioBase = mmap(NULL, 0x10000, PROT_READ|PROT_WRITE, MAP_SHARED, fd,
                     PCI_MAGIC_IO_RANGE);
-                xf86MsgVerb(X_INFO, 3, "xf86EnableIO: %08x\n", ioBase);
+                xf86MsgVerb(X_INFO, 3, "xf86EnableIO: %08lx\n",
+                    (unsigned long)ioBase);
                 if (ioBase == MAP_FAILED) {
                         xf86MsgVerb(X_WARNING, 3, "Can't map IO space!\n");
 			return FALSE;

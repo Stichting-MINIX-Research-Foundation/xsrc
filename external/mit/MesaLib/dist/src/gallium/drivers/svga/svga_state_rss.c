@@ -23,11 +23,14 @@
  *
  **********************************************************/
 
+#include "util/u_format.h"
 #include "util/u_inlines.h"
+#include "util/u_memory.h"
 #include "pipe/p_defines.h"
 #include "util/u_math.h"
 
 #include "svga_context.h"
+#include "svga_screen.h"
 #include "svga_state.h"
 #include "svga_cmd.h"
 
@@ -40,6 +43,7 @@ struct rs_queue {
 
 #define EMIT_RS(svga, value, token, fail)                       \
 do {                                                            \
+   assert(SVGA3D_RS_##token < Elements(svga->state.hw_draw.rs)); \
    if (svga->state.hw_draw.rs[SVGA3D_RS_##token] != value) {    \
       svga_queue_rs( &queue, SVGA3D_RS_##token, value );        \
       svga->state.hw_draw.rs[SVGA3D_RS_##token] = value;        \
@@ -49,6 +53,7 @@ do {                                                            \
 #define EMIT_RS_FLOAT(svga, fvalue, token, fail)                \
 do {                                                            \
    unsigned value = fui(fvalue);                                \
+   assert(SVGA3D_RS_##token < Elements(svga->state.hw_draw.rs)); \
    if (svga->state.hw_draw.rs[SVGA3D_RS_##token] != value) {    \
       svga_queue_rs( &queue, SVGA3D_RS_##token, value );        \
       svga->state.hw_draw.rs[SVGA3D_RS_##token] = value;        \
@@ -71,10 +76,12 @@ svga_queue_rs( struct rs_queue *q,
  * to hardware.  Simplest implementation would be to emit the whole of
  * the "to" state.
  */
-static int emit_rss( struct svga_context *svga,
-                     unsigned dirty )
+static enum pipe_error
+emit_rss(struct svga_context *svga, unsigned dirty)
 {
+   struct svga_screen *screen = svga_screen(svga->pipe.screen);
    struct rs_queue queue;
+   float point_size_min;
 
    queue.rs_count = 0;
 
@@ -146,13 +153,13 @@ static int emit_rss( struct svga_context *svga,
           * then our definition of front face agrees with hardware.
           * Otherwise need to flip.
           */
-         if (rast->templ.front_winding == PIPE_WINDING_CW) {
-            cw = 0;
-            ccw = 1;
+         if (rast->templ.front_ccw) {
+            ccw = 0;
+            cw = 1;
          }
          else {
-            cw = 1;
-            ccw = 0;
+            ccw = 1;
+            cw = 0;
          }
 
          /* Twoside stencil
@@ -191,23 +198,41 @@ static int emit_rss( struct svga_context *svga,
       EMIT_RS( svga, svga->curr.stencil_ref.ref_value[0], STENCILREF, fail );
    }
 
-   if (dirty & SVGA_NEW_RAST)
+   if (dirty & (SVGA_NEW_RAST | SVGA_NEW_NEED_PIPELINE))
    {
       const struct svga_rasterizer_state *curr = svga->curr.rast; 
+      unsigned cullmode = curr->cullmode;
 
       /* Shademode: still need to rearrange index list to move
        * flat-shading PV first vertex.
        */
       EMIT_RS( svga, curr->shademode, SHADEMODE, fail );
-      EMIT_RS( svga, curr->cullmode, CULLMODE, fail );
+
+      /* Don't do culling while the software pipeline is active.  It
+       * does it for us, and additionally introduces potentially
+       * back-facing triangles.
+       */
+      if (svga->state.sw.need_pipeline)
+         cullmode = SVGA3D_FACE_NONE;
+
+      point_size_min = util_get_min_point_size(&curr->templ);
+
+      EMIT_RS( svga, cullmode, CULLMODE, fail );
       EMIT_RS( svga, curr->scissortestenable, SCISSORTESTENABLE, fail );
       EMIT_RS( svga, curr->multisampleantialias, MULTISAMPLEANTIALIAS, fail );
       EMIT_RS( svga, curr->lastpixel, LASTPIXEL, fail );
-      EMIT_RS( svga, curr->linepattern, LINEPATTERN, fail );
       EMIT_RS_FLOAT( svga, curr->pointsize, POINTSIZE, fail );
-      /* XXX still need to set this? */
-      EMIT_RS_FLOAT( svga, 0.0, POINTSIZEMIN, fail );
-      EMIT_RS_FLOAT( svga, SVGA_MAX_POINTSIZE, POINTSIZEMAX, fail );
+      EMIT_RS_FLOAT( svga, point_size_min, POINTSIZEMIN, fail );
+      EMIT_RS_FLOAT( svga, screen->maxPointSize, POINTSIZEMAX, fail );
+      EMIT_RS( svga, curr->pointsprite, POINTSPRITEENABLE, fail);
+
+      /* Emit line state, when the device understands it */
+      if (screen->haveLineStipple)
+         EMIT_RS( svga, curr->linepattern, LINEPATTERN, fail );
+      if (screen->haveLineSmooth)
+         EMIT_RS( svga, curr->antialiasedlineenable, ANTIALIASEDLINEENABLE, fail );
+      if (screen->maxLineWidth > 1.0F)
+         EMIT_RS_FLOAT( svga, curr->linewidth, LINEWIDTH, fail );
    }
 
    if (dirty & (SVGA_NEW_RAST | SVGA_NEW_FRAME_BUFFER | SVGA_NEW_NEED_PIPELINE))
@@ -231,6 +256,21 @@ static int emit_rss( struct svga_context *svga,
       EMIT_RS_FLOAT( svga, bias, DEPTHBIAS, fail );
    }
 
+   if (dirty & SVGA_NEW_FRAME_BUFFER) {
+      /* XXX: we only look at the first color buffer's sRGB state */
+      float gamma = 1.0f;
+      if (svga->curr.framebuffer.cbufs[0] &&
+          util_format_is_srgb(svga->curr.framebuffer.cbufs[0]->format)) {
+         gamma = 2.2f;
+      }
+      EMIT_RS_FLOAT(svga, gamma, OUTPUTGAMMA, fail);
+   }
+
+   if (dirty & SVGA_NEW_RAST) {
+      /* bitmask of the enabled clip planes */
+      unsigned enabled = svga->curr.rast->templ.clip_plane_enable;
+      EMIT_RS( svga, enabled, CLIPPLANEENABLE, fail );
+   }
 
    if (queue.rs_count) {
       SVGA3dRenderState *rs;
@@ -247,7 +287,7 @@ static int emit_rss( struct svga_context *svga,
       SVGA_FIFOCommitAll( svga->swc );
    }
 
-   return 0;
+   return PIPE_OK;
 
 fail:
    /* XXX: need to poison cached hardware state on failure to ensure

@@ -40,24 +40,25 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "radeon_context.h"
 
 extern void radeonInitState( r100ContextPtr rmesa );
-extern void radeonInitStateFuncs( GLcontext *ctx , GLboolean dri2);
+extern void radeonInitStateFuncs( struct gl_context *ctx );
 
-extern void radeonUpdateMaterial( GLcontext *ctx );
+extern void radeonUpdateMaterial( struct gl_context *ctx );
 
-extern void radeonUpdateViewportOffset( GLcontext *ctx );
-extern void radeonUpdateWindow( GLcontext *ctx );
-extern void radeonUpdateDrawBuffer( GLcontext *ctx );
+extern void radeonUpdateViewportOffset( struct gl_context *ctx );
+extern void radeonUpdateWindow( struct gl_context *ctx );
+extern void radeonUpdateDrawBuffer( struct gl_context *ctx );
 extern void radeonUploadTexMatrix( r100ContextPtr rmesa,
 				   int unit, GLboolean swapcols );
 
-extern GLboolean radeonValidateState( GLcontext *ctx );
+extern GLboolean r100ValidateBuffers(struct gl_context *ctx);
+extern GLboolean radeonValidateState( struct gl_context *ctx );
 
 
-extern void radeonFallback( GLcontext *ctx, GLuint bit, GLboolean mode );
+extern void radeonFallback( struct gl_context *ctx, GLuint bit, GLboolean mode );
 #define FALLBACK( rmesa, bit, mode ) do {				\
    if ( 0 ) fprintf( stderr, "FALLBACK in %s: #%d=%d\n",		\
 		     __FUNCTION__, bit, mode );				\
-   radeonFallback( rmesa->radeon.glCtx, bit, mode );				\
+   radeonFallback( &rmesa->radeon.glCtx, bit, mode );				\
 } while (0)
 
 

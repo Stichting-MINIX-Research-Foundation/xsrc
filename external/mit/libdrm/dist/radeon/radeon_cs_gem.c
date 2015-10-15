@@ -29,12 +29,14 @@
  *      Nicolai Haehnle <prefect_@gmx.net>
  *      Jérôme Glisse <glisse@freedesktop.org>
  */
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "radeon_cs.h"
 #include "radeon_cs_int.h"
@@ -42,12 +44,16 @@
 #include "radeon_cs_gem.h"
 #include "radeon_bo_gem.h"
 #include "drm.h"
+#include "libdrm_macros.h"
 #include "xf86drm.h"
 #include "xf86atomic.h"
 #include "radeon_drm.h"
-#include "bof.h"
 
+/* Add LIBDRM_RADEON_BOF_FILES to libdrm_radeon_la_SOURCES when building with BOF_DUMP */
 #define CS_BOF_DUMP 0
+#if CS_BOF_DUMP
+#include "bof.h"
+#endif
 
 struct radeon_cs_manager_gem {
     struct radeon_cs_manager    base;
@@ -330,6 +336,7 @@ static int cs_gem_end(struct radeon_cs_int *cs,
     return 0;
 }
 
+#if CS_BOF_DUMP
 static void cs_gem_dump_bof(struct radeon_cs_int *cs)
 {
     struct cs_gem *csg = (struct cs_gem*)cs;
@@ -415,6 +422,7 @@ out_err:
     bof_decref(device_id);
     bof_decref(root);
 }
+#endif
 
 static int cs_gem_emit(struct radeon_cs_int *cs)
 {
@@ -422,6 +430,9 @@ static int cs_gem_emit(struct radeon_cs_int *cs)
     uint64_t chunk_array[2];
     unsigned i;
     int r;
+
+    while (cs->cdw & 7)
+	radeon_cs_write_dword((struct radeon_cs *)cs, 0x80000000);
 
 #if CS_BOF_DUMP
     cs_gem_dump_bof(cs);

@@ -24,7 +24,7 @@
 xrandr \- primitive command line interface to RandR extension
 .SH SYNOPSIS
 .B "xrandr"
-[\-help]  [\-display \fIdisplay\fP]
+[\-\-help]  [\-\-display \fIdisplay\fP]
 [\-q] [\-v]
 [\-\-verbose]
 [\-\-dryrun]
@@ -84,7 +84,7 @@ There are a few global options. Other options modify the last output that is
 specified in earlier parameters in the command line. Multiple outputs may
 be modified at the same time by passing multiple \-\-output options followed
 immediately by their corresponding modifying options.
-.IP \-help
+.IP \-\-help
 Print out a summary of the usage and exit.
 .IP "\-v, \-\-version"
 Print out the RandR version reported by the X server and exit.
@@ -104,7 +104,7 @@ Performs all the actions specified except that no changes are made.
 Apply the modifications without grabbing the screen. It avoids to block other
 applications during the update but it might also cause some applications that
 detect screen resize to receive old values.
-.IP "\-d, \-display \fIname\fP"
+.IP "\-d, \-\-display \fIname\fP"
 This option selects the X display to use. Note this refers to the X
 screen abstraction, not the monitor (or output).
 .IP "\-\-screen \fIsnum\fP"
@@ -126,10 +126,14 @@ Report information about the providers available.
 Set \fIsource\fP as the source of display output images for \fIprovider\fP.
 This is only possible if \fIsource\fP and \fIprovider\fP have the \fBSource
 Output\fR and \fBSink Output\fR capabilities, respectively.
+If \fIsource\fP is \fB0x0\fP, then \fIprovider\fP is disconnected from its
+current output source.
 .IP "\-\-setprovideroffloadsink \fIprovider\fP \fIsink\fP"
 Set \fIprovider\fP as a render offload device for \fIsink\fP.
 This is only possible if \fIprovider\fP and \fIsink\fP have the \fBSource
 Offload\fR and \fBSink Offload\fR capabilities, respectively.
+If \fIsink\fP is \fB0x0\fP, then \fIprovider\fP is disconnected from its current
+render offload sink.
 .PP
 .SH "RandR version 1.3 options"
 .PP

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,25 +16,31 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef FRAMEBUFFER_H
 #define FRAMEBUFFER_H
 
+#include "glheader.h"
+
+struct gl_config;
+struct gl_context;
+struct gl_renderbuffer;
 
 extern struct gl_framebuffer *
-_mesa_create_framebuffer(const GLvisual *visual);
+_mesa_create_framebuffer(const struct gl_config *visual);
 
 extern struct gl_framebuffer *
-_mesa_new_framebuffer(GLcontext *ctx, GLuint name);
+_mesa_new_framebuffer(struct gl_context *ctx, GLuint name);
 
 extern void
 _mesa_initialize_window_framebuffer(struct gl_framebuffer *fb,
-				     const GLvisual *visual);
+				     const struct gl_config *visual);
 
 extern void
 _mesa_initialize_user_framebuffer(struct gl_framebuffer *fb, GLuint name);
@@ -47,48 +52,57 @@ extern void
 _mesa_free_framebuffer_data(struct gl_framebuffer *buffer);
 
 extern void
+_mesa_reference_framebuffer_(struct gl_framebuffer **ptr,
+                             struct gl_framebuffer *fb);
+
+static inline void
 _mesa_reference_framebuffer(struct gl_framebuffer **ptr,
-                            struct gl_framebuffer *fb);
+                            struct gl_framebuffer *fb)
+{
+   if (*ptr != fb)
+      _mesa_reference_framebuffer_(ptr, fb);
+}
 
 extern void
-_mesa_resize_framebuffer(GLcontext *ctx, struct gl_framebuffer *fb,
+_mesa_resize_framebuffer(struct gl_context *ctx, struct gl_framebuffer *fb,
                          GLuint width, GLuint height);
 
 
 extern void
-_mesa_resizebuffers( GLcontext *ctx );
+_mesa_resizebuffers( struct gl_context *ctx );
 
-extern void GLAPIENTRY
-_mesa_ResizeBuffersMESA( void );
-
+extern void
+_mesa_scissor_bounding_box(const struct gl_context *ctx,
+                           const struct gl_framebuffer *buffer,
+                           unsigned idx, int *bbox);
 
 extern void 
-_mesa_update_draw_buffer_bounds(GLcontext *ctx);
+_mesa_update_draw_buffer_bounds(struct gl_context *ctx);
 
 extern void
-_mesa_update_framebuffer_visual(struct gl_framebuffer *fb);
+_mesa_update_framebuffer_visual(struct gl_context *ctx,
+				struct gl_framebuffer *fb);
 
 extern void
-_mesa_update_depth_buffer(GLcontext *ctx, struct gl_framebuffer *fb,
-                            GLuint attIndex);
-
-extern void
-_mesa_update_stencil_buffer(GLcontext *ctx, struct gl_framebuffer *fb,
-                            GLuint attIndex);
-
-extern void
-_mesa_update_framebuffer(GLcontext *ctx);
+_mesa_update_framebuffer(struct gl_context *ctx);
 
 extern GLboolean
-_mesa_source_buffer_exists(GLcontext *ctx, GLenum format);
+_mesa_source_buffer_exists(struct gl_context *ctx, GLenum format);
 
 extern GLboolean
-_mesa_dest_buffer_exists(GLcontext *ctx, GLenum format);
+_mesa_dest_buffer_exists(struct gl_context *ctx, GLenum format);
 
 extern GLenum
-_mesa_get_color_read_type(GLcontext *ctx);
+_mesa_get_color_read_type(struct gl_context *ctx);
 
 extern GLenum
-_mesa_get_color_read_format(GLcontext *ctx);
+_mesa_get_color_read_format(struct gl_context *ctx);
+
+extern struct gl_renderbuffer *
+_mesa_get_read_renderbuffer_for_format(const struct gl_context *ctx,
+                                       GLenum format);
+
+extern void
+_mesa_print_framebuffer(const struct gl_framebuffer *fb);
 
 #endif /* FRAMEBUFFER_H */

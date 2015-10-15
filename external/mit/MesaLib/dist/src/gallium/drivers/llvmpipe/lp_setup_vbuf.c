@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -37,6 +37,7 @@
 
 
 #include "lp_setup_context.h"
+#include "lp_context.h"
 #include "draw/draw_vbuf.h"
 #include "draw/draw_vertex.h"
 #include "util/u_memory.h"
@@ -48,10 +49,10 @@
   
 
 /** cast wrapper */
-static struct setup_context *
-setup_context(struct vbuf_render *vbr)
+static struct lp_setup_context *
+lp_setup_context(struct vbuf_render *vbr)
 {
-   return (struct setup_context *) vbr;
+   return (struct lp_setup_context *) vbr;
 }
 
 
@@ -59,7 +60,13 @@ setup_context(struct vbuf_render *vbr)
 static const struct vertex_info *
 lp_setup_get_vertex_info(struct vbuf_render *vbr)
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
+
+   /* Vertex size/info depends on the latest state.
+    * The draw module may have issued additional state-change commands.
+    */
+   lp_setup_update_state(setup, FALSE);
+
    return setup->vertex_info;
 }
 
@@ -68,7 +75,7 @@ static boolean
 lp_setup_allocate_vertices(struct vbuf_render *vbr,
                           ushort vertex_size, ushort nr_vertices)
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
    unsigned size = vertex_size * nr_vertices;
 
    if (setup->vertex_buffer_size < size) {
@@ -92,7 +99,7 @@ lp_setup_release_vertices(struct vbuf_render *vbr)
 static void *
 lp_setup_map_vertices(struct vbuf_render *vbr)
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
    return setup->vertex_buffer;
 }
 
@@ -101,17 +108,16 @@ lp_setup_unmap_vertices(struct vbuf_render *vbr,
                        ushort min_index,
                        ushort max_index )
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
    assert( setup->vertex_buffer_size >= (max_index+1) * setup->vertex_size );
    /* do nothing */
 }
 
 
-static boolean
+static void
 lp_setup_set_primitive(struct vbuf_render *vbr, unsigned prim)
 {
-   setup_context(vbr)->prim = prim;
-   return TRUE;
+   lp_setup_context(vbr)->prim = prim;
 }
 
 typedef const float (*const_float4_ptr)[4];
@@ -127,14 +133,18 @@ static INLINE const_float4_ptr get_vert( const void *vertex_buffer,
  * draw elements / indexed primitives
  */
 static void
-lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
+lp_setup_draw_elements(struct vbuf_render *vbr, const ushort *indices, uint nr)
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
    const unsigned stride = setup->vertex_info->size * sizeof(float);
    const void *vertex_buffer = setup->vertex_buffer;
+   const boolean flatshade_first = setup->flatshade_first;
    unsigned i;
 
-   lp_setup_update_state(setup);
+   assert(setup->setup.variant);
+
+   if (!lp_setup_update_state(setup, TRUE))
+      return;
 
    switch (setup->prim) {
    case PIPE_PRIM_POINTS:
@@ -174,35 +184,28 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
       break;
 
    case PIPE_PRIM_TRIANGLES:
-      if (setup->flatshade_first) {
-         for (i = 2; i < nr; i += 3) {
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-1], stride),
-                             get_vert(vertex_buffer, indices[i-0], stride),
-                             get_vert(vertex_buffer, indices[i-2], stride) );
-         }
-      }
-      else {
-         for (i = 2; i < nr; i += 3) {
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-2], stride),
-                             get_vert(vertex_buffer, indices[i-1], stride),
-                             get_vert(vertex_buffer, indices[i-0], stride) );
-         }
+      for (i = 2; i < nr; i += 3) {
+         setup->triangle( setup,
+                          get_vert(vertex_buffer, indices[i-2], stride),
+                          get_vert(vertex_buffer, indices[i-1], stride),
+                          get_vert(vertex_buffer, indices[i-0], stride) );
       }
       break;
 
    case PIPE_PRIM_TRIANGLE_STRIP:
-      if (setup->flatshade_first) {
+      if (flatshade_first) {
          for (i = 2; i < nr; i += 1) {
+            /* emit first triangle vertex as first triangle vertex */
             setup->triangle( setup,
+                             get_vert(vertex_buffer, indices[i-2], stride),
                              get_vert(vertex_buffer, indices[i+(i&1)-1], stride),
-                             get_vert(vertex_buffer, indices[i-(i&1)], stride),
-                             get_vert(vertex_buffer, indices[i-2], stride) );
+                             get_vert(vertex_buffer, indices[i-(i&1)], stride) );
+
          }
       }
       else {
          for (i = 2; i < nr; i += 1) {
+            /* emit last triangle vertex as last triangle vertex */
             setup->triangle( setup,
                              get_vert(vertex_buffer, indices[i+(i&1)-2], stride),
                              get_vert(vertex_buffer, indices[i-(i&1)-1], stride),
@@ -212,16 +215,18 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
       break;
 
    case PIPE_PRIM_TRIANGLE_FAN:
-      if (setup->flatshade_first) {
+      if (flatshade_first) {
          for (i = 2; i < nr; i += 1) {
+            /* emit first non-spoke vertex as first vertex */
             setup->triangle( setup,
+                             get_vert(vertex_buffer, indices[i-1], stride),
                              get_vert(vertex_buffer, indices[i-0], stride),
-                             get_vert(vertex_buffer, indices[0], stride),
-                             get_vert(vertex_buffer, indices[i-1], stride) );
+                             get_vert(vertex_buffer, indices[0], stride) );
          }
       }
       else {
          for (i = 2; i < nr; i += 1) {
+            /* emit last non-spoke vertex as last vertex */
             setup->triangle( setup,
                              get_vert(vertex_buffer, indices[0], stride),
                              get_vert(vertex_buffer, indices[i-1], stride),
@@ -231,24 +236,28 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
       break;
 
    case PIPE_PRIM_QUADS:
-      if (setup->flatshade_first) {
+      /* GL quads don't follow provoking vertex convention */
+      if (flatshade_first) { 
+         /* emit last quad vertex as first triangle vertex */
          for (i = 3; i < nr; i += 4) {
             setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-2], stride),
-                             get_vert(vertex_buffer, indices[i-1], stride),
-                             get_vert(vertex_buffer, indices[i-3], stride) );
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-1], stride),
                              get_vert(vertex_buffer, indices[i-0], stride),
-                             get_vert(vertex_buffer, indices[i-3], stride) );
+                             get_vert(vertex_buffer, indices[i-3], stride),
+                             get_vert(vertex_buffer, indices[i-2], stride) );
+
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, indices[i-0], stride),
+                             get_vert(vertex_buffer, indices[i-2], stride),
+                             get_vert(vertex_buffer, indices[i-1], stride) );
          }
       }
       else {
+         /* emit last quad vertex as last triangle vertex */
          for (i = 3; i < nr; i += 4) {
             setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-3], stride),
-                             get_vert(vertex_buffer, indices[i-2], stride),
-                             get_vert(vertex_buffer, indices[i-0], stride) );
+                          get_vert(vertex_buffer, indices[i-3], stride),
+                          get_vert(vertex_buffer, indices[i-2], stride),
+                          get_vert(vertex_buffer, indices[i-0], stride) );
 
             setup->triangle( setup,
                              get_vert(vertex_buffer, indices[i-2], stride),
@@ -259,19 +268,22 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
       break;
 
    case PIPE_PRIM_QUAD_STRIP:
-      if (setup->flatshade_first) {
+      /* GL quad strips don't follow provoking vertex convention */
+      if (flatshade_first) { 
+         /* emit last quad vertex as first triangle vertex */
          for (i = 3; i < nr; i += 2) {
             setup->triangle( setup,
                              get_vert(vertex_buffer, indices[i-0], stride),
-                             get_vert(vertex_buffer, indices[i-1], stride),
-                             get_vert(vertex_buffer, indices[i-3], stride));
+                             get_vert(vertex_buffer, indices[i-3], stride),
+                             get_vert(vertex_buffer, indices[i-2], stride) );
             setup->triangle( setup,
-                             get_vert(vertex_buffer, indices[i-2], stride),
                              get_vert(vertex_buffer, indices[i-0], stride),
+                             get_vert(vertex_buffer, indices[i-1], stride),
                              get_vert(vertex_buffer, indices[i-3], stride) );
          }
       }
       else {
+         /* emit last quad vertex as last triangle vertex */
          for (i = 3; i < nr; i += 2) {
             setup->triangle( setup,
                              get_vert(vertex_buffer, indices[i-3], stride),
@@ -287,15 +299,25 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
 
    case PIPE_PRIM_POLYGON:
       /* Almost same as tri fan but the _first_ vertex specifies the flat
-       * shading color.  Note that the first polygon vertex is passed as
-       * the last triangle vertex here.
-       * flatshade_first state makes no difference.
+       * shading color.
        */
-      for (i = 2; i < nr; i += 1) {
-         setup->triangle( setup,
-                          get_vert(vertex_buffer, indices[i-0], stride),
-                          get_vert(vertex_buffer, indices[i-1], stride),
-                          get_vert(vertex_buffer, indices[0], stride) );
+      if (flatshade_first) { 
+         /* emit first polygon  vertex as first triangle vertex */
+         for (i = 2; i < nr; i += 1) {
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, indices[0], stride),
+                             get_vert(vertex_buffer, indices[i-1], stride),
+                             get_vert(vertex_buffer, indices[i-0], stride) );
+         }
+      }
+      else {
+         /* emit first polygon  vertex as last triangle vertex */
+         for (i = 2; i < nr; i += 1) {
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, indices[i-1], stride),
+                             get_vert(vertex_buffer, indices[i-0], stride),
+                             get_vert(vertex_buffer, indices[0], stride) );
+         }
       }
       break;
 
@@ -312,13 +334,15 @@ lp_setup_draw(struct vbuf_render *vbr, const ushort *indices, uint nr)
 static void
 lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
 {
-   struct setup_context *setup = setup_context(vbr);
+   struct lp_setup_context *setup = lp_setup_context(vbr);
    const unsigned stride = setup->vertex_info->size * sizeof(float);
    const void *vertex_buffer =
       (void *) get_vert(setup->vertex_buffer, start, stride);
+   const boolean flatshade_first = setup->flatshade_first;
    unsigned i;
 
-   lp_setup_update_state(setup);
+   if (!lp_setup_update_state(setup, TRUE))
+      return;
 
    switch (setup->prim) {
    case PIPE_PRIM_POINTS:
@@ -358,35 +382,27 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
       break;
 
    case PIPE_PRIM_TRIANGLES:
-      if (setup->flatshade_first) {
-         for (i = 2; i < nr; i += 3) {
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, i-1, stride),
-                             get_vert(vertex_buffer, i-0, stride),
-                             get_vert(vertex_buffer, i-2, stride) );
-         }
-      }
-      else {
-         for (i = 2; i < nr; i += 3) {
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, i-2, stride),
-                             get_vert(vertex_buffer, i-1, stride),
-                             get_vert(vertex_buffer, i-0, stride) );
-         }
+      for (i = 2; i < nr; i += 3) {
+         setup->triangle( setup,
+                          get_vert(vertex_buffer, i-2, stride),
+                          get_vert(vertex_buffer, i-1, stride),
+                          get_vert(vertex_buffer, i-0, stride) );
       }
       break;
 
    case PIPE_PRIM_TRIANGLE_STRIP:
-      if (setup->flatshade_first) {
+      if (flatshade_first) {
          for (i = 2; i < nr; i++) {
+            /* emit first triangle vertex as first triangle vertex */
             setup->triangle( setup,
+                             get_vert(vertex_buffer, i-2, stride),
                              get_vert(vertex_buffer, i+(i&1)-1, stride),
-                             get_vert(vertex_buffer, i-(i&1), stride),
-                             get_vert(vertex_buffer, i-2, stride) );
+                             get_vert(vertex_buffer, i-(i&1), stride) );
          }
       }
       else {
          for (i = 2; i < nr; i++) {
+            /* emit last triangle vertex as last triangle vertex */
             setup->triangle( setup,
                              get_vert(vertex_buffer, i+(i&1)-2, stride),
                              get_vert(vertex_buffer, i-(i&1)-1, stride),
@@ -396,16 +412,18 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
       break;
 
    case PIPE_PRIM_TRIANGLE_FAN:
-      if (setup->flatshade_first) {
+      if (flatshade_first) {
          for (i = 2; i < nr; i += 1) {
+            /* emit first non-spoke vertex as first vertex */
             setup->triangle( setup,
+                             get_vert(vertex_buffer, i-1, stride),
                              get_vert(vertex_buffer, i-0, stride),
-                             get_vert(vertex_buffer, 0, stride),
-                             get_vert(vertex_buffer, i-1, stride) );
+                             get_vert(vertex_buffer, 0, stride)  );
          }
       }
       else {
          for (i = 2; i < nr; i += 1) {
+            /* emit last non-spoke vertex as last vertex */
             setup->triangle( setup,
                              get_vert(vertex_buffer, 0, stride),
                              get_vert(vertex_buffer, i-1, stride),
@@ -415,19 +433,22 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
       break;
 
    case PIPE_PRIM_QUADS:
-      if (setup->flatshade_first) {
+      /* GL quads don't follow provoking vertex convention */
+      if (flatshade_first) { 
+         /* emit last quad vertex as first triangle vertex */
          for (i = 3; i < nr; i += 4) {
             setup->triangle( setup,
-                             get_vert(vertex_buffer, i-2, stride),
-                             get_vert(vertex_buffer, i-1, stride),
-                             get_vert(vertex_buffer, i-3, stride) );
-            setup->triangle( setup,
-                             get_vert(vertex_buffer, i-1, stride),
                              get_vert(vertex_buffer, i-0, stride),
-                             get_vert(vertex_buffer, i-3, stride) );
+                             get_vert(vertex_buffer, i-3, stride),
+                             get_vert(vertex_buffer, i-2, stride) );
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, i-0, stride),
+                             get_vert(vertex_buffer, i-2, stride),
+                             get_vert(vertex_buffer, i-1, stride) );
          }
       }
       else {
+         /* emit last quad vertex as last triangle vertex */
          for (i = 3; i < nr; i += 4) {
             setup->triangle( setup,
                              get_vert(vertex_buffer, i-3, stride),
@@ -442,20 +463,22 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
       break;
 
    case PIPE_PRIM_QUAD_STRIP:
-      if (setup->flatshade_first) {
+      /* GL quad strips don't follow provoking vertex convention */
+      if (flatshade_first) { 
+         /* emit last quad vertex as first triangle vertex */
          for (i = 3; i < nr; i += 2) {
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, i-0, stride),
+                             get_vert(vertex_buffer, i-3, stride),
+                             get_vert(vertex_buffer, i-2, stride) );
             setup->triangle( setup,
                              get_vert(vertex_buffer, i-0, stride),
                              get_vert(vertex_buffer, i-1, stride),
                              get_vert(vertex_buffer, i-3, stride) );
-            setup->triangle( setup,
-
-                             get_vert(vertex_buffer, i-2, stride),
-                             get_vert(vertex_buffer, i-0, stride),
-                             get_vert(vertex_buffer, i-3, stride) );
          }
       }
       else {
+         /* emit last quad vertex as last triangle vertex */
          for (i = 3; i < nr; i += 2) {
             setup->triangle( setup,
                              get_vert(vertex_buffer, i-3, stride),
@@ -471,15 +494,25 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
 
    case PIPE_PRIM_POLYGON:
       /* Almost same as tri fan but the _first_ vertex specifies the flat
-       * shading color.  Note that the first polygon vertex is passed as
-       * the last triangle vertex here.
-       * flatshade_first state makes no difference.
+       * shading color.
        */
-      for (i = 2; i < nr; i += 1) {
-         setup->triangle( setup,
-                          get_vert(vertex_buffer, i-1, stride),
-                          get_vert(vertex_buffer, i-0, stride),
-                          get_vert(vertex_buffer, 0, stride) );
+      if (flatshade_first) { 
+         /* emit first polygon  vertex as first triangle vertex */
+         for (i = 2; i < nr; i += 1) {
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, 0, stride),
+                             get_vert(vertex_buffer, i-1, stride),
+                             get_vert(vertex_buffer, i-0, stride) );
+         }
+      }
+      else {
+         /* emit first polygon  vertex as last triangle vertex */
+         for (i = 2; i < nr; i += 1) {
+            setup->triangle( setup,
+                             get_vert(vertex_buffer, i-1, stride),
+                             get_vert(vertex_buffer, i-0, stride),
+                             get_vert(vertex_buffer, 0, stride) );
+         }
       }
       break;
 
@@ -493,15 +526,64 @@ lp_setup_draw_arrays(struct vbuf_render *vbr, uint start, uint nr)
 static void
 lp_setup_vbuf_destroy(struct vbuf_render *vbr)
 {
-   lp_setup_destroy(setup_context(vbr));
+   struct lp_setup_context *setup = lp_setup_context(vbr);
+   if (setup->vertex_buffer) {
+      align_free(setup->vertex_buffer);
+      setup->vertex_buffer = NULL;
+   }
+   lp_setup_destroy(setup);
 }
 
+/*
+ * FIXME: it is unclear if primitives_storage_needed (which is generally
+ * the same as pipe query num_primitives_generated) should increase
+ * if SO is disabled for d3d10, but for GL we definitely need to
+ * increase num_primitives_generated and this is only called for active
+ * SO. If it must not increase for d3d10 need to disambiguate the counters
+ * in the driver and do some work for getting correct values, if it should
+ * increase too should call this from outside streamout code.
+ */
+static void
+lp_setup_so_info(struct vbuf_render *vbr, uint primitives, uint prim_generated)
+{
+   struct lp_setup_context *setup = lp_setup_context(vbr);
+   struct llvmpipe_context *lp = llvmpipe_context(setup->pipe);
+
+   lp->so_stats.num_primitives_written += primitives;
+   lp->so_stats.primitives_storage_needed += prim_generated;
+}
+
+static void
+lp_setup_pipeline_statistics(
+   struct vbuf_render *vbr,
+   const struct pipe_query_data_pipeline_statistics *stats)
+{
+   struct lp_setup_context *setup = lp_setup_context(vbr);
+   struct llvmpipe_context *llvmpipe = llvmpipe_context(setup->pipe);
+
+   llvmpipe->pipeline_statistics.ia_vertices +=
+      stats->ia_vertices;
+   llvmpipe->pipeline_statistics.ia_primitives +=
+      stats->ia_primitives;
+   llvmpipe->pipeline_statistics.vs_invocations +=
+      stats->vs_invocations;
+   llvmpipe->pipeline_statistics.gs_invocations +=
+      stats->gs_invocations;
+   llvmpipe->pipeline_statistics.gs_primitives +=
+      stats->gs_primitives;
+   if (!llvmpipe_rasterization_disabled(llvmpipe)) {
+      llvmpipe->pipeline_statistics.c_invocations +=
+         stats->c_invocations;
+   } else {
+      llvmpipe->pipeline_statistics.c_invocations = 0;
+   }
+}
 
 /**
  * Create the post-transform vertex handler for the given context.
  */
 void
-lp_setup_init_vbuf(struct setup_context *setup)
+lp_setup_init_vbuf(struct lp_setup_context *setup)
 {
    setup->base.max_indices = LP_MAX_VBUF_INDEXES;
    setup->base.max_vertex_buffer_bytes = LP_MAX_VBUF_SIZE;
@@ -511,8 +593,10 @@ lp_setup_init_vbuf(struct setup_context *setup)
    setup->base.map_vertices = lp_setup_map_vertices;
    setup->base.unmap_vertices = lp_setup_unmap_vertices;
    setup->base.set_primitive = lp_setup_set_primitive;
-   setup->base.draw = lp_setup_draw;
+   setup->base.draw_elements = lp_setup_draw_elements;
    setup->base.draw_arrays = lp_setup_draw_arrays;
    setup->base.release_vertices = lp_setup_release_vertices;
    setup->base.destroy = lp_setup_vbuf_destroy;
+   setup->base.set_stream_output_info = lp_setup_so_info;
+   setup->base.pipeline_statistics = lp_setup_pipeline_statistics;
 }

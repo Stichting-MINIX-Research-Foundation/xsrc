@@ -27,6 +27,8 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
+
+#ifdef HAVE_READLINK
 #include <X11/fonts/fntfilst.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -38,7 +40,7 @@ static const char CataloguePrefix[] = "catalogue:";
 static int CatalogueFreeFPE (FontPathElementPtr fpe);
 
 static int
-CatalogueNameCheck (char *name)
+CatalogueNameCheck (const char *name)
 {
     return strncmp(name, CataloguePrefix, sizeof(CataloguePrefix) - 1) == 0;
 }
@@ -114,7 +116,7 @@ CatalogueUnrefFPEs (FontPathElementPtr fpe)
 	if (subfpe->refcount == 0)
 	{
 	    FontFileFreeFPE (subfpe);
-	    free(subfpe->name);
+	    free((void *) subfpe->name);
 	    free(subfpe);
 	}
     }
@@ -156,6 +158,7 @@ CatalogueRescan (FontPathElementPtr fpe, Bool forceScan)
     CatalogueUnrefFPEs (fpe);
     while (entry = readdir(dir), entry != NULL)
     {
+        char *name;
 	snprintf(link, sizeof link, "%s/%s", path, entry->d_name);
 	len = readlink(link, dest, sizeof dest - 1);
 	if (len < 0)
@@ -189,15 +192,16 @@ CatalogueRescan (FontPathElementPtr fpe, Bool forceScan)
 	 * (which uses font->fpe->type) goes to CatalogueCloseFont. */
 	subfpe->type = fpe->type;
 	subfpe->name_length = len;
-	subfpe->name = malloc (len + 1);
-	if (subfpe == NULL)
+	name = malloc (len + 1);
+	if (name == NULL)
 	{
 	    free(subfpe);
 	    continue;
 	}
 
-	memcpy(subfpe->name, dest, len);
-	subfpe->name[len] = '\0';
+	memcpy(name, dest, len);
+	name[len] = '\0';
+        subfpe->name = name;
 
 	/* The X server will manipulate the subfpe ref counts
 	 * associated with the font in OpenFont and CloseFont, so we
@@ -206,7 +210,7 @@ CatalogueRescan (FontPathElementPtr fpe, Bool forceScan)
 
 	if (FontFileInitFPE (subfpe) != Successful)
 	{
-	    free(subfpe->name);
+	    free((void *) subfpe->name);
 	    free(subfpe);
 	    continue;
 	}
@@ -278,14 +282,13 @@ CatalogueFreeFPE (FontPathElementPtr fpe)
 
 static int
 CatalogueOpenFont (pointer client, FontPathElementPtr fpe, Mask flags,
-		   char *name, int namelen,
+		   const char *name, int namelen,
 		   fsBitmapFormat format, fsBitmapFormatMask fmask,
 		   XID id, FontPtr *pFont, char **aliasName,
 		   FontPtr non_cachable_font)
 {
     CataloguePtr cat = fpe->private;
     FontPathElementPtr subfpe;
-    FontDirectoryPtr dir;
     int i, status;
 
     CatalogueRescan (fpe, FALSE);
@@ -293,7 +296,6 @@ CatalogueOpenFont (pointer client, FontPathElementPtr fpe, Mask flags,
     for (i = 0; i < cat->fpeCount; i++)
     {
 	subfpe = cat->fpeList[i];
-	dir = subfpe->private;
 	status = FontFileOpenFont(client, subfpe, flags,
 				  name, namelen, format, fmask, id,
 				  pFont, aliasName, non_cachable_font);
@@ -314,12 +316,11 @@ CatalogueCloseFont (FontPathElementPtr fpe, FontPtr pFont)
 }
 
 static int
-CatalogueListFonts (pointer client, FontPathElementPtr fpe, char *pat,
+CatalogueListFonts (pointer client, FontPathElementPtr fpe, const char *pat,
 		    int len, int max, FontNamesPtr names)
 {
     CataloguePtr cat = fpe->private;
     FontPathElementPtr subfpe;
-    FontDirectoryPtr dir;
     int i;
 
     CatalogueRescan (fpe, FALSE);
@@ -327,17 +328,11 @@ CatalogueListFonts (pointer client, FontPathElementPtr fpe, char *pat,
     for (i = 0; i < cat->fpeCount; i++)
     {
 	subfpe = cat->fpeList[i];
-	dir = subfpe->private;
 	FontFileListFonts(client, subfpe, pat, len, max, names);
     }
 
     return Successful;
 }
-
-int
-FontFileStartListFonts(pointer client, FontPathElementPtr fpe,
-		       char *pat, int len, int max,
-		       pointer *privatep, int mark_aliases);
 
 typedef struct _LFWIData {
     pointer		*privates;
@@ -346,7 +341,7 @@ typedef struct _LFWIData {
 
 static int
 CatalogueStartListFonts(pointer client, FontPathElementPtr fpe,
-			char *pat, int len, int max, pointer *privatep,
+			const char *pat, int len, int max, pointer *privatep,
 			int mark_aliases)
 {
     CataloguePtr	cat = fpe->private;
@@ -382,7 +377,7 @@ CatalogueStartListFonts(pointer client, FontPathElementPtr fpe,
 
 static int
 CatalogueStartListFontsWithInfo(pointer client, FontPathElementPtr fpe,
-				char *pat, int len, int max,
+				const char *pat, int len, int max,
 				pointer *privatep)
 {
     return CatalogueStartListFonts(client, fpe, pat, len, max, privatep, 0);
@@ -420,7 +415,7 @@ CatalogueListNextFontWithInfo(pointer client, FontPathElementPtr fpe,
 
 static int
 CatalogueStartListFontsAndAliases(pointer client, FontPathElementPtr fpe,
-				  char *pat, int len, int max,
+				  const char *pat, int len, int max,
 				  pointer *privatep)
 {
     return CatalogueStartListFonts(client, fpe, pat, len, max, privatep, 1);
@@ -474,3 +469,5 @@ CatalogueRegisterLocalFpeFunctions (void)
 			 CatalogueListNextFontOrAlias,
 			 FontFileEmptyBitmapSource);
 }
+
+#endif /* HAVE_READLINK */

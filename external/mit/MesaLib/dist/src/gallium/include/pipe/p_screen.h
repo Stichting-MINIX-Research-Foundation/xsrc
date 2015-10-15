@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -41,6 +41,7 @@
 #include "pipe/p_compiler.h"
 #include "pipe/p_format.h"
 #include "pipe/p_defines.h"
+#include "pipe/p_video_enums.h"
 
 
 
@@ -49,14 +50,13 @@ extern "C" {
 #endif
 
 
-/** Opaque type */
+/** Opaque types */
+struct winsys_handle;
 struct pipe_fence_handle;
-struct pipe_winsys;
-struct pipe_buffer;
-struct pipe_texture;
+struct pipe_resource;
 struct pipe_surface;
-struct pipe_video_surface;
 struct pipe_transfer;
+struct pipe_box;
 
 
 /**
@@ -65,10 +65,7 @@ struct pipe_transfer;
  * context.
  */
 struct pipe_screen {
-   struct pipe_winsys *winsys;
-
    void (*destroy)( struct pipe_screen * );
-
 
    const char *(*get_name)( struct pipe_screen * );
 
@@ -78,214 +75,120 @@ struct pipe_screen {
     * Query an integer-valued capability/parameter/limit
     * \param param  one of PIPE_CAP_x
     */
-   int (*get_param)( struct pipe_screen *, int param );
+   int (*get_param)( struct pipe_screen *, enum pipe_cap param );
 
    /**
     * Query a float-valued capability/parameter/limit
     * \param param  one of PIPE_CAP_x
     */
-   float (*get_paramf)( struct pipe_screen *, int param );
+   float (*get_paramf)( struct pipe_screen *, enum pipe_capf param );
+
+   /**
+    * Query a per-shader-stage integer-valued capability/parameter/limit
+    * \param param  one of PIPE_CAP_x
+    */
+   int (*get_shader_param)( struct pipe_screen *, unsigned shader, enum pipe_shader_cap param );
+
+   /**
+    * Query an integer-valued capability/parameter/limit for a codec/profile
+    * \param param  one of PIPE_VIDEO_CAP_x
+    */
+   int (*get_video_param)( struct pipe_screen *,
+			   enum pipe_video_profile profile,
+			   enum pipe_video_entrypoint entrypoint,
+			   enum pipe_video_cap param );
+
+   /**
+    * Query a compute-specific capability/parameter/limit.
+    * \param param  one of PIPE_COMPUTE_CAP_x
+    * \param ret    pointer to a preallocated buffer that will be
+    *               initialized to the parameter value, or NULL.
+    * \return       size in bytes of the parameter value that would be
+    *               returned.
+    */
+   int (*get_compute_param)(struct pipe_screen *,
+			    enum pipe_compute_cap param,
+			    void *ret);
+
+   /**
+    * Query a timestamp in nanoseconds. The returned value should match
+    * PIPE_QUERY_TIMESTAMP. This function returns immediately and doesn't
+    * wait for rendering to complete (which cannot be achieved with queries).
+    */
+   uint64_t (*get_timestamp)(struct pipe_screen *);
 
    struct pipe_context * (*context_create)( struct pipe_screen *,
 					    void *priv );
-   
+
    /**
     * Check if the given pipe_format is supported as a texture or
     * drawing surface.
-    * \param tex_usage  bitmask of PIPE_TEXTURE_USAGE_*
-    * \param geom_flags  bitmask of PIPE_TEXTURE_GEOM_*
+    * \param bindings  bitmask of PIPE_BIND_*
     */
    boolean (*is_format_supported)( struct pipe_screen *,
                                    enum pipe_format format,
                                    enum pipe_texture_target target,
-                                   unsigned tex_usage, 
-                                   unsigned geom_flags );
+                                   unsigned sample_count,
+                                   unsigned bindings );
 
+   /**
+    * Check if the given pipe_format is supported as output for this codec/profile.
+    * \param profile  profile to check, may also be PIPE_VIDEO_PROFILE_UNKNOWN
+    */
+   boolean (*is_video_format_supported)( struct pipe_screen *,
+                                         enum pipe_format format,
+                                         enum pipe_video_profile profile,
+                                         enum pipe_video_entrypoint entrypoint );
+
+   /**
+    * Check if we can actually create the given resource (test the dimension,
+    * overall size, etc).  Used to implement proxy textures.
+    * \return TRUE if size is OK, FALSE if too large.
+    */
+   boolean (*can_create_resource)(struct pipe_screen *screen,
+                                  const struct pipe_resource *templat);
+                               
    /**
     * Create a new texture object, using the given template info.
     */
-   struct pipe_texture * (*texture_create)(struct pipe_screen *,
-                                           const struct pipe_texture *templat);
+   struct pipe_resource * (*resource_create)(struct pipe_screen *,
+					     const struct pipe_resource *templat);
 
    /**
-    * Create a new texture object, using the given template info, but on top of
-    * existing memory.
-    * 
-    * It is assumed that the buffer data is layed out according to the expected
-    * by the hardware. NULL will be returned if any inconsistency is found.  
+    * Create a texture from a winsys_handle. The handle is often created in
+    * another process by first creating a pipe texture and then calling
+    * resource_get_handle.
     */
-   struct pipe_texture * (*texture_blanket)(struct pipe_screen *,
-                                            const struct pipe_texture *templat,
-                                            const unsigned *stride,
-                                            struct pipe_buffer *buffer);
-
-   void (*texture_destroy)(struct pipe_texture *pt);
-
-   /** Get a 2D surface which is a "view" into a texture
-    * \param usage  bitmaks of PIPE_BUFFER_USAGE_* read/write flags
-    */
-   struct pipe_surface *(*get_tex_surface)(struct pipe_screen *,
-                                           struct pipe_texture *texture,
-                                           unsigned face, unsigned level,
-                                           unsigned zslice,
-                                           unsigned usage );
-
-   void (*tex_surface_destroy)(struct pipe_surface *);
-   
-
-   /** Get a transfer object for transferring data to/from a texture */
-   struct pipe_transfer *(*get_tex_transfer)(struct pipe_screen *,
-                                             struct pipe_texture *texture,
-                                             unsigned face, unsigned level,
-                                             unsigned zslice,
-                                             enum pipe_transfer_usage usage,
-                                             unsigned x, unsigned y,
-                                             unsigned w, unsigned h);
-
-   void (*tex_transfer_destroy)(struct pipe_transfer *);
-   
-   void *(*transfer_map)( struct pipe_screen *,
-                          struct pipe_transfer *transfer );
-
-   void (*transfer_unmap)( struct pipe_screen *,
-                           struct pipe_transfer *transfer );
-
+   struct pipe_resource * (*resource_from_handle)(struct pipe_screen *,
+						  const struct pipe_resource *templat,
+						  struct winsys_handle *handle);
 
    /**
-    * Create a new buffer.
-    * \param alignment  buffer start address alignment in bytes
-    * \param usage  bitmask of PIPE_BUFFER_USAGE_x
-    * \param size  size in bytes
+    * Get a winsys_handle from a texture. Some platforms/winsys requires
+    * that the texture is created with a special usage flag like
+    * DISPLAYTARGET or PRIMARY.
     */
-   struct pipe_buffer *(*buffer_create)( struct pipe_screen *screen,
-                                         unsigned alignment,
-                                         unsigned usage,
-                                         unsigned size );
-
-   /**
-    * Create a buffer that wraps user-space data.
-    *
-    * Effectively this schedules a delayed call to buffer_create
-    * followed by an upload of the data at *some point in the future*,
-    * or perhaps never.  Basically the allocate/upload is delayed
-    * until the buffer is actually passed to hardware.
-    *
-    * The intention is to provide a quick way to turn regular data
-    * into a buffer, and secondly to avoid a copy operation if that
-    * data subsequently turns out to be only accessed by the CPU.
-    *
-    * Common example is OpenGL vertex buffers that are subsequently
-    * processed either by software TNL in the driver or by passing to
-    * hardware.
-    *
-    * XXX: What happens if the delayed call to buffer_create() fails?
-    *
-    * Note that ptr may be accessed at any time upto the time when the
-    * buffer is destroyed, so the data must not be freed before then.
-    */
-   struct pipe_buffer *(*user_buffer_create)(struct pipe_screen *screen,
-                                             void *ptr,
-                                             unsigned bytes);
-
-   /**
-    * Allocate storage for a display target surface.
-    *
-    * Often surfaces which are meant to be blitted to the front screen (i.e.,
-    * display targets) must be allocated with special characteristics, memory
-    * pools, or obtained directly from the windowing system.
-    *
-    * This callback is invoked by the pipe_screenwhen creating a texture marked
-    * with the PIPE_TEXTURE_USAGE_DISPLAY_TARGET flag  to get the underlying
-    * buffer storage.
-    */
-   struct pipe_buffer *(*surface_buffer_create)(struct pipe_screen *screen,
-						unsigned width, unsigned height,
-						enum pipe_format format,
-						unsigned usage,
-						unsigned tex_usage,
-						unsigned *stride);
+   boolean (*resource_get_handle)(struct pipe_screen *,
+				  struct pipe_resource *tex,
+				  struct winsys_handle *handle);
 
 
-   /**
-    * Map the entire data store of a buffer object into the client's address.
-    * flags is bitmask of PIPE_BUFFER_USAGE_CPU_READ/WRITE flags.
-    */
-   void *(*buffer_map)( struct pipe_screen *screen,
-			struct pipe_buffer *buf,
-			unsigned usage );
-   /**
-    * Map a subrange of the buffer data store into the client's address space.
-    *
-    * The returned pointer is always relative to buffer start, regardless of 
-    * the specified range. This is different from the ARB_map_buffer_range
-    * semantics because we don't forbid multiple mappings of the same buffer
-    * (yet).
-    */
-   void *(*buffer_map_range)( struct pipe_screen *screen,
-                              struct pipe_buffer *buf,
-                              unsigned offset,
-                              unsigned length,
-                              unsigned usage);
+   void (*resource_destroy)(struct pipe_screen *,
+			    struct pipe_resource *pt);
 
-   /**
-    * Notify a range that was actually written into.
-    * 
-    * Can only be used if the buffer was mapped with the 
-    * PIPE_BUFFER_USAGE_CPU_WRITE and PIPE_BUFFER_USAGE_FLUSH_EXPLICIT flags 
-    * set.
-    * 
-    * The range is relative to the buffer start, regardless of the range 
-    * specified to buffer_map_range. This is different from the 
-    * ARB_map_buffer_range semantics because we don't forbid multiple mappings 
-    * of the same buffer (yet).
-    * 
-    */
-   void (*buffer_flush_mapped_range)( struct pipe_screen *screen,
-                                      struct pipe_buffer *buf,
-                                      unsigned offset,
-                                      unsigned length);
-
-   /**
-    * Unmap buffer.
-    * 
-    * If the buffer was mapped with PIPE_BUFFER_USAGE_CPU_WRITE flag but not
-    * PIPE_BUFFER_USAGE_FLUSH_EXPLICIT then the pipe driver will
-    * assume that the whole buffer was written. This is mostly for backward 
-    * compatibility purposes and may affect performance -- the state tracker 
-    * should always specify exactly what got written while the buffer was 
-    * mapped.
-    */
-   void (*buffer_unmap)( struct pipe_screen *screen,
-                         struct pipe_buffer *buf );
-
-   void (*buffer_destroy)( struct pipe_buffer *buf );
-
-   /**
-    * Create a video surface suitable for use as a decoding target by the
-    * driver's pipe_video_context.
-    */
-   struct pipe_video_surface*
-   (*video_surface_create)( struct pipe_screen *screen,
-                            enum pipe_video_chroma_format chroma_format,
-                            unsigned width, unsigned height );
-
-   void (*video_surface_destroy)( struct pipe_video_surface *vsfc );
-
-   /**
-    * Do any special operations to ensure buffer size is correct
-    */
-   void (*update_buffer)( struct pipe_screen *ws,
-                          void *context_private );
 
    /**
     * Do any special operations to ensure frontbuffer contents are
     * displayed, eg copy fake frontbuffer.
+    * \param winsys_drawable_handle  an opaque handle that the calling context
+    *                                gets out-of-band
+    * \param subbox an optional sub region to flush
     */
    void (*flush_frontbuffer)( struct pipe_screen *screen,
-                              struct pipe_surface *surf,
-                              void *context_private );
-
-
+                              struct pipe_resource *resource,
+                              unsigned level, unsigned layer,
+                              void *winsys_drawable_handle,
+                              struct pipe_box *subbox );
 
    /** Set ptr = fence, with reference counting */
    void (*fence_reference)( struct pipe_screen *screen,
@@ -294,21 +197,28 @@ struct pipe_screen {
 
    /**
     * Checks whether the fence has been signalled.
-    * \param flags  driver-specific meaning
-    * \return zero on success.
     */
-   int (*fence_signalled)( struct pipe_screen *screen,
-                           struct pipe_fence_handle *fence,
-                           unsigned flags );
+   boolean (*fence_signalled)( struct pipe_screen *screen,
+                               struct pipe_fence_handle *fence );
 
    /**
     * Wait for the fence to finish.
-    * \param flags  driver-specific meaning
-    * \return zero on success.
+    * \param timeout  in nanoseconds (may be PIPE_TIMEOUT_INFINITE).
     */
-   int (*fence_finish)( struct pipe_screen *screen,
-                        struct pipe_fence_handle *fence,
-                        unsigned flags );
+   boolean (*fence_finish)( struct pipe_screen *screen,
+                            struct pipe_fence_handle *fence,
+                            uint64_t timeout );
+
+   /**
+    * Returns a driver-specific query.
+    *
+    * If \p info is NULL, the number of available queries is returned.
+    * Otherwise, the driver query at the specified \p index is returned
+    * in \p info. The function returns non-zero on success.
+    */
+   int (*get_driver_query_info)(struct pipe_screen *screen,
+                                unsigned index,
+                                struct pipe_driver_query_info *info);
 
 };
 

@@ -49,8 +49,10 @@ To clear a rectangular area of a given window, use
   <funcdef><function>XClearArea</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Window<parameter> w</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
   <paramdef>Bool<parameter> exposures</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -73,8 +75,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the window.
-<!-- .ds Xy , which are relative to the origin of the window \ -->
-and specify the upper-left corner of the rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -95,8 +95,8 @@ and specify the upper-left corner of the rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh , which are the dimensions of the rectangle -->
+Specify the x and y coordinates, which are relative to the origin of the
+window and specify the upper-left corner of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -117,7 +117,7 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which are the dimensions of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -277,7 +277,8 @@ root and depth, use
   <paramdef>Drawablesrc,<parameter> dest</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
   <paramdef>intsrc_x,<parameter> src_y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
   <paramdef>intdest_x,<parameter> dest_y</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -344,8 +345,6 @@ Specifies the GC.
 Specify the x and y coordinates, 
 which are relative to the origin of the source rectangle
 and specify its upper-left corner.
-<!-- .ds Wh , which are the dimensions of both the source \ -->
-and destination rectangles
       </para>
     </listitem>
   </varlistentry>
@@ -366,9 +365,8 @@ and destination rectangles
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
-<!-- .ds Dx , which are relative to the origin of the destination rectangle \ -->
-and specify its upper-left corner
+Specify the width and height, which are the dimensions of both the source
+and destination rectangles.
       </para>
     </listitem>
   </varlistentry>
@@ -389,7 +387,8 @@ and specify its upper-left corner
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Dx. 
+Specify the x and y coordinates, which are relative to the origin of the
+destination rectangle and specify its upper-left corner.
     </para>
   </listitem>
   </varlistentry>
@@ -472,9 +471,10 @@ To copy a single bit plane of a given drawable, use
   <paramdef>Drawablesrc,<parameter> dest</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
   <paramdef>intsrc_x,<parameter> src_y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
   <paramdef>intdest_x,<parameter> dest_y</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> plane</parameter></paramdef>
+  <paramdef>unsigned long <parameter> plane</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -540,7 +540,6 @@ Specifies the GC.
 Specify the x and y coordinates, 
 which are relative to the origin of the source rectangle
 and specify its upper-left corner.
-<!-- .ds Wh , which are the dimensions of both the source and destination rectangles -->
       </para>
     </listitem>
   </varlistentry>
@@ -561,9 +560,8 @@ and specify its upper-left corner.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
-<!-- .ds Dx , which are relative to the origin of the destination rectangle \ -->
-and specify its upper-left corner
+Specify the width and height, which are the dimensions of both the source
+and destination rectangles.
       </para>
     </listitem>
   </varlistentry>
@@ -584,7 +582,8 @@ and specify its upper-left corner
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Dx. 
+Specify the x and y coordinates, which are relative to the origin of the
+destination rectangle and specify its upper-left corner.
       </para>
     </listitem>
   </varlistentry>
@@ -775,7 +774,8 @@ To draw a single point in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1340,8 +1340,10 @@ To draw the outline of a single rectangle in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1373,7 +1375,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which specify the upper-left corner of the rectangle -->
       </para>
     </listitem>
   </varlistentry>
@@ -1394,8 +1395,8 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh , which specify the dimensions of the rectangle -->
+Specify the x and y coordinates, which specify the upper-left corner of the
+rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -1416,7 +1417,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which specify the dimensions of the
+rectangle.
     </para>
   </listitem>
   </varlistentry>
@@ -1571,8 +1573,10 @@ To draw a single arc in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
   <paramdef>intangle1,<parameter> angle2</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -1605,8 +1609,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the drawable \ -->
-and specify the upper-left corner of the bounding rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -1627,8 +1629,8 @@ and specify the upper-left corner of the bounding rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh , which are the major and minor axes of the arc -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and specify the upper-left corner of the bounding rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -1649,7 +1651,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which are the major and minor axes of the
+arc.
       </para>
     </listitem>
   </varlistentry>
@@ -1929,8 +1932,10 @@ To fill a single rectangular area in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1962,8 +1967,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the drawable \ -->
-and specify the upper-left corner of the rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -1984,8 +1987,8 @@ and specify the upper-left corner of the rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh , which are the dimensions of the rectangle to be filled -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and specify the upper-left corner of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -2006,7 +2009,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which are the dimensions of the rectangle to
+be filled.
     </para>
   </listitem>
   </varlistentry>
@@ -2360,8 +2364,10 @@ To fill a single arc in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
   <paramdef>intangle1,<parameter> angle2</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -2394,8 +2400,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the drawable \ -->
-and specify the upper-left corner of the bounding rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -2416,8 +2420,8 @@ and specify the upper-left corner of the bounding rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh , which are the major and minor axes of the arc -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and specify the upper-left corner of the bounding rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -2438,7 +2442,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height, which are the major and minor axes of the
+arc.
       </para>
     </listitem>
   </varlistentry>
@@ -3293,7 +3298,7 @@ To return a given font property, use
   <funcdef>Bool <function>XGetFontProperty</function></funcdef>
   <paramdef>XFontStruct<parameter> *font_struct</parameter></paramdef>
   <paramdef>Atom<parameter> atom</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> *value_return</parameter></paramdef>
+  <paramdef>unsigned long <parameter> *value_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -4489,7 +4494,8 @@ To draw 8-bit characters in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XTextItem<parameter> *items</parameter></paramdef>
   <paramdef>int<parameter> nitems</parameter></paramdef>
 </funcprototype>
@@ -4523,8 +4529,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -4545,7 +4549,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -4585,7 +4590,8 @@ To draw 2-byte characters in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XTextItem16<parameter> *items</parameter></paramdef>
   <paramdef>int<parameter> nitems</parameter></paramdef>
 </funcprototype>
@@ -4619,8 +4625,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -4641,7 +4645,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -4780,8 +4785,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -4802,7 +4805,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -4842,7 +4846,8 @@ To draw 2-byte characters in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XChar2b<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> length</parameter></paramdef>
 </funcprototype>
@@ -4876,8 +4881,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -4898,7 +4901,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -4986,7 +4990,8 @@ To draw 8-bit image text characters in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>char<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> length</parameter></paramdef>
 </funcprototype>
@@ -5020,8 +5025,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -5042,7 +5045,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -5082,7 +5086,8 @@ To draw 2-byte image text characters in a given drawable, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
   <paramdef>XChar2b<parameter> *string</parameter></paramdef>
   <paramdef>int<parameter> length</parameter></paramdef>
 </funcprototype>
@@ -5116,8 +5121,6 @@ Specifies the drawable.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Xy , which are relative to the origin of the specified drawable \ -->
-and define the origin of the first character
       </para>
     </listitem>
   </varlistentry>
@@ -5138,7 +5141,8 @@ and define the origin of the first character
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
+Specify the x and y coordinates, which are relative to the origin of the
+specified drawable and define the origin of the first character.
       </para>
     </listitem>
   </varlistentry>
@@ -5388,7 +5392,8 @@ use
   <paramdef>XImage<parameter> *image</parameter></paramdef>
   <paramdef>intsrc_x,<parameter> src_y</parameter></paramdef>
   <paramdef>intdest_x,<parameter> dest_y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -5456,8 +5461,6 @@ Specifies the offset in Y from the top edge of the image defined
 by the 
 <structname>XImage</structname>
 structure.
-<!-- .ds Dx , which are relative to the origin of the drawable \ -->
-and are the coordinates of the subimage
       </para>
     </listitem>
   </varlistentry>
@@ -5478,8 +5481,8 @@ and are the coordinates of the subimage
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Dx. 
-<!-- .ds Wh \ of the subimage, which define the dimensions of the rectangle -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and are the coordinates of the subimage.
       </para>
     </listitem>
   </varlistentry>
@@ -5500,7 +5503,8 @@ Specify the x and y coordinates(Dx.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height of the subimage, which define the dimensions
+of the rectangle.
     </para>
   </listitem>
   </varlistentry>
@@ -5573,9 +5577,11 @@ This function specifically supports rudimentary screen dumps.
   <funcdef>XImage *<function>XGetImage</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> plane_mask</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned long <parameter> plane_mask</parameter></paramdef>
   <paramdef>int<parameter> format</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -5598,8 +5604,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the drawable. 
-<!-- .ds Xy , which are relative to the origin of the drawable \ -->
-and define the upper-left corner of the rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -5620,8 +5624,8 @@ and define the upper-left corner of the rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh \ of the subimage, which define the dimensions of the rectangle -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and define the upper-left corner of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -5642,7 +5646,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height of the subimage, which define the dimensions
+of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -5760,9 +5765,11 @@ to a location within a preexisting image structure, use
   <funcdef>XImage *<function>XGetSubImage</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
-  <paramdef>intx,<parameter> y</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> plane_mask</parameter></paramdef>
+  <paramdef>int <parameter>x</parameter></paramdef>
+  <paramdef>int <parameter>y</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned long <parameter> plane_mask</parameter></paramdef>
   <paramdef>int<parameter> format</parameter></paramdef>
   <paramdef>XImage<parameter> *dest_image</parameter></paramdef>
   <paramdef>intdest_x,<parameter> dest_y</parameter></paramdef>
@@ -5787,8 +5794,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the drawable. 
-<!-- .ds Xy , which are relative to the origin of the drawable \ -->
-and define the upper-left corner of the rectangle
       </para>
     </listitem>
   </varlistentry>
@@ -5809,8 +5814,8 @@ and define the upper-left corner of the rectangle
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Xy.
-<!-- .ds Wh \ of the subimage, which define the dimensions of the rectangle -->
+Specify the x and y coordinates, which are relative to the origin of the
+drawable and define the upper-left corner of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -5831,7 +5836,8 @@ Specify the x and y coordinates(Xy.
     </term>
     <listitem>
       <para>
-Specify the width and height(Wh.
+Specify the width and height of the subimage, which define the dimensions
+of the rectangle.
       </para>
     </listitem>
   </varlistentry>
@@ -5867,9 +5873,6 @@ or
     <listitem>
       <para>
 Specifies the destination image.
-<!-- .ds Dx , which are relative to the origin of the destination rectangle, \ -->
-specify its upper-left corner, and determine where the subimage \
-is placed in the destination image
       </para>
     </listitem>
   </varlistentry>
@@ -5890,7 +5893,9 @@ is placed in the destination image
     </term>
     <listitem>
       <para>
-Specify the x and y coordinates(Dx. 
+Specify the x and y coordinates, which are relative to the origin of the
+destination rectangle, specify its upper-left corner, and determine where
+the subimage is placed in the destination image.
     </para>
   </listitem>
   </varlistentry>

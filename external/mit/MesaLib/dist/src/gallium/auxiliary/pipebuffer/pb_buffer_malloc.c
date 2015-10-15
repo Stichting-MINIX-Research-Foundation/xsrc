@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,7 +30,7 @@
  * Implementation of malloc-based buffers to store data that can't be processed
  * by the hardware. 
  * 
- * \author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * \author Jose Fonseca <jfonseca@vmware.com>
  */
 
 
@@ -70,7 +70,8 @@ malloc_buffer_destroy(struct pb_buffer *buf)
 
 static void *
 malloc_buffer_map(struct pb_buffer *buf, 
-                  unsigned flags)
+                  unsigned flags,
+		  void *flush_ctx)
 {
    return malloc_buffer(buf)->data;
 }
@@ -134,10 +135,10 @@ pb_malloc_buffer_create(pb_size size,
    if(!buf)
       return NULL;
 
-   pipe_reference_init(&buf->base.base.reference, 1);
-   buf->base.base.alignment = desc->alignment;
-   buf->base.base.usage = desc->usage;
-   buf->base.base.size = size;
+   pipe_reference_init(&buf->base.reference, 1);
+   buf->base.usage = desc->usage;
+   buf->base.size = size;
+   buf->base.alignment = desc->alignment;
    buf->base.vtbl = &malloc_buffer_vtbl;
 
    buf->data = align_malloc(size, desc->alignment < sizeof(void*) ? sizeof(void*) : desc->alignment);
@@ -173,11 +174,20 @@ pb_malloc_bufmgr_destroy(struct pb_manager *mgr)
 }
 
 
+static boolean
+pb_malloc_bufmgr_is_buffer_busy( struct pb_manager *mgr,
+                                 struct pb_buffer *buf )
+{
+   return FALSE;
+}
+
+
 static struct pb_manager 
 pb_malloc_bufmgr = {
    pb_malloc_bufmgr_destroy,
    pb_malloc_bufmgr_create_buffer,
-   pb_malloc_bufmgr_flush
+   pb_malloc_bufmgr_flush,
+   pb_malloc_bufmgr_is_buffer_busy
 };
 
 

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,19 +16,21 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef ATTRIB_H
 #define ATTRIB_H
 
 
-#include "main/mtypes.h"
+#include "compiler.h"
+#include "glheader.h"
 
-
-#if FEATURE_attrib_stack
+struct _glapi_table;
+struct gl_context;
 
 extern void GLAPIENTRY
 _mesa_PushAttrib( GLbitfield mask );
@@ -43,34 +44,10 @@ _mesa_PushClientAttrib( GLbitfield mask );
 extern void GLAPIENTRY
 _mesa_PopClientAttrib( void );
 
-extern void
-_mesa_init_attrib_dispatch(struct _glapi_table *disp);
-
-#else /* FEATURE_attrib_stack */
-
-static INLINE void
-_mesa_PushClientAttrib( GLbitfield mask )
-{
-   ASSERT_NO_FEATURE();
-}
-
-static INLINE void
-_mesa_PopClientAttrib( void )
-{
-   ASSERT_NO_FEATURE();
-}
-
-static INLINE void
-_mesa_init_attrib_dispatch(struct _glapi_table *disp)
-{
-}
-
-#endif /* FEATURE_attrib_stack */
+extern void 
+_mesa_init_attrib( struct gl_context *ctx );
 
 extern void 
-_mesa_init_attrib( GLcontext *ctx );
-
-extern void 
-_mesa_free_attrib_data( GLcontext *ctx );
+_mesa_free_attrib_data( struct gl_context *ctx );
 
 #endif /* ATTRIB_H */

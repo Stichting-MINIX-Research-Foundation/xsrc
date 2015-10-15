@@ -971,7 +971,7 @@ depth of drawable, use
   <funcdef>GC <function>XCreateGC</function></funcdef>
   <paramdef>Display <parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> d</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> valuemask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> valuemask</parameter></paramdef>
   <paramdef>XGCValues *<parameter>values</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -994,7 +994,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the drawable. 
-<!-- .ds Vm set using the information in the specified values structure -->
       </para>
     </listitem>
   </varlistentry>
@@ -1004,7 +1003,8 @@ Specifies the drawable.
     </term>
     <listitem>
       <para>
-Specifies which components in the GC are to be (Vm. 
+Specifies which components in the GC are to be set using the information in
+the specified values structure.
 This argument is the bitwise inclusive OR of zero or more of the valid
 GC component mask bits.
       </para>
@@ -1059,7 +1059,7 @@ To copy components from a source GC to a destination GC, use
   <funcdef><function>XCopyGC</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GCsrc,<parameter> dest</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> valuemask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> valuemask</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1081,7 +1081,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the components of the source GC.
-<!-- .ds Vm copied to the destination GC -->
       </para>
     </listitem>
   </varlistentry>
@@ -1091,7 +1090,8 @@ Specifies the components of the source GC.
     </term>
     <listitem>
       <para>
-Specifies which components in the GC are to be (Vm. 
+Specifies which components in the GC are to be copied to the destination
+GC.
 This argument is the bitwise inclusive OR of zero or more of the valid
 GC component mask bits.
       </para>
@@ -1145,7 +1145,7 @@ To change the components in a given GC, use
   <funcdef><function>XChangeGC</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> valuemask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> valuemask</parameter></paramdef>
   <paramdef>XGCValues<parameter> *values</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -1168,7 +1168,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Vm changed using information in the specified values structure -->
       </para>
     </listitem>
   </varlistentry>
@@ -1178,7 +1177,8 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specifies which components in the GC are to be (Vm. 
+Specifies which components in the GC are to be changed using information in
+the specified values structure.
 This argument is the bitwise inclusive OR of zero or more of the valid
 GC component mask bits.
       </para>
@@ -1241,7 +1241,7 @@ To obtain components of a given GC, use
   <funcdef>Status <function>XGetGCValues</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> valuemask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> valuemask</parameter></paramdef>
   <paramdef>XGCValues<parameter> *values_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
@@ -1264,7 +1264,6 @@ Specifies the connection to the X server.
     <listitem>
       <para>
 Specifies the GC.
-<!-- .ds Vm returned in the values_return argument -->
       </para>
     </listitem>
   </varlistentry>
@@ -1274,7 +1273,8 @@ Specifies the GC.
     </term>
     <listitem>
       <para>
-Specifies which components in the GC are to be (Vm. 
+Specifies which components in the GC are to be returned in the
+values_return argument.
 This argument is the bitwise inclusive OR of zero or more of the valid
 GC component mask bits.
       </para>
@@ -1409,7 +1409,6 @@ resource ID for a given GC, use
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
-<!-- .ds Gc for which you want the resource ID -->
 <variablelist>
   <varlistentry>
     <term>
@@ -1417,7 +1416,7 @@ resource ID for a given GC, use
     </term>
     <listitem>
       <para>
-Specifies the GC (Gc.
+Specifies the GC for which you want the resource ID.
     </para>
   </listitem>
   </varlistentry>
@@ -1537,9 +1536,9 @@ for a given GC, use
   <funcdef><function>XSetState</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlongforeground,<parameter> background</parameter></paramdef>
+  <paramdef>unsigned long foreground,<parameter> background</parameter></paramdef>
   <paramdef>int<parameter> function</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> plane_mask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> plane_mask</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1630,7 +1629,7 @@ To set the foreground of a given GC, use
   <funcdef><function>XSetForeground</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> foreground</parameter></paramdef>
+  <paramdef>unsigned long <parameter> foreground</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1689,7 +1688,7 @@ To set the background of a given GC, use
   <funcdef><function>XSetBackground</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> background</parameter></paramdef>
+  <paramdef>unsigned long <parameter> background</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1808,7 +1807,7 @@ To set the plane mask of a given GC, use
   <funcdef><function>XSetPlaneMask</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedlong<parameter> plane_mask</parameter></paramdef>
+  <paramdef>unsigned long <parameter> plane_mask</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -1873,7 +1872,7 @@ To set the line drawing components of a given GC, use
   <funcdef><function>XSetLineAttributes</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>GC<parameter> gc</parameter></paramdef>
-  <paramdef>unsignedint<parameter> line_width</parameter></paramdef>
+  <paramdef>unsigned int <parameter> line_width</parameter></paramdef>
   <paramdef>int<parameter> line_style</parameter></paramdef>
   <paramdef>int<parameter> cap_style</parameter></paramdef>
   <paramdef>int<parameter> join_style</parameter></paramdef>
@@ -2258,8 +2257,10 @@ To obtain the best size of a tile, stipple, or cursor, use
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>int<parameter> class</parameter></paramdef>
   <paramdef>Drawable<parameter> which_screen</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedint*width_return,<parameter> *height_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*width_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*height_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -2400,8 +2401,10 @@ To obtain the best fill tile shape, use
   <funcdef>Status <function>XQueryBestTile</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> which_screen</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedint*width_return,<parameter> *height_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*width_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*height_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->
@@ -2506,8 +2509,10 @@ To obtain the best stipple shape, use
   <funcdef>Status <function>XQueryBestStipple</function></funcdef>
   <paramdef>Display<parameter> *display</parameter></paramdef>
   <paramdef>Drawable<parameter> which_screen</parameter></paramdef>
-  <paramdef>unsignedintwidth,<parameter> height</parameter></paramdef>
-  <paramdef>unsignedint*width_return,<parameter> *height_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>width</parameter></paramdef>
+  <paramdef>unsigned int <parameter>height</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*width_return</parameter></paramdef>
+  <paramdef>unsigned int <parameter>*height_return</parameter></paramdef>
 </funcprototype>
 </funcsynopsis>
 <!-- .FN -->

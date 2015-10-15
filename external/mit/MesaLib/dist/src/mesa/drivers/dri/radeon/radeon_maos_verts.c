@@ -1,7 +1,7 @@
 /**************************************************************************
 
 Copyright 2000, 2001 ATI Technologies Inc., Ontario, Canada, and
-                     Tungsten Graphics Inc., Austin, Texas.
+                     VMware, Inc.
 
 All Rights Reserved.
 
@@ -29,18 +29,18 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
+#include "main/state.h"
 
 #include "vbo/vbo.h"
 #include "math/m_translate.h"
 #include "tnl/tnl.h"
 #include "tnl/t_pipeline.h"
-#include "math/m_translate.h"
 #include "radeon_context.h"
 #include "radeon_state.h"
 #include "radeon_ioctl.h"
@@ -48,14 +48,14 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "radeon_tcl.h"
 #include "radeon_swtcl.h"
 #include "radeon_maos.h"
-
+#include "radeon_fog.h"
 
 #define RADEON_TCL_MAX_SETUP 19
 
 union emit_union { float f; GLuint ui; radeon_color_t rgba; };
 
 static struct {
-   void   (*emit)( GLcontext *, GLuint, GLuint, void * );
+   void   (*emit)( struct gl_context *, GLuint, GLuint, void * );
    GLuint vertex_size;
    GLuint vertex_format;
 } setup_tab[RADEON_TCL_MAX_SETUP];
@@ -64,14 +64,14 @@ static struct {
 #define DO_RGBA (IND & RADEON_CP_VC_FRMT_PKCOLOR)
 #define DO_SPEC_OR_FOG (IND & RADEON_CP_VC_FRMT_PKSPEC)
 #define DO_SPEC ((IND & RADEON_CP_VC_FRMT_PKSPEC) && \
-		 (ctx->_TriangleCaps & DD_SEPARATE_SPECULAR))
+		 _mesa_need_secondary_color(ctx))
 #define DO_FOG  ((IND & RADEON_CP_VC_FRMT_PKSPEC) && ctx->Fog.Enabled && \
 		 (ctx->Fog.FogCoordinateSource == GL_FOG_COORD))
-#define DO_TEX0 (IND & RADEON_CP_VC_FRMT_ST0)
-#define DO_TEX1 (IND & RADEON_CP_VC_FRMT_ST1)
-#define DO_TEX2 (IND & RADEON_CP_VC_FRMT_ST2)
-#define DO_PTEX (IND & RADEON_CP_VC_FRMT_Q0)
-#define DO_NORM (IND & RADEON_CP_VC_FRMT_N0)
+#define DO_TEX0 ((IND & RADEON_CP_VC_FRMT_ST0) != 0)
+#define DO_TEX1 ((IND & RADEON_CP_VC_FRMT_ST1) != 0)
+#define DO_TEX2 ((IND & RADEON_CP_VC_FRMT_ST2) != 0)
+#define DO_PTEX ((IND & RADEON_CP_VC_FRMT_Q0) != 0)
+#define DO_NORM ((IND & RADEON_CP_VC_FRMT_N0) != 0)
 
 #define DO_TEX3 0
 
@@ -308,7 +308,7 @@ static void init_tcl_verts( void )
 }
 
 
-void radeonEmitArrays( GLcontext *ctx, GLuint inputs )
+void radeonEmitArrays( struct gl_context *ctx, GLuint inputs )
 {
    r100ContextPtr rmesa = R100_CONTEXT(ctx);
    struct vertex_buffer *VB = &TNL_CONTEXT(ctx)->vb;
@@ -355,7 +355,8 @@ void radeonEmitArrays( GLcontext *ctx, GLuint inputs )
 	 if ( (ctx->Texture.Unit[unit].TexGenEnabled & (R_BIT | Q_BIT)) )
 	    vtx |= RADEON_Q_BIT(unit);
 	 else if ((VB->AttribPtr[_TNL_ATTRIB_TEX0 + unit]->size >= 3) &&
-	          ((ctx->Texture.Unit[unit]._ReallyEnabled & (TEXTURE_CUBE_BIT)) == 0)) {
+	          (!ctx->Texture.Unit[unit]._Current ||
+                   ctx->Texture.Unit[unit]._Current->Target != GL_TEXTURE_CUBE_MAP)) {
 	    GLuint swaptexmatcol = (VB->AttribPtr[_TNL_ATTRIB_TEX0 + unit]->size - 3);
 	    if (((rmesa->NeedTexMatrix >> unit) & 1) &&
 		 (swaptexmatcol != ((rmesa->TexMatColSwap >> unit) & 1)))

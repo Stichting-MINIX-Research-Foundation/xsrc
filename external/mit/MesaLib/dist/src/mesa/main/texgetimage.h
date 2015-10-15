@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (c) 2009 VMware, Inc.
@@ -18,38 +17,50 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef TEXGETIMAGE_H
 #define TEXGETIMAGE_H
 
+#include "glheader.h"
+
+struct gl_context;
+struct gl_texture_image;
+struct gl_texture_object;
+
+extern GLenum
+_mesa_base_pack_format(GLenum format);
 
 extern void
-_mesa_get_teximage(GLcontext *ctx, GLenum target, GLint level,
+_mesa_get_teximage(struct gl_context *ctx,
                    GLenum format, GLenum type, GLvoid *pixels,
-                   struct gl_texture_object *texObj,
                    struct gl_texture_image *texImage);
 
 
 extern void
-_mesa_get_compressed_teximage(GLcontext *ctx, GLenum target, GLint level,
-                              GLvoid *img,
-                              struct gl_texture_object *texObj,
-                              struct gl_texture_image *texImage);
+_mesa_get_compressed_teximage(struct gl_context *ctx,
+                              struct gl_texture_image *texImage,
+                              GLvoid *data);
 
 
 
 extern void GLAPIENTRY
 _mesa_GetTexImage( GLenum target, GLint level,
                    GLenum format, GLenum type, GLvoid *pixels );
-
+extern void GLAPIENTRY
+_mesa_GetnTexImageARB( GLenum target, GLint level, GLenum format,
+                       GLenum type, GLsizei bufSize, GLvoid *pixels );
 
 extern void GLAPIENTRY
-_mesa_GetCompressedTexImageARB(GLenum target, GLint lod, GLvoid *img);
+_mesa_GetCompressedTexImage(GLenum target, GLint lod, GLvoid *img);
 
+extern void GLAPIENTRY
+_mesa_GetnCompressedTexImageARB(GLenum target, GLint level, GLsizei bufSize,
+                                GLvoid *img);
 
 #endif /* TEXGETIMAGE_H */

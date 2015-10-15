@@ -31,19 +31,30 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_state.h"
 
+#include "util/u_blitter.h"
 #include "util/u_double_list.h"
 
 #include "tgsi/tgsi_scan.h"
 
+#include "svga_screen.h"
+#include "svga_state.h"
+#include "svga_tgsi.h"
+#include "svga_winsys.h"
+#include "svga_hw_reg.h"
+#include "svga3d_shaderdefs.h"
 
-#define SVGA_TEX_UNITS 8
-#define SVGA_MAX_POINTSIZE 80.0
+
+/** Non-GPU queries for gallium HUD */
+#define SVGA_QUERY_DRAW_CALLS   (PIPE_QUERY_DRIVER_SPECIFIC + 0)
+#define SVGA_QUERY_FALLBACKS    (PIPE_QUERY_DRIVER_SPECIFIC + 1)
+#define SVGA_QUERY_MEMORY_USED  (PIPE_QUERY_DRIVER_SPECIFIC + 2)
+
 
 struct draw_vertex_shader;
-struct svga_shader_result;
+struct draw_fragment_shader;
+struct svga_shader_variant;
 struct SVGACmdMemory;
 struct util_bitmask;
-struct u_upload_mgr;
 
 
 struct svga_shader
@@ -52,17 +63,25 @@ struct svga_shader
 
    struct tgsi_shader_info info;
 
-   struct svga_shader_result *results;
+   /** Head of linked list of variants */
+   struct svga_shader_variant *variants;
 
-   unsigned id;
-
-   boolean use_sm30;
+   unsigned id;  /**< for debugging only */
 };
+
 
 struct svga_fragment_shader
 {
    struct svga_shader base;
+
+   struct draw_fragment_shader *draw_shader;
+
+   /** Mask of which generic varying variables are read by this shader */
+   unsigned generic_inputs;
+   /** Table mapping original TGSI generic indexes to low integers */
+   int8_t generic_remap_table[MAX_GENERIC_VARYING];
 };
+
 
 struct svga_vertex_shader
 {
@@ -139,15 +158,24 @@ struct svga_rasterizer_state {
    unsigned multisampleantialias:1;
    unsigned antialiasedlineenable:1;
    unsigned lastpixel:1;
+   unsigned pointsprite:1;
 
    unsigned linepattern;
 
    float slopescaledepthbias;
    float depthbias;
    float pointsize;
+   float linewidth;
    
    unsigned hw_unfilled:16;         /* PIPE_POLYGON_MODE_x */
-   unsigned need_pipeline:16;    /* which prims do we need help for? */
+
+   /** Which prims do we need help for?  Bitmask of (1 << PIPE_PRIM_x) flags */
+   unsigned need_pipeline:16;
+
+   /** For debugging: */
+   const char* need_pipeline_tris_str;
+   const char* need_pipeline_lines_str;
+   const char* need_pipeline_points_str;
 };
 
 struct svga_sampler_state {
@@ -169,6 +197,15 @@ struct svga_sampler_state {
    unsigned view_max_lod;
 };
 
+struct svga_velems_state {
+   unsigned count;
+   struct pipe_vertex_element velem[PIPE_MAX_ATTRIBS];
+   SVGA3dDeclType decl_type[PIPE_MAX_ATTRIBS]; /**< vertex attrib formats */
+   unsigned adjust_attrib_range; /* bitmask of attrs needing range adjustment */
+   unsigned adjust_attrib_w_1;   /* bitmask of attrs needing w = 1 */
+   boolean need_swvfetch;
+};
+
 /* Use to calculate differences between state emitted to hardware and
  * current driver-calculated state.  
  */
@@ -178,14 +215,15 @@ struct svga_state
    const struct svga_depth_stencil_state *depth;
    const struct svga_rasterizer_state *rast;
    const struct svga_sampler_state *sampler[PIPE_MAX_SAMPLERS];
+   const struct svga_velems_state *velems;
 
-   struct pipe_texture *texture[PIPE_MAX_SAMPLERS]; /* or texture ID's? */
+   struct pipe_sampler_view *sampler_views[PIPE_MAX_SAMPLERS]; /* or texture ID's? */
    struct svga_fragment_shader *fs;
    struct svga_vertex_shader *vs;
 
    struct pipe_vertex_buffer vb[PIPE_MAX_ATTRIBS];
-   struct pipe_vertex_element ve[PIPE_MAX_ATTRIBS];
-   struct pipe_buffer *cb[PIPE_SHADER_TYPES];
+   struct pipe_index_buffer ib;
+   struct pipe_constant_buffer cbufs[PIPE_SHADER_TYPES];
 
    struct pipe_framebuffer_state framebuffer;
    float depthscale;
@@ -203,8 +241,7 @@ struct svga_state
    struct pipe_viewport_state viewport;
 
    unsigned num_samplers;
-   unsigned num_textures;
-   unsigned num_vertex_elements;
+   unsigned num_sampler_views;
    unsigned num_vertex_buffers;
    unsigned reduced_prim;
 
@@ -212,18 +249,7 @@ struct svga_state
       unsigned flag_1d;
       unsigned flag_srgb;
    } tex_flags;
-
-   boolean any_user_vertex_buffers;
-
-   unsigned zero_stride_vertex_elements;
-   unsigned num_zero_stride_vertex_elements;
-   /* ### maybe dynamically allocate this */
-   float zero_stride_constants[PIPE_MAX_ATTRIBS*4];
 };
-
-#define RS_MAX 97
-#define TS_MAX 30
-#define CB_MAX 256
 
 struct svga_prescale {
    float translate[4];
@@ -232,7 +258,7 @@ struct svga_prescale {
 };
 
 
-/* Updated by calling svga_update_state( SVGA_STATE_HW_VIEWPORT )
+/* Updated by calling svga_update_state( SVGA_STATE_HW_CLEAR )
  */
 struct svga_hw_clear_state
 {
@@ -250,7 +276,7 @@ struct svga_hw_clear_state
 
 struct svga_hw_view_state
 {
-   struct pipe_texture *texture;
+   struct pipe_resource *texture;
    struct svga_sampler_view *v;
    unsigned min_lod;
    unsigned max_lod;
@@ -261,12 +287,17 @@ struct svga_hw_view_state
  */
 struct svga_hw_draw_state
 {
-   unsigned rs[RS_MAX];
-   unsigned ts[16][TS_MAX];
-   float cb[PIPE_SHADER_TYPES][CB_MAX][4];
+   unsigned rs[SVGA3D_RS_MAX];
+   unsigned ts[SVGA3D_PIXEL_SAMPLERREG_MAX][SVGA3D_TS_MAX];
+   float cb[PIPE_SHADER_TYPES][SVGA3D_CONSTREG_MAX][4];
 
-   struct svga_shader_result *fs;
-   struct svga_shader_result *vs;
+   /**
+    * For guest backed shader constants only.
+    */
+   struct svga_winsys_surface *hw_cb[PIPE_SHADER_TYPES];
+
+   struct svga_shader_variant *fs;
+   struct svga_shader_variant *vs;
    struct svga_hw_view_state views[PIPE_MAX_SAMPLERS];
 
    unsigned num_views;
@@ -277,12 +308,15 @@ struct svga_hw_draw_state
  */
 struct svga_sw_state
 {
-   unsigned ve_format[PIPE_MAX_ATTRIBS]; /* NEW_VELEMENT */
-
    /* which parts we need */
    boolean need_swvfetch;
    boolean need_pipeline;
    boolean need_swtnl;
+
+   /* Flag to make sure that need sw is on while
+    * updating state within a swtnl call.
+    */
+   boolean in_swtnl_draw;
 };
 
 
@@ -297,6 +331,7 @@ struct svga_context
 {
    struct pipe_context pipe;
    struct svga_winsys_context *swc;
+   struct blitter_context *blitter;
 
    struct {
       boolean no_swtnl;
@@ -307,6 +342,9 @@ struct svga_context
       unsigned shader_id;
 
       unsigned disable_shader;
+
+      boolean no_line_width;
+      boolean force_hw_line_stipple;
    } debug;
 
    struct {
@@ -318,11 +356,10 @@ struct svga_context
    } swtnl;
 
    /* Bitmask of used shader IDs */
-   struct util_bitmask *fs_bm;
-   struct util_bitmask *vs_bm;
+   struct util_bitmask *shader_id_bm;
 
    struct {
-      unsigned dirty[4];
+      unsigned dirty[SVGA_STATE_MAX];
 
       unsigned texture_timestamp;
 
@@ -336,8 +373,13 @@ struct svga_context
    struct svga_state curr;      /* state from the state tracker */
    unsigned dirty;              /* statechanges since last update_state() */
 
-   struct u_upload_mgr *upload_ib;
-   struct u_upload_mgr *upload_vb;
+   struct {
+      unsigned rendertargets:1;
+      unsigned texture_samplers:1;
+      unsigned vs:1;
+      unsigned fs:1;
+   } rebind;
+
    struct svga_hwtnl *hwtnl;
 
    /** The occlusion query currently in progress */
@@ -345,6 +387,10 @@ struct svga_context
 
    /** List of buffers with queued transfers */
    struct list_head dirty_buffers;
+
+   /** performance / info queries */
+   uint64_t num_draw_calls;  /**< SVGA_QUERY_DRAW_CALLS */
+   uint64_t num_fallbacks;   /**< SVGA_QUERY_FALLBACKS */
 };
 
 /* A flag for each state_tracker state object:
@@ -372,9 +418,8 @@ struct svga_context
 #define SVGA_NEW_NEED_PIPELINE       0x100000
 #define SVGA_NEW_NEED_SWVFETCH       0x200000
 #define SVGA_NEW_NEED_SWTNL          0x400000
-#define SVGA_NEW_FS_RESULT           0x800000
-#define SVGA_NEW_VS_RESULT           0x1000000
-#define SVGA_NEW_ZERO_STRIDE         0x2000000
+#define SVGA_NEW_FS_VARIANT          0x800000
+#define SVGA_NEW_VS_VARIANT          0x1000000
 #define SVGA_NEW_TEXTURE_FLAGS       0x4000000
 #define SVGA_NEW_STENCIL_REF         0x8000000
 
@@ -387,7 +432,7 @@ struct svga_context
  */
 void svga_clear(struct pipe_context *pipe, 
                 unsigned buffers,
-                const float *rgba,
+                const union pipe_color_union *color,
                 double depth,
                 unsigned stencil);
 
@@ -416,6 +461,7 @@ void svga_init_vertex_functions( struct svga_context *svga );
 void svga_init_constbuffer_functions( struct svga_context *svga );
 void svga_init_draw_functions( struct svga_context *svga );
 void svga_init_query_functions( struct svga_context *svga );
+void svga_init_surface_functions(struct svga_context *svga);
 
 void svga_cleanup_vertex_state( struct svga_context *svga );
 void svga_cleanup_tss_binding( struct svga_context *svga );
@@ -425,6 +471,10 @@ void svga_context_flush( struct svga_context *svga,
                          struct pipe_fence_handle **pfence );
 
 void svga_hwtnl_flush_retry( struct svga_context *svga );
+void svga_hwtnl_flush_buffer( struct svga_context *svga,
+                              struct pipe_resource *buffer );
+
+void svga_surfaces_flush(struct svga_context *svga);
 
 struct pipe_context *
 svga_context_create(struct pipe_screen *screen,
@@ -441,6 +491,18 @@ svga_context( struct pipe_context *pipe )
    return (struct svga_context *)pipe;
 }
 
+
+static INLINE boolean
+svga_have_gb_objects(const struct svga_context *svga)
+{
+   return svga_screen(svga->pipe.screen)->sws->have_gb_objects;
+}
+
+static INLINE boolean
+svga_have_gb_dma(const struct svga_context *svga)
+{
+   return svga_screen(svga->pipe.screen)->sws->have_gb_dma;
+}
 
 
 #endif

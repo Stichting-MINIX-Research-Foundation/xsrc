@@ -1,3 +1,289 @@
+commit 9887ed4989e0abd48004598be0eb5cb06fa40bd1
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Aug 1 23:14:42 2014 -0700
+
+    xrandr 1.4.3
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 20d76f773cf8de474cf7a3f1082961605732c3f1
+Merge: 00477d8 193a358
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Aug 1 23:10:46 2014 -0700
+
+    Merge commit '193a358'
+    
+    Conflicts:
+    	xrandr.c
+
+commit 193a358563a59c1a3fc55f55029c605e2419c80b
+Author: Stéphane Aulery <lkppo@free.fr>
+Date:   Sat Jun 29 16:50:25 2013 -0700
+
+    Mention of --brightness with -h option
+    
+    Reported by jidanni at http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=709569
+    
+    Signed-off-by: Stéphane Aulery <lkppo@free.fr>
+    Reviewed-By: Matt Dew <marcoz@osource.org>
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 00477d88297eaa6c87aa144548590c32540e3928
+Author: Connor Behan <connor.behan@gmail.com>
+Date:   Tue Jun 10 23:56:12 2014 -0700
+
+    Allow -x and -y switches to undo themselves
+    
+    People who want to dick around might think it is safe to run "xrandr -x"
+    before they know any of the other syntax. When "xrandr -x" again does
+    not get back to a normal screen, they are stuck having to read a manpage
+    with reflected text.
+    
+    Signed-off-by: Connor Behan <connor.behan@gmail.com>
+    Reviewed-by: Aaron Plattner <aplattner@nvidia.com>
+    Tested-by: Aaron Plattner <aplattner@nvidia.com>
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 7d464312fb84c080a6e287edd21a794193a0dd78
+Author: Connor Behan <connor.behan@gmail.com>
+Date:   Sun Jun 1 16:35:50 2014 -0700
+
+    Remove duplicate printing of the axis
+    
+    Even in verbose mode, why print the same information twice?
+    
+    Signed-off-by: Connor Behan <connor.behan@gmail.com>
+    Reviewed-by: Aaron Plattner <aplattner@nvidia.com>
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 792f05ea20d5191425154470760e36dcf023c6e9
+Author: Dominik Behr <dbehr@chromium.org>
+Date:   Tue Apr 1 18:38:05 2014 -0700
+
+    xrandr: use full range for gamma table generation
+    
+    Calculate gamma table using full [0,65536) range and do not make any
+    assumptions about relation of gamma table size and significant bits.
+    
+    Gamma table size has nothing to do with number of significant bits in hardware.
+    In particular we are dealing now with gamma table that has 17 entries and 8
+    bit precision, there are other GPUs with 10 bit precision and less than 256
+    entries using partial linear approximation. Deriving assumed gamma table
+    significant bits from size of gamma table leads to incorrect calculations and
+    loss of precision. Also XRandR specification never mentions that gamma tables
+    need to be power of 2.
+    
+    Signed-off-by: Dominik Behr <dbehr@chromium.org>
+    Reviewed-by: Stéphane Marchesin <marcheu@chromium.org>
+
+commit 866366d0825c3f488abd58960e4f76ae50de08d1
+Author: Thomas Klausner <wiz@NetBSD.org>
+Date:   Sat Mar 29 00:50:17 2014 +0100
+
+    Remove unnecessary parentheses.
+    
+    Reviewed-by: Hans de Goede <hdegoede@redhat.com>
+    Signed-off-by: Thomas Klausner <wiz@NetBSD.org>
+
+commit 31f5fa6a47db154abb47cf16e9f6cc4d983ad371
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Thu Mar 27 11:37:07 2014 -0700
+
+    xrandr 1.4.2
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 934a424a05a296c0b8af015476e11b191d55eba3
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Mar 21 10:35:56 2014 -0700
+
+    xrandr: document how to disconnect RandR 1.4 providers
+    
+    Commit a6217be2d5a93a4c7b48f4081a4a8e14c3c97014 restored the ability to
+    disconnect RandR 1.4 providers from each other, but it's not clear from the
+    documentation how to actually do that.  Try to clarify by mentioning it in the
+    man page.
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+    Reviewed-by: Dave Airlie <airlied@redhat.com>
+
+commit a6217be2d5a93a4c7b48f4081a4a8e14c3c97014
+Author: Dave Airlie <airlied@gmail.com>
+Date:   Fri May 3 10:05:04 2013 +1000
+
+    xrandr: allow disconnecting of offload and outputs
+    
+    Before the lookup code passing a 0 XID would disconnect,
+    this fixes it backup.
+    
+    Signed-off-by: Dave Airlie <airlied@redhat.com>
+    Reviewed-by: Aaron Plattner <aplattner@nvidia.com>
+    Tested-by: Aaron Plattner <aplattner@nvidia.com>
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 00c795e99fe29ecd56e05e915e508c7af0ac39ad
+Author: Ville Syrjälä <ville.syrjala@linux.intel.com>
+Date:   Fri May 31 17:01:54 2013 +0300
+
+    xrandr: Use floating point for VTotal when calculating refresh rate
+    
+    Interlaced modes generally have an odd VTotal, so we lose half a line
+    from VTotal when we divide by two. That causes the final refresh rate
+    to be slightly off. Make VTotal a double to avoid the problem.
+    
+    Signed-off-by: Ville Syrjälä <ville.syrjala@linux.intel.com>
+    Reviewed-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 8f9b993342fddfceaa1afbec2996ce10038f10d7
+Author: Ville Syrjälä <ville.syrjala@linux.intel.com>
+Date:   Fri May 31 17:01:53 2013 +0300
+
+    xrandr: Use more decimal places when printing various rates
+    
+    Using just one decimal place for dotclock and refresh rates loses quite
+    a bit of information. When dealing with 60Hz vs. 59.94Hz refresh rate
+    modes for example, it's useful to see at least two decimal places. For
+    the dotclock in similar cases, three decimal places seems quite a bit
+    better than just one.
+    
+    Signed-off-by: Ville Syrjälä <ville.syrjala@linux.intel.com>
+    Reviewed-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit 7ede207f9064fd88427026e38818819c2c8422bb
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Jan 3 05:48:17 2014 -0800
+
+    Special-case printing of the GUID property
+    
+    Rather than printing GUIDs as 16 signed decimal integers, print them in
+    {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} format.
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+    Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+
+commit e7a19c8b5a26c8bfd76a7399a1a15eac01184261
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Jan 3 05:22:02 2014 -0800
+
+    Move EDID printing into a helper function
+    
+    Localize the specialness of EDID printing by moving it into a single function,
+    print_edid, which prints the binary EDID data.  Remove the is_edid parameter
+    from everything else.
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+    Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+
+commit a29728ca9599fd08da1243e9b422ac26a24cc05b
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Fri Jan 3 05:14:35 2014 -0800
+
+    Split output property printing into a helper function
+    
+    Move the body of the code that prints the actual output property values into a
+    helper function.  This will make it easier for this function to select
+    special-case property printers for properties that need special formatting.
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+    Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+
+commit c5334bb4137d6ea7b8c8b10d51131b9450d1106b
+Author: Alan Coopersmith <alan.coopersmith@oracle.com>
+Date:   Tue Jul 16 23:30:27 2013 -0700
+
+    xrandr 1.4.1
+
+commit 0e0b47341a45c138082d9f8047dcbdb91b90155d
+Author: Alan Coopersmith <alan.coopersmith@oracle.com>
+Date:   Sat Jul 13 00:11:41 2013 -0700
+
+    Combine usage message strings
+    
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+
+commit 38772ec3b5a7216a88676f95b5edc764dd0a23d6
+Author: Alan Coopersmith <alan.coopersmith@oracle.com>
+Date:   Sat Jul 13 00:07:26 2013 -0700
+
+    Declare capability_name() as returning const char *
+    
+    Only used as an argument to printf.   Clears gcc warnings:
+    xrandr.c: In function ‘capability_name’:
+    xrandr.c:237:2: warning: return discards ‘const’ qualifier from pointer target type [enabled by default]
+    xrandr.c:239:2: warning: return discards ‘const’ qualifier from pointer target type [enabled by default]
+    xrandr.c:241:2: warning: return discards ‘const’ qualifier from pointer target type [enabled by default]
+    xrandr.c:243:2: warning: return discards ‘const’ qualifier from pointer target type [enabled by default]
+    xrandr.c:245:5: warning: return discards ‘const’ qualifier from pointer target type [enabled by default]
+    
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+
+commit f53d8511d26a26e9bd6b1bc665f6283f1efd98d9
+Author: Thomas <fischer@unix-ag.uni-kl.de>
+Date:   Fri Nov 9 14:33:08 2012 +0000
+
+    Bug 56923 - Make command line options consistent (single vs double dash)
+    
+    Most of xrandr's command line options follow the system of single
+    dashes for single character options (e.g. "-v") and double dashes for
+    long options ("--version").  The only exceptions are "-display" and
+    "-help", most likely for historical reasons.  To make the behavior
+    consistent across all options, the following patch adds "--display"
+    and "--help" as alternatives to the current inconsistency.  The man
+    page got updated as well, recommending double-dash variants for both
+    options. The old behavior is still supported, so the patch should not
+    break any existing usage/script.
+    
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+
+commit bd1502f50f0c230798bdce99dec6efc76791c024
+Author: Thomas Klausner <wiz@NetBSD.org>
+Date:   Sun Jun 2 21:30:39 2013 +0200
+
+    Protect config.h like usual.
+    
+    Reviewed-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+    Signed-off-by: Alan Coopersmith <alan.coopersmith@oracle.com>
+
+commit ace5e2b21b2a204f94c6452fa0d8f36699aec249
+Author: Andy Ritger <aritger@nvidia.com>
+Date:   Thu May 2 01:20:27 2013 -0700
+
+    xrandr: calloc XRRModeInfo's passed to libXrandr.
+    
+    The "--newmode" commandline option initializes an XRRModeInfo and passes
+    it into XRRCreateMode().  calloc(3) it to avoid uninitialized fields.
+    For consistency, calloc(3) all the places where umode_t's (the wrapper
+    structure for XRRModeInfo) are allocated.
+    
+    Signed-off-by: Andy Ritger <aritger@nvidia.com>
+    Tested-by: Nikhil Mahale <nmahale@nvidia.com>
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+
+commit eb17ad8adc9400f6ed252872f13ccf5551f9e2e9
+Author: Aaron Plattner <aplattner@nvidia.com>
+Date:   Thu Feb 28 12:01:53 2013 -0800
+
+    Print spaces between XA_ATOM property values
+    
+    Commit b26fd532b3dab222956ea27eef4e41345978b5b2 redid how xrandr prints
+    properties.  It neglected to put spaces between the values of XA_ATOM
+    properties, so they all run together.  For example,
+    
+        audio: auto
+            supported: force-dvioffautoon
+    
+    Fix this by putting a space after each atom name.  In addition, some drivers
+    create property values with spaces in them, so put commas between entries to
+    disambiguate.  For example,
+    
+        Broadcast RGB: Automatic
+            supported: Automatic, Full, Limited 16:235
+    
+    Do the same for properties with multiple valid ranges.
+    
+    Signed-off-by: Aaron Plattner <aplattner@nvidia.com>
+    Reviewed-by: Peter Hutterer <peter.hutterer@who-t.net>
+
 commit 222f245fb3a00308cb3ff491f5c84ac9c69c3253
 Author: Aaron Plattner <aplattner@nvidia.com>
 Date:   Tue Feb 12 13:24:38 2013 -0800

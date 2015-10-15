@@ -1,6 +1,6 @@
--- $XTermId: INSTALL,v 1.147 2013/05/27 22:19:09 tom Exp $
+-- $XTermId: INSTALL,v 1.157 2015/04/12 20:44:43 tom Exp $
 -------------------------------------------------------------------------------
--- Copyright 1997-2012,2013 by Thomas E. Dickey
+-- Copyright 1997-2014,2015 by Thomas E. Dickey
 --
 --                         All Rights Reserved
 --
@@ -30,23 +30,12 @@
 -------------------------------------------------------------------------------
 
 Xterm was originally built as part of the X Window System source tree, using
-imake to generate a Makefile from Imakefile.  You can also use the configure
-script to generate a Makefile from Makefile.in:
+imake to generate a Makefile from Imakefile.
 
-	+ If you have imake (or xmkmf), then you can use those directly,
-	  or use the configure script, which normally uses those tools
-	  to obtain the special definitions needed to build xterm.
+An example Imakefile is provided for legacy use.
 
-	  Ultimately, imake will not be necessary, since it is possible
-	  to add configure tests that derive the information that imake
-	  would supply.
-
-	+ You need the Athena widgets (or a clone, such as Xaw3d or
-	  neXtaw), to provide the popup menus.
-
-Even if you have imake, the configure script is still convenient because
-it allows you to build different configurations more easily than with
-imake, simply by specifying options to the configure script.
+The preferred method uses the configure script to generate a Makefile from
+Makefile.in
 
 Options:
 -------
@@ -221,6 +210,15 @@ The options (in alphabetic order):
 	tool.  Normally these chunks of memory are retained as long as xterm
 	is running.
 
+  --disable-luit          disable support for luit filter (Unicode translation)
+
+	Luit is a filter that can be run between an arbitrary application and a
+	UTF-8 terminal emulator.  It will convert application output from the
+	locale's encoding into UTF-8, and convert terminal input from UTF-8
+	into the locale's encoding.
+
+	This is normally enabled, relying upon "--enable-wide-chars".
+
   --disable-maximize      disable actions for iconify/deiconify/maximize/restore
 
 	Do not compile-in code that implements runtime 'actions' for
@@ -341,6 +339,20 @@ The options (in alphabetic order):
 
 	A genuine vt100 emulates a vt52.
 
+  --disable-wide-attrs    disable wide-attribute support
+
+	Xterm's base attributes include all of those used in DEC terminals.
+	ISO 6429 defines a few more which historically have found little use.
+	Some people find these amusing.
+
+	This is normally enabled.
+
+  --disable-wide-chars    disable wide-character support
+
+  	The wide-character code supports Unicode and UTF-8.
+
+	This is normally enabled.
+
   --disable-ziconbeep     disable -ziconbeep option
 
 	Do not compile-in code that modifies the icon's title and sounds a
@@ -379,6 +391,18 @@ The options (in alphabetic order):
 	palette control strings without checking.  The result makes xterm
 	appear to freeze.  This workaround makes xterm ignore the strings,
 	and is compiled-in by default for Linux.
+
+  --enable-builtin-xpms   allow broken Linux OSC-strings],
+
+	Compile-in X pixmap data for these icons:
+		filled-xterm
+		mini.xterm
+		xterm-color
+		xterm
+	at these sizes
+		16x16
+		32x32
+		48x48
 
   --enable-dabbrev        enable dynamic-abbreviation support
 
@@ -436,15 +460,6 @@ The options (in alphabetic order):
 	Logging was disabled in X11R5 xterm because of security problems.
 	They were addressed in X11R6, but the feature was not reinstated.
 
-  --enable-luit           enable support for luit filter (Unicode translation)
-
-	Luit is a filter that can be run between an arbitrary application and a
-	UTF-8 terminal emulator.  It will convert application output from the
-	locale's encoding into UTF-8, and convert terminal input from UTF-8
-	into the locale's encoding.
-
-	This sets "--enable-wide-chars" as a side-effect.
-
   --enable-meta-sends-esc set default metaSendsEscape resource (default: no)
 
 	This sets the default resource value, which is shown in the manpage.
@@ -458,7 +473,7 @@ The options (in alphabetic order):
 
   --enable-narrowproto    enable narrow prototypes for X libraries
 
-	Originally xterm was built using imake rather than a configure script. 
+	Originally xterm was built using imake rather than a configure script.
 	One feature of imake that is not possible to guess within the
 	configure script is the wide-prototype compile-time definition
 	NARROWPROTO.  When this is not set properly, the Athena widget
@@ -474,6 +489,10 @@ The options (in alphabetic order):
 
 		configure --disable-imake --disable-narrowproto
 
+  --enable-pty-erase      set default ptyInitialErase resource (default: false)
+
+	This sets the default resource value, which is shown in the manpage.
+
   --enable-readline-mouse enable support for mouse in readline applications
 
 	Compile-in code to support experimental bracketed paste mode, i.e.,
@@ -486,6 +505,14 @@ The options (in alphabetic order):
   --enable-sco-fkeys      enable support for SCO-style function keys
 
   	Compile-in code to support SCO-style function keys.
+
+  --enable-regis-graphics enable support for ReGIS graphics
+
+  	Compile-in code to support experimental ReGIS graphics
+
+  --enable-sixel-graphics enable support for sixel-graphics
+
+  	Compile-in code to support experimental sixel-graphics
 
   --enable-sun-fkeys      enable support for Sun-style function keys
 
@@ -519,11 +546,6 @@ The options (in alphabetic order):
 	I use this option regularly, and correct all but a few (difficult)
 	problems.
 
-  --enable-wide-chars     enable wide-character support
-
-  	Compile-in code that supports 16-bit characters.  Includes support
-	for UTF-8.
-
   --enable-xmc-glitch     test: enable xmc magic-cookie emulation
 
   	Compile-in code that simulates the terminfo "magic cookie" glitch.
@@ -533,6 +555,10 @@ The options (in alphabetic order):
   --with-Xaw3d            link with Xaw 3d library
 
   	Look for, compile and link with the Xaw 3d widget library.
+
+  --with-Xaw3dxft         link with Xaw 3d xft library
+
+	Look for, compile and link with the Xaw 3d xft widget library.
 
   --with-XawPlus          link with Athena-Plus library
 
@@ -595,7 +621,7 @@ The options (in alphabetic order):
 	just one of the variations:
 
 	"pkg*", e.g., pkg-config or pkgconfig uses whatever pkg-config
-		script was found. 
+		script was found.
 
 	otherwise, the parameter value is used as the name of the script
 	to try, using --cflags and --libs options.
@@ -666,6 +692,19 @@ The options (in alphabetic order):
 	the default is "hicolor".  If this option is not given, the desktop
 	file will use the pixmap files.
 
+  --with-man2html[=XXX]   use XXX rather than groff
+
+	Specify an alternative program to use for converting manpages and
+	control sequences document to html.  If the option is given, its
+	default value is "man2html", otherwise it is "groff" with groff's
+	special options.  The "man2html" script reads formatted nroff output
+	from its standard input, and writes html to its standard output.  Other
+	input/output conventions are not currently supported.
+
+	See
+		http://invisible-island.net/scripts
+	for an up-to-date version of "man2html".
+
   --with-neXtaw           link with neXT Athena library
 
   	Look for, compile and link with the neXT Athena widget library.
@@ -718,7 +757,7 @@ The options (in alphabetic order):
 
 	If xterm is installed setuid'd to root, change the group of the tty
 	device to the given value on startup.  Three cases are possible:
-	
+
 	a) If this option is not given, the configure script will attempt to
 	   find a suitable value (usually "tty"), and verify that it exists in
 	   the group database.
@@ -755,6 +794,9 @@ The options (in alphabetic order):
 
 	Use --without-xterm-symlink to disable a link to "xterm" if none
 	is wanted.
+
+	Corresponding links are also made for "resize", "uxterm" and
+	"koi8rxterm", as well as the xterm manpage.
 
   --with-terminal-id[=V]  set default decTerminalID (default: vt100)
 

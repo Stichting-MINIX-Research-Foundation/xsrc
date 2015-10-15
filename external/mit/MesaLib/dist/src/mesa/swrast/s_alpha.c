@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -90,7 +90,7 @@ do {						\
  *          1 if one or more pixels passed the alpha test.
  */
 GLint
-_swrast_alpha_test(const GLcontext *ctx, SWspan *span)
+_swrast_alpha_test(const struct gl_context *ctx, SWspan *span)
 {
    const GLuint n = span->end;
    GLubyte *mask = span->array->mask;
@@ -123,7 +123,7 @@ _swrast_alpha_test(const GLcontext *ctx, SWspan *span)
          ALPHA_TEST(rgba[i][ACOMP], ;);
       }
       else {
-         GLfloat (*rgba)[4] = span->array->attribs[FRAG_ATTRIB_COL0];
+         GLfloat (*rgba)[4] = span->array->attribs[VARYING_SLOT_COL0];
          const GLfloat ref = ctx->Color.AlphaRef;
          ALPHA_TEST(rgba[i][ACOMP], ;);
       }

@@ -27,155 +27,69 @@
 #include "nouveau_driver.h"
 #include "nouveau_fbo.h"
 #include "nouveau_context.h"
-#include "nouveau_bo.h"
 
 #include "swrast/swrast.h"
+#include "swrast/s_context.h"
 
-#define LOCAL_VARS							\
-	struct gl_framebuffer *fb = ctx->DrawBuffer;			\
-	struct nouveau_surface *s = &to_nouveau_renderbuffer(rb)->surface; \
-	GLuint p;							\
-	(void)p;
 
-#define LOCAL_DEPTH_VARS LOCAL_VARS
-
-#define HW_LOCK()
-#define HW_UNLOCK()
-
-#define HW_CLIPLOOP() {							\
-	int minx = 0;							\
-	int miny = 0;							\
-	int maxx = fb->Width;						\
-	int maxy = fb->Height;
-
-#define HW_ENDCLIPLOOP() }
-
-#define Y_FLIP(y) (fb->Name ? (y) : rb->Height - 1 - (y))
-
-/* RGB565 span functions */
-#define SPANTMP_PIXEL_FMT GL_RGB
-#define SPANTMP_PIXEL_TYPE GL_UNSIGNED_SHORT_5_6_5
-#define TAG(x) nouveau_##x##_rgb565
-#define TAG2(x, y) nouveau_##x##_rgb565##y
-#define GET_PTR(x, y) (s->bo->map + (y)*s->pitch + (x)*s->cpp)
-
-#include "spantmp2.h"
-
-/* RGB888 span functions */
-#define SPANTMP_PIXEL_FMT GL_BGR
-#define SPANTMP_PIXEL_TYPE GL_UNSIGNED_INT_8_8_8_8_REV
-#define TAG(x) nouveau_##x##_rgb888
-#define TAG2(x, y) nouveau_##x##_rgb888##y
-#define GET_PTR(x, y) (s->bo->map + (y)*s->pitch + (x)*s->cpp)
-
-#include "spantmp2.h"
-
-/* ARGB8888 span functions */
-#define SPANTMP_PIXEL_FMT GL_BGRA
-#define SPANTMP_PIXEL_TYPE GL_UNSIGNED_INT_8_8_8_8_REV
-#define TAG(x) nouveau_##x##_argb8888
-#define TAG2(x, y) nouveau_##x##_argb8888##y
-#define GET_PTR(x, y) (s->bo->map + (y)*s->pitch + (x)*s->cpp)
-
-#include "spantmp2.h"
-
-/* Z16 span functions */
-#define VALUE_TYPE uint16_t
-#define READ_DEPTH(v, x, y)						\
-	v = *(uint16_t *)(s->bo->map + (y)*s->pitch + (x)*s->cpp);
-#define WRITE_DEPTH(x, y, v)						\
-	*(uint16_t *)(s->bo->map + (y)*s->pitch + (x)*s->cpp) = v
-#define TAG(x) nouveau_##x##_z16
-
-#include "depthtmp.h"
-
-/* Z24S8 span functions */
-#define VALUE_TYPE uint32_t
-#define READ_DEPTH(v, x, y)						\
-	v = *(uint32_t *)(s->bo->map + (y)*s->pitch + (x)*s->cpp);
-#define WRITE_DEPTH(x, y, v)						\
-	*(uint32_t *)(s->bo->map + (y)*s->pitch + (x)*s->cpp) = v
-#define TAG(x) nouveau_##x##_z24s8
-
-#include "depthtmp.h"
 
 static void
-renderbuffer_map_unmap(struct gl_renderbuffer *rb, GLboolean map)
+renderbuffer_map_unmap(struct gl_context *ctx, struct gl_renderbuffer *rb,
+		       GLboolean map)
 {
 	struct nouveau_surface *s = &to_nouveau_renderbuffer(rb)->surface;
 
-	if (map) {
-		switch (rb->Format) {
-		case MESA_FORMAT_RGB565:
-			nouveau_InitPointers_rgb565(rb);
-			break;
-		case MESA_FORMAT_XRGB8888:
-			nouveau_InitPointers_rgb888(rb);
-			break;
-		case MESA_FORMAT_ARGB8888:
-			nouveau_InitPointers_argb8888(rb);
-			break;
-		case MESA_FORMAT_Z16:
-			nouveau_InitDepthPointers_z16(rb);
-			break;
-		case MESA_FORMAT_Z24_S8:
-			nouveau_InitDepthPointers_z24s8(rb);
-			break;
-		default:
-			assert(0);
-		}
-
-		nouveau_bo_map(s->bo, NOUVEAU_BO_RDWR);
-	} else {
-		nouveau_bo_unmap(s->bo);
-	}
-}
-
-static void
-texture_unit_map_unmap(GLcontext *ctx, struct gl_texture_unit *u, GLboolean map)
-{
-	if (!u->_ReallyEnabled)
-		return;
-
 	if (map)
-		ctx->Driver.MapTexture(ctx, u->_Current);
-	else
-		ctx->Driver.UnmapTexture(ctx, u->_Current);
+		nouveau_bo_map(s->bo, NOUVEAU_BO_RDWR, context_client(ctx));
 }
 
 static void
-span_map_unmap(GLcontext *ctx, GLboolean map)
+framebuffer_map_unmap(struct gl_context *ctx, struct gl_framebuffer *fb, GLboolean map)
 {
 	int i;
 
-	for (i = 0; i < ctx->DrawBuffer->_NumColorDrawBuffers; i++)
-		renderbuffer_map_unmap(ctx->DrawBuffer->_ColorDrawBuffers[i], map);
+	for (i = 0; i < fb->_NumColorDrawBuffers; i++)
+		renderbuffer_map_unmap(ctx, fb->_ColorDrawBuffers[i], map);
 
-	renderbuffer_map_unmap(ctx->DrawBuffer->_ColorReadBuffer, map);
+	renderbuffer_map_unmap(ctx, fb->_ColorReadBuffer, map);
 
-	if (ctx->DrawBuffer->_DepthBuffer)
-		renderbuffer_map_unmap(ctx->DrawBuffer->_DepthBuffer->Wrapped, map);
-
-	for (i = 0; i < ctx->Const.MaxTextureUnits; i++)
-		texture_unit_map_unmap(ctx, &ctx->Texture.Unit[i], map);
+	if (fb->Attachment[BUFFER_DEPTH].Renderbuffer)
+		renderbuffer_map_unmap(ctx, fb->Attachment[BUFFER_DEPTH].Renderbuffer, map);
 }
 
 static void
-nouveau_span_start(GLcontext *ctx)
+span_map_unmap(struct gl_context *ctx, GLboolean map)
+{
+	int i;
+
+	framebuffer_map_unmap(ctx, ctx->DrawBuffer, map);
+
+	if (ctx->ReadBuffer != ctx->DrawBuffer)
+		framebuffer_map_unmap(ctx, ctx->ReadBuffer, map);
+
+	for (i = 0; i < ctx->Const.MaxTextureUnits; i++)
+		if (map)
+			_swrast_map_texture(ctx, ctx->Texture.Unit[i]._Current);
+		else
+			_swrast_unmap_texture(ctx, ctx->Texture.Unit[i]._Current);
+}
+
+static void
+nouveau_span_start(struct gl_context *ctx)
 {
 	nouveau_fallback(ctx, SWRAST);
 	span_map_unmap(ctx, GL_TRUE);
 }
 
 static void
-nouveau_span_finish(GLcontext *ctx)
+nouveau_span_finish(struct gl_context *ctx)
 {
 	span_map_unmap(ctx, GL_FALSE);
 	nouveau_fallback(ctx, HWTNL);
 }
 
 void
-nouveau_span_functions_init(GLcontext *ctx)
+nouveau_span_functions_init(struct gl_context *ctx)
 {
 	struct swrast_device_driver *swdd =
 		_swrast_GetDeviceDriverReference(ctx);

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,6 +29,8 @@
 #define ST_CB_QUERYOBJ_H
 
 
+#include "main/mtypes.h"
+
 /**
  * Subclass of gl_query_object
  */
@@ -36,6 +38,11 @@ struct st_query_object
 {
    struct gl_query_object base;
    struct pipe_query *pq;
+
+   /* Begin TIMESTAMP query for GL_TIME_ELAPSED_EXT queries */
+   struct pipe_query *pq_begin;
+
+   unsigned type;  /**< PIPE_QUERY_x */
 };
 
 
@@ -47,7 +54,6 @@ st_query_object(struct gl_query_object *q)
 {
    return (struct st_query_object *) q;
 }
-
 
 
 extern void

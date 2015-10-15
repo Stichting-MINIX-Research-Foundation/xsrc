@@ -27,6 +27,9 @@ from The Open Group.
 */
 /* $XFree86: xc/programs/xfindproxy/xfindproxy.c,v 1.8tsi Exp $ */
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include <stdio.h>
 #include <X11/Xos.h>
@@ -60,8 +63,6 @@ static int PMversionCount = 1;
 static IcePoVersionRec PMversions[] =
                 {{PM_MAJOR_VERSION, PM_MINOR_VERSION, PMprocessMessages}};
 
-static XtAppContext appContext;
-
 typedef struct {
     int		status;
     char	*addr;
@@ -70,11 +71,12 @@ typedef struct {
 
 
 static int 
-cvthexkey(char *hexstr, char **ptrp)	/* turn hex key string into octets */
+cvthexkey(const char *hexstr, char **ptrp) /* turn hex key string into octets */
 {
-    int i;
-    int len = 0;
-    char *retval, *s;
+    unsigned int i;
+    unsigned int len = 0;
+    char *retval;
+    const char *s;
     unsigned char *us;
     char c;
     char savec = '\0';
@@ -93,7 +95,7 @@ cvthexkey(char *hexstr, char **ptrp)	/* turn hex key string into octets */
 
     /* now we know that the input is good */
     len >>= 1;
-    retval = (char *) malloc (len);
+    retval = malloc (len);
     if (!retval)
 	return -1;
 
@@ -101,7 +103,7 @@ cvthexkey(char *hexstr, char **ptrp)	/* turn hex key string into octets */
 	c = *hexstr;
 	if (isspace(c)) continue;	 /* already know it is ascii */
 	if (isupper(c))
-	    c = tolower(c);
+	    c = (char) tolower(c);
 	if (savec) {
 #define atoh(c) ((c) - (((c) >= '0' && (c) <= '9') ? '0' : ('a'-10)))
 	    *us = (unsigned char)((atoh(savec) << 4) + atoh(c));
@@ -114,19 +116,34 @@ cvthexkey(char *hexstr, char **ptrp)	/* turn hex key string into octets */
 	}
     }
     *ptrp = retval;
-    return len;
+    return (int) len;
 }
+
+static void _X_NORETURN
+usage (void)
+{
+    fprintf (stderr,
+	     "usage: xfindproxy -server serverAddr -name serviceName"
+	     " [-manager managerAddr]\n"
+	     "                  [-auth] [-host hostAddr] [-options opts]\n"
+	     "-manager can be omitted only if PROXY_MANAGER is in the environment\n"
+	     "       xfindproxy -version\n");
+    exit (1);
+}
+
 
 int
 main(int argc, char *argv[])
 {
+    static XtAppContext 	appContext;
     IceConn			iceConn;
     IceProtocolSetupStatus	setupstat;
     char			*vendor = NULL;
     char			*release = NULL;
     pmGetProxyAddrMsg		*pMsg;
     char 			*pData;
-    int				len, i;
+    int				i;
+    size_t			len;
     IceReplyWaitInfo		replyWait;
     GetProxyAddrReply		reply;
     int				majorVersion, minorVersion;
@@ -175,17 +192,31 @@ main(int argc, char *argv[])
 		if (++i >= argc) goto usage;
 		startOptions = XtNewString (argv[i]);
 		continue;
+
+	    case 'v':
+		puts(PACKAGE_STRING);
+		exit(0);
 	    }
 	}
 
     usage:
-	fprintf (stderr,
-	 "usage: xfindproxy -server serverAddr -name serviceName [-manager managerAddr] [-auth] [-host hostAddr] [-options opts]\n-manager can be omitted only if PROXY_MANAGER is in the environment\n");
-	exit (1);
+	if (i >= argc)
+	    fprintf (stderr, "%s: %s requires an argument\n",
+		     argv[0], argv[i-1]);
+	else
+	    fprintf (stderr, "%s: unrecognized argument '%s'\n",
+		     argv[0], argv[i]);
+	usage();
     }
 
-    if (serviceName == NULL || serverAddress == NULL)
-	goto usage;
+    if (serviceName == NULL) {
+	fprintf (stderr, "%s: -name serviceName must be specified\n", argv[0]);
+	usage();
+    }
+    if (serverAddress == NULL) {
+	fprintf (stderr, "%s: -server serverAddr must be specified\n", argv[0]);
+	usage();
+    }
 
     if (managerAddress == NULL) {
 	managerAddress = getenv("PROXY_MANAGER");
@@ -291,7 +322,7 @@ main(int argc, char *argv[])
 	SIZEOF (pmGetProxyAddrMsg), WORD64COUNT (len),
 	pmGetProxyAddrMsg, pMsg, pData);
 
-    pMsg->authLen = authLen;
+    pMsg->authLen = (CARD16) authLen;
 
     STORE_STRING (pData, serviceName);
     STORE_STRING (pData, serverAddress);

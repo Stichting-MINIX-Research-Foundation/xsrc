@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,18 +16,18 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
 #include "main/glheader.h"
 #include "main/colormac.h"
-#include "main/context.h"
 #include "main/macros.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
@@ -59,7 +58,7 @@ struct vertex_stage_data {
  * t_render_clip.h.
  */
 #define USER_CLIPTEST(NAME, SZ)					\
-static void NAME( GLcontext *ctx,				\
+static void NAME( struct gl_context *ctx,				\
 		  GLvector4f *clip,				\
 		  GLubyte *clipmask,				\
 		  GLubyte *clipormask,				\
@@ -106,7 +105,7 @@ USER_CLIPTEST(userclip2, 2)
 USER_CLIPTEST(userclip3, 3)
 USER_CLIPTEST(userclip4, 4)
 
-static void (*(usercliptab[5]))( GLcontext *,
+static void (*(usercliptab[5]))( struct gl_context *,
 				 GLvector4f *, GLubyte *,
 				 GLubyte *, GLubyte * ) =
 {
@@ -119,7 +118,7 @@ static void (*(usercliptab[5]))( GLcontext *,
 
 
 void
-tnl_clip_prepare(GLcontext *ctx)
+tnl_clip_prepare(struct gl_context *ctx)
 {
    /* Neither the x86 nor sparc asm cliptest functions have been updated
     * for ARB_depth_clamp, so force the C paths.
@@ -135,7 +134,7 @@ tnl_clip_prepare(GLcontext *ctx)
 
 
 
-static GLboolean run_vertex_stage( GLcontext *ctx,
+static GLboolean run_vertex_stage( struct gl_context *ctx,
 				   struct tnl_pipeline_stage *stage )
 {
    struct vertex_stage_data *store = (struct vertex_stage_data *)stage->privatePtr;
@@ -230,14 +229,14 @@ static GLboolean run_vertex_stage( GLcontext *ctx,
 }
 
 
-static GLboolean init_vertex_stage( GLcontext *ctx,
+static GLboolean init_vertex_stage( struct gl_context *ctx,
 				    struct tnl_pipeline_stage *stage )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT(ctx)->vb;
    struct vertex_stage_data *store;
    GLuint size = VB->Size;
 
-   stage->privatePtr = CALLOC(sizeof(*store));
+   stage->privatePtr = calloc(1, sizeof(*store));
    store = VERTEX_STAGE_DATA(stage);
    if (!store)
       return GL_FALSE;
@@ -246,7 +245,7 @@ static GLboolean init_vertex_stage( GLcontext *ctx,
    _mesa_vector4f_alloc( &store->clip, 0, size, 32 );
    _mesa_vector4f_alloc( &store->proj, 0, size, 32 );
 
-   store->clipmask = (GLubyte *) _mesa_align_malloc(sizeof(GLubyte)*size, 32 );
+   store->clipmask = _mesa_align_malloc(sizeof(GLubyte)*size, 32 );
 
    if (!store->clipmask ||
        !store->eye.data ||
@@ -266,7 +265,7 @@ static void dtr( struct tnl_pipeline_stage *stage )
       _mesa_vector4f_free( &store->clip );
       _mesa_vector4f_free( &store->proj );
       _mesa_align_free( store->clipmask );
-      FREE(store);
+      free(store);
       stage->privatePtr = NULL;
       stage->run = init_vertex_stage;
    }

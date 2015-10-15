@@ -27,16 +27,16 @@
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_gldefs.h"
-#include "nouveau_class.h"
+#include "nouveau_util.h"
+#include "nv20_3d.xml.h"
 #include "nv20_driver.h"
 
 void
-nv20_emit_logic_opcode(GLcontext *ctx, int emit)
+nv20_emit_logic_opcode(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *kelvin = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 
-	BEGIN_RING(chan, kelvin, NV20TCL_COLOR_LOGIC_OP_ENABLE, 2);
-	OUT_RING(chan, ctx->Color.ColorLogicOpEnabled ? 1 : 0);
-	OUT_RING(chan, nvgl_logicop_func(ctx->Color.LogicOp));
+	BEGIN_NV04(push, NV20_3D(COLOR_LOGIC_OP_ENABLE), 2);
+	PUSH_DATAb(push, ctx->Color.ColorLogicOpEnabled);
+	PUSH_DATA (push, nvgl_logicop_func(ctx->Color.LogicOp));
 }

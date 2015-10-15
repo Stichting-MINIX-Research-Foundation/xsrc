@@ -32,47 +32,80 @@
 #include "pipe/p_compiler.h"
 #include "pipe/p_state.h"
 
+#include "util/u_pack_color.h"
 
-/**
- * Are s1 and s2 the same surface?
- * Surfaces are basically views into textures so check if the two surfaces
- * name the same part of the same texture.
- */
-static INLINE boolean
-util_same_surface(const struct pipe_surface *s1, const struct pipe_surface *s2)
-{
-   return (s1->texture == s2->texture &&
-           s1->face == s2->face &&
-           s1->level == s2->level &&
-           s1->zslice == s2->zslice);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+extern void
+u_surface_default_template(struct pipe_surface *view,
+                           const struct pipe_resource *texture);
+
+extern void
+util_copy_rect(ubyte * dst, enum pipe_format format,
+               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
+               unsigned width, unsigned height, const ubyte * src,
+               int src_stride, unsigned src_x, unsigned src_y);
+
+extern void
+util_copy_box(ubyte * dst,
+              enum pipe_format format,
+              unsigned dst_stride, unsigned dst_slice_stride,
+              unsigned dst_x, unsigned dst_y, unsigned dst_z,
+              unsigned width, unsigned height, unsigned depth,
+              const ubyte * src,
+              int src_stride, unsigned src_slice_stride,
+              unsigned src_x, unsigned src_y, unsigned src_z);
+
+extern void
+util_fill_rect(ubyte * dst, enum pipe_format format,
+               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
+               unsigned width, unsigned height, union util_color *uc);
+
+extern void
+util_fill_box(ubyte * dst, enum pipe_format format,
+              unsigned stride, unsigned layer_stride,
+              unsigned x, unsigned y, unsigned z,
+              unsigned width, unsigned height, unsigned depth,
+              union util_color *uc);
+
+
+extern void
+util_resource_copy_region(struct pipe_context *pipe,
+                          struct pipe_resource *dst,
+                          unsigned dst_level,
+                          unsigned dst_x, unsigned dst_y, unsigned dst_z,
+                          struct pipe_resource *src,
+                          unsigned src_level,
+                          const struct pipe_box *src_box);
+
+extern void
+util_clear_render_target(struct pipe_context *pipe,
+                         struct pipe_surface *dst,
+                         const union pipe_color_union *color,
+                         unsigned dstx, unsigned dsty,
+                         unsigned width, unsigned height);
+
+extern void
+util_clear_depth_stencil(struct pipe_context *pipe,
+                         struct pipe_surface *dst,
+                         unsigned clear_flags,
+                         double depth,
+                         unsigned stencil,
+                         unsigned dstx, unsigned dsty,
+                         unsigned width, unsigned height);
+
+extern boolean
+util_try_blit_via_copy_region(struct pipe_context *ctx,
+                              const struct pipe_blit_info *blit);
+
+
+#ifdef __cplusplus
 }
-
-
-
-
-extern boolean
-util_create_rgba_surface(struct pipe_screen *screen,
-                         uint width, uint height,
-                         struct pipe_texture **textureOut,
-                         struct pipe_surface **surfaceOut);
-
-
-extern void
-util_destroy_rgba_surface(struct pipe_texture *texture,
-                          struct pipe_surface *surface);
-
-
-extern boolean
-util_framebuffer_state_equal(const struct pipe_framebuffer_state *dst,
-                             const struct pipe_framebuffer_state *src);
-
-extern void
-util_copy_framebuffer_state(struct pipe_framebuffer_state *dst,
-                            const struct pipe_framebuffer_state *src);
-
-
-extern void
-util_unreference_framebuffer_state(struct pipe_framebuffer_state *fb);
+#endif
 
 
 #endif /* U_SURFACE_H */

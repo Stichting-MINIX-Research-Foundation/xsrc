@@ -590,9 +590,8 @@ void _XFreeDisplayStructure(Display *dpy)
 	while (dpy->ext_procs) {
 	    _XExtension *ext = dpy->ext_procs;
 	    dpy->ext_procs = ext->next;
-	    if (ext->name)
-		Xfree (ext->name);
-	    Xfree ((char *)ext);
+	    Xfree (ext->name);
+	    Xfree (ext);
 	}
 	if (dpy->im_filters)
 	   (*dpy->free_funcs->im_filters)(dpy);
@@ -634,17 +633,17 @@ void _XFreeDisplayStructure(Display *dpy)
 
 			   for (k = 0; k < dp->nvisuals; k++)
 			     _XFreeExtData (dp->visuals[k].ext_data);
-			   Xfree ((char *) dp->visuals);
+			   Xfree (dp->visuals);
 			   }
 			}
 
-		   Xfree ((char *) sp->depths);
+		   Xfree (sp->depths);
 		   }
 
 		_XFreeExtData (sp->ext_data);
 		}
 
-	    Xfree ((char *)dpy->screens);
+	    Xfree (dpy->screens);
 	    }
 
 	if (dpy->pixmap_format) {
@@ -652,27 +651,21 @@ void _XFreeDisplayStructure(Display *dpy)
 
 	    for (i = 0; i < dpy->nformats; i++)
 	      _XFreeExtData (dpy->pixmap_format[i].ext_data);
-            Xfree ((char *)dpy->pixmap_format);
+            Xfree (dpy->pixmap_format);
 	    }
 
 	free(dpy->display_name);
-	if (dpy->vendor)
-	   Xfree (dpy->vendor);
 
-        if (dpy->buffer)
-	   Xfree (dpy->buffer);
-	if (dpy->keysyms)
-	   Xfree ((char *) dpy->keysyms);
-	if (dpy->xdefaults)
-	   Xfree (dpy->xdefaults);
-	if (dpy->error_vec)
-	    Xfree ((char *)dpy->error_vec);
+	Xfree (dpy->vendor);
+	Xfree (dpy->buffer);
+	Xfree (dpy->keysyms);
+	Xfree (dpy->xdefaults);
+	Xfree (dpy->error_vec);
 
 	_XFreeExtData (dpy->ext_data);
-	if (dpy->free_funcs)
-	    Xfree ((char *)dpy->free_funcs);
- 	if (dpy->scratch_buffer)
- 	    Xfree (dpy->scratch_buffer);
+
+	Xfree (dpy->free_funcs);
+	Xfree (dpy->scratch_buffer);
 	FreeDisplayLock(dpy);
 
 	if (dpy->qfree) {
@@ -680,15 +673,14 @@ void _XFreeDisplayStructure(Display *dpy)
 
 	    while (qelt) {
 		register _XQEvent *qnxt = qelt->next;
-		Xfree ((char *) qelt);
+		Xfree (qelt);
 		qelt = qnxt;
 	    }
 	}
 	while (dpy->im_fd_info) {
 	    struct _XConnectionInfo *conni = dpy->im_fd_info;
 	    dpy->im_fd_info = conni->next;
-	    if (conni->watch_data)
-		Xfree (conni->watch_data);
+	    Xfree (conni->watch_data);
 	    Xfree (conni);
 	}
 	if (dpy->conn_watchers) {
@@ -696,12 +688,12 @@ void _XFreeDisplayStructure(Display *dpy)
 	    dpy->conn_watchers = watcher->next;
 	    Xfree (watcher);
 	}
-	if (dpy->filedes)
-	    Xfree (dpy->filedes);
+
+	Xfree (dpy->filedes);
 
 	_XFreeX11XCBStructure(dpy);
 
-	Xfree ((char *)dpy);
+	Xfree (dpy);
 }
 
 /* OutOfMemory is called if malloc fails.  XOpenDisplay returns NULL

@@ -1,7 +1,5 @@
 /*
- * $Xorg: xlsfonts.c,v 1.4 2001/02/09 02:05:54 xorgcvs Exp $
- *
- * 
+
 Copyright 1989, 1998  The Open Group
 
 Permission to use, copy, modify, distribute, and sell this software and its
@@ -23,8 +21,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 Except as contained in this notice, the name of The Open Group shall not be
 used in advertising or otherwise to promote the sale, use or other dealings
 in this Software without prior written authorization from The Open Group.
- * */
-/* $XFree86: xc/programs/xlsfonts/xlsfonts.c,v 1.9 2003/09/08 14:25:33 eich Exp $ */
+
+ */
+
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -63,7 +65,7 @@ typedef struct {
 static FontList *font_list = NULL;
 
 /* Local prototypes */
-static void get_list(char *pattern);
+static void get_list(const char *pattern);
 static int  compare(const void *arg1, const void *arg2);
 static void show_fonts(void);
 static void copy_number(char **pp1, char**pp2, int n1, int n2);
@@ -73,21 +75,25 @@ static void ComputeFontType(XFontStruct *fs);
 static void print_character_metrics(register XFontStruct *info);
 static void do_query_font (Display *dpy, char *name);
 
-void usage(void)
+void usage(const char *errmsg)
 {
-    fprintf (stderr, "usage:  %s [-options] [-fn pattern]\n", program_name);
-    fprintf (stderr, "where options include:\n");
-    fprintf (stderr, "    -l[l[l]]                 give long info about each font\n");
-    fprintf (stderr, "    -m                       give character min and max bounds\n");
-    fprintf (stderr, "    -C                       force columns\n");
-    fprintf (stderr, "    -1                       force single column\n");
-    fprintf (stderr, "    -u                       keep output unsorted\n");
-    fprintf (stderr, "    -o                       use OpenFont/QueryFont instead of ListFonts\n");
-    fprintf (stderr, "    -w width                 maximum width for multiple columns\n");
-    fprintf (stderr, "    -n columns               number of columns if multi column\n");
-    fprintf (stderr, "    -display displayname     X server to contact\n");
-    fprintf (stderr, "    -d displayname           (alias for -display displayname)\n");
-    fprintf (stderr, "\n");
+    if (errmsg != NULL)
+        fprintf (stderr, "%s: %s\n\n", program_name, errmsg);
+
+    fprintf (stderr, "usage:  %s [-options] [-fn pattern]\n%s", program_name,
+    "where options include:\n"
+    "    -l[l[l]]                 give long info about each font\n"
+    "    -m                       give character min and max bounds\n"
+    "    -C                       force columns\n"
+    "    -1                       force single column\n"
+    "    -u                       keep output unsorted\n"
+    "    -o                       use OpenFont/QueryFont instead of ListFonts\n"
+    "    -w width                 maximum width for multiple columns\n"
+    "    -n columns               number of columns if multi column\n"
+    "    -display displayname     X server to contact\n"
+    "    -d displayname           (alias for -display displayname)\n"
+    "    -v                       print program version\n"
+    "\n");
     Close_Display();
     exit(EXIT_FAILURE);
 }
@@ -103,7 +109,8 @@ int main(int argc, char **argv)
 
     for (argv++, argc--; argc; argv++, argc--) {
         if (argv[0][0] == '-') {
-            if (argcnt > 0) usage ();
+            if (argcnt > 0)
+                usage ("options may not be specified after font names");
             for (i=1; argv[0][i]; i++)
                 switch(argv[0][i]) {
                 case 'l':
@@ -119,19 +126,23 @@ int main(int argc, char **argv)
                     columns = 1;
                     break;
                 case 'f': /* "-fn" */
-                    if (--argc <= 0) usage ();
-                    if (argv[0][i+1] != 'n') usage ();
+                    if (argv[0][i+1] != 'n') {
+                        fprintf (stderr, "%s: unrecognized argument %s\n\n",
+                                 program_name, argv[0]);
+                        usage(NULL);
+                    }
+                    if (--argc <= 0) usage ("-fn requires an argument");
                     argcnt++;
                     argv++;
                     get_list(argv[0]);
                     goto next;
                 case 'w':
-                    if (--argc <= 0) usage ();
+                    if (--argc <= 0) usage ("-w requires an argument");
                     argv++;
                     max_output_line_width = atoi(argv[0]);
                     goto next;
                 case 'n':
-                    if (--argc <= 0) usage ();
+                    if (--argc <= 0) usage ("-n requires an argument");
                     argv++;
                     columns = atoi(argv[0]);
                     goto next;
@@ -141,12 +152,20 @@ int main(int argc, char **argv)
                 case 'u':
                     sort_output = False;
                     break;
+                case 'v':
+                    puts(PACKAGE_STRING);
+                    exit(0);
                 default:
-                    usage();
+                    fprintf (stderr, "%s: unrecognized argument -%c\n\n",
+                             program_name, argv[0][i]);
+                    usage(NULL);
                     break;
                 }
-            if (i == 1)
-                usage();
+            if (i == 1) {
+                fprintf (stderr, "%s: unrecognized argument %s\n\n",
+                         program_name, argv[0]);
+                usage(NULL);
+            }
         } else {
             argcnt++;
             get_list(argv[0]);
@@ -165,7 +184,7 @@ int main(int argc, char **argv)
 
 
 static
-void get_list(char *pattern)
+void get_list(const char *pattern)
 {
     int           available = nnames+1,
                   i;
@@ -206,8 +225,9 @@ void get_list(char *pattern)
         return;
     }
 
-    font_list = (FontList *)Realloc((char *)font_list,
-            (font_cnt + available) * sizeof(FontList));
+    font_list = realloc(font_list, (font_cnt + available) * sizeof(FontList));
+    if (font_list == NULL)
+        Fatal_Error("Out of memory!");
     for (i=0; i<available; i++) {
         font_list[font_cnt].name = fonts[i];
         if (long_list == L_MEDIUM)
@@ -252,7 +272,7 @@ void show_fonts(void)
 
     if (long_list == L_MEDIUM) {
         XFontStruct *pfi;
-        char        *string;
+        const char  *string;
 
         printf("DIR  ");
         printf("MIN  ");
@@ -414,7 +434,7 @@ int IgnoreError(Display *disp, XErrorEvent *event)
     return 0;
 }
 
-static char *bounds_metrics_title =
+static const char *bounds_metrics_title =
                       "width left  right  asc  desc   attr   keysym\n";
 
 #define PrintBounds(_what,_ptr) \
@@ -424,7 +444,7 @@ static char *bounds_metrics_title =
           p->rbearing, p->ascent, p->descent, p->attributes); }
 
 
-static char* stringValued [] = { /* values are atoms */
+static const char* stringValued [] = { /* values are atoms */
     /* font name components (see section 3.2 of the XLFD) */
     "FOUNDRY",
     "FAMILY_NAME",
@@ -509,7 +529,7 @@ ComputeFontType(XFontStruct *fs)
 {
     int i;
     Bool char_cell = True;
-    char *reason = NULL;
+    const char *reason = NULL;
     XCharStruct *cs;
     Atom awatom = XInternAtom (dpy, "AVERAGE_WIDTH", False);
 

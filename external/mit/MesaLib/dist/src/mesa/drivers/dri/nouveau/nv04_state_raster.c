@@ -27,8 +27,10 @@
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_util.h"
-#include "nouveau_class.h"
+#include "nv_object.xml.h"
+#include "nv04_3d.xml.h"
 #include "nv04_driver.h"
+#include "main/stencil.h"
 
 static unsigned
 get_comparison_op(unsigned op)
@@ -81,21 +83,6 @@ get_stencil_op(unsigned op)
 }
 
 static unsigned
-get_texenv_mode(unsigned mode)
-{
-	switch (mode) {
-	case GL_REPLACE:
-		return 0x1;
-	case GL_DECAL:
-		return 0x3;
-	case GL_MODULATE:
-		return 0x4;
-	default:
-		assert(0);
-	}
-}
-
-static unsigned
 get_blend_func(unsigned func)
 {
 	switch (func) {
@@ -127,197 +114,115 @@ get_blend_func(unsigned func)
 }
 
 void
-nv04_defer_control(GLcontext *ctx, int emit)
+nv04_defer_control(struct gl_context *ctx, int emit)
 {
 	context_dirty(ctx, CONTROL);
 }
 
 void
-nv04_emit_control(GLcontext *ctx, int emit)
+nv04_emit_control(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *fahrenheit = nv04_context_engine(ctx);
+	struct nv04_context *nv04 = to_nv04_context(ctx);
+	struct gl_framebuffer *fb = ctx->DrawBuffer;
+	int cull = ctx->Polygon.CullFaceMode;
+	int front = ctx->Polygon.FrontFace;
 
-	if (nv04_mtex_engine(fahrenheit)) {
-		int cull_mode = ctx->Polygon.CullFaceMode;
-		int front_face = ctx->Polygon.FrontFace;
-		uint32_t ctrl0 = 1 << 30 |
-			NV04_MULTITEX_TRIANGLE_CONTROL0_ORIGIN;
-		uint32_t ctrl1 = 0, ctrl2 = 0;
+	nv04->ctrl[0] = NV04_TEXTURED_TRIANGLE_CONTROL_Z_FORMAT_FIXED |
+			NV04_TEXTURED_TRIANGLE_CONTROL_ORIGIN_CORNER;
+	nv04->ctrl[1] = 0;
+	nv04->ctrl[2] = 0;
 
-		/* Color mask. */
-		if (ctx->Color.ColorMask[0][RCOMP])
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_RED_WRITE;
-		if (ctx->Color.ColorMask[0][GCOMP])
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_GREEN_WRITE;
-		if (ctx->Color.ColorMask[0][BCOMP])
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_BLUE_WRITE;
-		if (ctx->Color.ColorMask[0][ACOMP])
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_ALPHA_WRITE;
+	/* Dithering. */
+	if (ctx->Color.DitherFlag)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_DITHER_ENABLE;
 
-		/* Dithering. */
-		if (ctx->Color.DitherFlag)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_DITHER_ENABLE;
+	/* Cull mode. */
+	if (!ctx->Polygon.CullFlag)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_NONE;
+	else if (cull == GL_FRONT_AND_BACK)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_BOTH;
+	else
+		nv04->ctrl[0] |= (cull == GL_FRONT) ^ (front == GL_CCW) ?
+				 NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_CW :
+				 NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_CCW;
 
-		/* Cull mode. */
-		if (!ctx->Polygon.CullFlag)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_CULL_MODE_NONE;
-		else if (cull_mode == GL_FRONT_AND_BACK)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_CULL_MODE_BOTH;
-		else
-			ctrl0 |= (cull_mode == GL_FRONT) ^ (front_face == GL_CCW) ?
-				NV04_MULTITEX_TRIANGLE_CONTROL0_CULL_MODE_CW :
-				NV04_MULTITEX_TRIANGLE_CONTROL0_CULL_MODE_CCW;
+	/* Depth test. */
+	if (ctx->Depth.Test && fb->Visual.depthBits > 0)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_ENABLE;
+	if (ctx->Depth.Mask && fb->Visual.depthBits > 0)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_WRITE;
 
-		/* Depth test. */
-		if (ctx->Depth.Test)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_Z_ENABLE;
+	nv04->ctrl[0] |= get_comparison_op(ctx->Depth.Func) << 16;
 
-		if (ctx->Depth.Mask)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_Z_WRITE;
+	/* Alpha test. */
+	if (ctx->Color.AlphaEnabled)
+		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_ALPHA_ENABLE;
 
-		ctrl0 |= get_comparison_op(ctx->Depth.Func) << 16;
+	nv04->ctrl[0] |= get_comparison_op(ctx->Color.AlphaFunc) << 8 |
+			 FLOAT_TO_UBYTE(ctx->Color.AlphaRef);
 
-		/* Alpha test. */
-		if (ctx->Color.AlphaEnabled)
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_ALPHA_ENABLE;
+	/* Color mask. */
+	if (ctx->Color.ColorMask[0][RCOMP])
+		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_RED_WRITE;
+	if (ctx->Color.ColorMask[0][GCOMP])
+		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_GREEN_WRITE;
+	if (ctx->Color.ColorMask[0][BCOMP])
+		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_BLUE_WRITE;
+	if (ctx->Color.ColorMask[0][ACOMP])
+		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_ALPHA_WRITE;
 
-		ctrl0 |= get_comparison_op(ctx->Color.AlphaFunc) << 8 |
-			FLOAT_TO_UBYTE(ctx->Color.AlphaRef);
+	/* Stencil test. */
+	if (ctx->Stencil.WriteMask[0])
+		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_STENCIL_WRITE;
 
-		/* Stencil test. */
-		if (ctx->Stencil.WriteMask[0])
-			ctrl0 |= NV04_MULTITEX_TRIANGLE_CONTROL0_STENCIL_WRITE;
+	if (ctx->Stencil._Enabled)
+		nv04->ctrl[1] |= NV04_MULTITEX_TRIANGLE_CONTROL1_STENCIL_ENABLE;
 
-		if (ctx->Stencil.Enabled)
-			ctrl1 |= NV04_MULTITEX_TRIANGLE_CONTROL1_STENCIL_ENABLE;
+	nv04->ctrl[1] |= get_comparison_op(ctx->Stencil.Function[0]) << 4 |
+			 _mesa_get_stencil_ref(ctx, 0) << 8 |
+			 ctx->Stencil.ValueMask[0] << 16 |
+			 ctx->Stencil.WriteMask[0] << 24;
 
-		ctrl1 |= get_comparison_op(ctx->Stencil.Function[0]) << 4 |
-			ctx->Stencil.Ref[0] << 8 |
-			ctx->Stencil.ValueMask[0] << 16 |
-			ctx->Stencil.WriteMask[0] << 24;
-
-		ctrl2 |= get_stencil_op(ctx->Stencil.ZPassFunc[0]) << 8 |
-			get_stencil_op(ctx->Stencil.ZFailFunc[0]) << 4 |
-			get_stencil_op(ctx->Stencil.FailFunc[0]);
-
-		BEGIN_RING(chan, fahrenheit, NV04_MULTITEX_TRIANGLE_CONTROL0, 3);
-		OUT_RING(chan, ctrl0);
-		OUT_RING(chan, ctrl1);
-		OUT_RING(chan, ctrl2);
-
-	} else {
-		int cull_mode = ctx->Polygon.CullFaceMode;
-		int front_face = ctx->Polygon.FrontFace;
-		uint32_t ctrl = 1 << 30 |
-			NV04_TEXTURED_TRIANGLE_CONTROL_ORIGIN;
-
-		/* Dithering. */
-		if (ctx->Color.DitherFlag)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_DITHER_ENABLE;
-
-		/* Cull mode. */
-		if (!ctx->Polygon.CullFlag)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_NONE;
-		else if (cull_mode == GL_FRONT_AND_BACK)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_BOTH;
-		else
-			ctrl |= (cull_mode == GL_FRONT) ^ (front_face == GL_CCW) ?
-				NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_CW :
-				NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_CCW;
-
-		/* Depth test. */
-		if (ctx->Depth.Test)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_ENABLE;
-		if (ctx->Depth.Mask)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_WRITE;
-
-		ctrl |= get_comparison_op(ctx->Depth.Func) << 16;
-
-		/* Alpha test. */
-		if (ctx->Color.AlphaEnabled)
-			ctrl |= NV04_TEXTURED_TRIANGLE_CONTROL_ALPHA_ENABLE;
-
-		ctrl |= get_comparison_op(ctx->Color.AlphaFunc) << 8 |
-			FLOAT_TO_UBYTE(ctx->Color.AlphaRef);
-
-		BEGIN_RING(chan, fahrenheit, NV04_TEXTURED_TRIANGLE_CONTROL, 1);
-		OUT_RING(chan, ctrl);
-	}
+	nv04->ctrl[2] |= get_stencil_op(ctx->Stencil.ZPassFunc[0]) << 8 |
+			 get_stencil_op(ctx->Stencil.ZFailFunc[0]) << 4 |
+			 get_stencil_op(ctx->Stencil.FailFunc[0]);
 }
 
 void
-nv04_defer_blend(GLcontext *ctx, int emit)
+nv04_defer_blend(struct gl_context *ctx, int emit)
 {
 	context_dirty(ctx, BLEND);
 }
 
 void
-nv04_emit_blend(GLcontext *ctx, int emit)
+nv04_emit_blend(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *fahrenheit = nv04_context_engine(ctx);
+	struct nv04_context *nv04 = to_nv04_context(ctx);
 
-	if (nv04_mtex_engine(fahrenheit)) {
-		uint32_t blend = 0x2 << 4 |
-			NV04_MULTITEX_TRIANGLE_BLEND_TEXTURE_PERSPECTIVE_ENABLE;
+	nv04->blend &= NV04_TEXTURED_TRIANGLE_BLEND_TEXTURE_MAP__MASK;
+	nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_MASK_BIT_MSB |
+		       NV04_TEXTURED_TRIANGLE_BLEND_TEXTURE_PERSPECTIVE_ENABLE;
 
-		/* Alpha blending. */
-		blend |= get_blend_func(ctx->Color.BlendDstRGB) << 28 |
-			get_blend_func(ctx->Color.BlendSrcRGB) << 24;
+	/* Alpha blending. */
+	nv04->blend |= get_blend_func(ctx->Color.Blend[0].DstRGB) << 28 |
+		       get_blend_func(ctx->Color.Blend[0].SrcRGB) << 24;
 
-		if (ctx->Color.BlendEnabled)
-			blend |= NV04_MULTITEX_TRIANGLE_BLEND_BLEND_ENABLE;
+	if (ctx->Color.BlendEnabled)
+		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_BLEND_ENABLE;
 
-		/* Shade model. */
-		if (ctx->Light.ShadeModel == GL_SMOOTH)
-			blend |= NV04_MULTITEX_TRIANGLE_BLEND_SHADE_MODE_GOURAUD;
-		else
-			blend |= NV04_MULTITEX_TRIANGLE_BLEND_SHADE_MODE_FLAT;
+	/* Shade model. */
+	if (ctx->Light.ShadeModel == GL_SMOOTH)
+		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_SHADE_MODE_GOURAUD;
+	else
+		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_SHADE_MODE_FLAT;
 
-		/* Fog. */
-		if (ctx->Fog.Enabled)
-			blend |= NV04_MULTITEX_TRIANGLE_BLEND_FOG_ENABLE;
+	/* Secondary color */
+	if (_mesa_need_secondary_color(ctx))
+		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_SPECULAR_ENABLE;
 
-		BEGIN_RING(chan, fahrenheit, NV04_MULTITEX_TRIANGLE_BLEND, 1);
-		OUT_RING(chan, blend);
-
-		BEGIN_RING(chan, fahrenheit, NV04_MULTITEX_TRIANGLE_FOGCOLOR, 1);
-		OUT_RING(chan, pack_rgba_f(MESA_FORMAT_ARGB8888,
-					   ctx->Fog.Color));
-
-	} else {
-		uint32_t blend = 0x2 << 4 |
-			NV04_TEXTURED_TRIANGLE_BLEND_TEXTURE_PERSPECTIVE_ENABLE;
-
-		/* Alpha blending. */
-		blend |= get_blend_func(ctx->Color.BlendDstRGB) << 28 |
-			get_blend_func(ctx->Color.BlendSrcRGB) << 24;
-
-		if (ctx->Color.BlendEnabled)
-			blend |= NV04_TEXTURED_TRIANGLE_BLEND_BLEND_ENABLE;
-
-		/* Shade model. */
-		if (ctx->Light.ShadeModel == GL_SMOOTH)
-			blend |= NV04_TEXTURED_TRIANGLE_BLEND_SHADE_MODE_GOURAUD;
-		else
-			blend |= NV04_TEXTURED_TRIANGLE_BLEND_SHADE_MODE_FLAT;
-
-		/* Texture environment. */
-		if (ctx->Texture._EnabledUnits)
-			blend |= get_texenv_mode(ctx->Texture.Unit[0].EnvMode);
-		else
-			blend |= get_texenv_mode(GL_MODULATE);
-
-		/* Fog. */
-		if (ctx->Fog.Enabled)
-			blend |= NV04_TEXTURED_TRIANGLE_BLEND_FOG_ENABLE;
-
-		BEGIN_RING(chan, fahrenheit, NV04_TEXTURED_TRIANGLE_BLEND, 1);
-		OUT_RING(chan, blend);
-
-		BEGIN_RING(chan, fahrenheit, NV04_TEXTURED_TRIANGLE_FOGCOLOR, 1);
-		OUT_RING(chan, pack_rgba_f(MESA_FORMAT_ARGB8888,
-					   ctx->Fog.Color));
+	/* Fog. */
+	if (ctx->Fog.Enabled) {
+		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_FOG_ENABLE;
+		nv04->fog = pack_rgba_f(MESA_FORMAT_B8G8R8A8_UNORM, ctx->Fog.Color);
 	}
 }

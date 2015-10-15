@@ -292,7 +292,7 @@ TCXPreInit(ScrnInfoPtr pScrn, int flags)
     TcxPtr pTcx;
     sbusDevicePtr psdp = NULL;
     MessageType from;
-    int i;
+    int i, prom;
     int hwCursor, lowDepth;
 
     if (flags & PROBE_DETECT) return FALSE;
@@ -341,23 +341,43 @@ TCXPreInit(ScrnInfoPtr pScrn, int flags)
     **********************/
     hwCursor = 0;
     lowDepth = 1;
-    if (sparcPromInit() >= 0) {
-	hwCursor = sparcPromGetBool(&psdp->node, "hw-cursor");
-	lowDepth = sparcPromGetBool(&psdp->node, "tcx-8-bit");
-	sparcPromClose();
+
+    prom = sparcPromInit();
+    hwCursor = sparcPromGetBool(&psdp->node, "hw-cursor");
+    lowDepth = sparcPromGetBool(&psdp->node, "tcx-8-bit");
+    if (pTcx->HasStipROP = sparcPromGetBool(&psdp->node, "stip-rop")) {
+	xf86Msg(X_PROBED, "stipple space supports ROPs\n");
     }
-
+    pTcx->Is8bit = (lowDepth != 0); 
     /* all S24 support a hardware cursor */
-    if (!lowDepth)
+    if (!lowDepth) {
 	hwCursor = 1;
+	pTcx->vramsize = 0x100000;	/* size of the 8bit fb */
+    } else {
+	char *b;
+	int len = 4, v = 0;
 
-	xf86Msg(X_ERROR, "hw-cursor: %d\n", hwCursor);
+    	/* see if we have more than 1MB vram */
+	pTcx->vramsize = 0x100000;
+	if ((b = sparcPromGetProperty(&psdp->node, "vram", &len)) != NULL) {
+	    memcpy(&v, b, 4);
+	    if ((v > 0) && (v < 3))
+	    	pTcx->vramsize = 0x100000 * v;
+	}
+	xf86Msg(X_PROBED, "found %d MB video memory\n", v);
+    	    
+    }
+    if (prom)
+    	sparcPromClose();
+
+    xf86Msg(X_PROBED, "hardware cursor support %s\n",
+      hwCursor ? "found" : "not found");
 
     /*********************
     deal with depth
     *********************/
     
-    if (!xf86SetDepthBpp(pScrn, 0, 0, 0,
+    if (!xf86SetDepthBpp(pScrn, lowDepth ? 8 : 0, 0, 0,
 			 lowDepth ? NoDepth24Support : Support32bppFb)) {
 	return FALSE;
     } else {
@@ -507,7 +527,7 @@ TCXScreenInit(SCREEN_INIT_ARGS_DECL)
     /* Map the TCX memory */
     if (pScrn->depth == 8) {
 	pTcx->fb =
-	    xf86MapSbusMem (pTcx->psdp, TCX_RAM8_VOFF, 1024 * 1024);
+	    xf86MapSbusMem (pTcx->psdp, TCX_RAM8_VOFF, pTcx->vramsize);
 	pTcx->pitchshift = 0;
     } else {
 	pTcx->fb =
@@ -524,15 +544,30 @@ TCXScreenInit(SCREEN_INIT_ARGS_DECL)
 	    return FALSE;
     }
 
-    pTcx->rblit = xf86MapSbusMem(pTcx->psdp, TCX_RBLIT_VOFF, 8 * 1024 * 1024);
-    if (pTcx->rblit == NULL) {
-	xf86Msg(X_ERROR, "Couldn't map RBLIT space\n");
-	return FALSE;
-    }
-    pTcx->rstip = xf86MapSbusMem(pTcx->psdp, TCX_RSTIP_VOFF, 8 * 1024 * 1024);
-    if (pTcx->rstip == NULL) {
-	xf86Msg(X_ERROR, "Couldn't map RSTIP space\n");
-	return FALSE;
+    if (pTcx->Is8bit) {
+    	/* use STIP and BLIT on tcx */
+        pTcx->rblit = xf86MapSbusMem(pTcx->psdp, TCX_BLIT_VOFF, 8 * pTcx->vramsize);
+        if (pTcx->rblit == NULL) {
+	    xf86Msg(X_ERROR, "Couldn't map BLIT space\n");
+	    return FALSE;
+        }
+        pTcx->rstip = xf86MapSbusMem(pTcx->psdp, TCX_STIP_VOFF, 8 * pTcx->vramsize);
+        if (pTcx->rstip == NULL) {
+	    xf86Msg(X_ERROR, "Couldn't map STIP space\n");
+	    return FALSE;
+	}
+    } else {
+    	/* use RSTIP and RBLIT on S24 */
+        pTcx->rblit = xf86MapSbusMem(pTcx->psdp, TCX_RBLIT_VOFF, 8 * 1024 * 1024);
+        if (pTcx->rblit == NULL) {
+	    xf86Msg(X_ERROR, "Couldn't map RBLIT space\n");
+	    return FALSE;
+        }
+        pTcx->rstip = xf86MapSbusMem(pTcx->psdp, TCX_RSTIP_VOFF, 8 * 1024 * 1024);
+        if (pTcx->rstip == NULL) {
+	    xf86Msg(X_ERROR, "Couldn't map RSTIP space\n");
+	    return FALSE;
+	}
     }
 
     if (! pTcx->fb)
@@ -605,9 +640,7 @@ TCXScreenInit(SCREEN_INIT_ARGS_DECL)
     fbPictureInit (pScreen, 0, 0);
 #endif
 
-#if 0
-    if (!pTcx->NoAccel)
-    {
+    if (!pTcx->NoAccel) {
         XF86ModReqInfo req;
         int errmaj, errmin;
 
@@ -625,7 +658,7 @@ TCXScreenInit(SCREEN_INIT_ARGS_DECL)
     }
 
     miInitializeBackingStore(pScreen);
-#endif
+
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
 

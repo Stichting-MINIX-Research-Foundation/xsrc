@@ -29,6 +29,7 @@ in this Software without prior written authorization from The Open Group.
 #endif
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <X11/Xos.h>		/* for select() and struct timeval */
 #include <ctype.h>
 #include <X11/IntrinsicP.h>
@@ -46,6 +47,10 @@ in this Software without prior written authorization from The Open Group.
 #include <X11/Xaw/XawImP.h>
 #include "Private.h"
 #include "XawI18n.h"
+
+#ifdef _WIN32
+#include <X11/Xwinsock.h>
+#endif
 
 #define SrcScan			XawTextSourceScan
 #define FindDist		XawTextSinkFindDistance

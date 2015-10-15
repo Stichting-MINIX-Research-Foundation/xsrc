@@ -31,22 +31,31 @@
 #ifndef SYNCOBJ_H
 #define SYNCOBJ_H
 
-#include "context.h"
+#include "glheader.h"
+
+struct _glapi_table;
+struct dd_function_table;
+struct gl_context;
+struct gl_sync_object;
 
 extern void
 _mesa_init_sync_object_functions(struct dd_function_table *driver);
 
 extern void
-_mesa_init_sync(GLcontext *);
+_mesa_init_sync(struct gl_context *);
 
 extern void
-_mesa_free_sync_data(GLcontext *);
+_mesa_free_sync_data(struct gl_context *);
 
 extern void
-_mesa_ref_sync_object(GLcontext *ctx, struct gl_sync_object *syncObj);
+_mesa_ref_sync_object(struct gl_context *ctx, struct gl_sync_object *syncObj);
 
 extern void
-_mesa_unref_sync_object(GLcontext *ctx, struct gl_sync_object *syncObj);
+_mesa_unref_sync_object(struct gl_context *ctx, struct gl_sync_object *syncObj);
+
+extern bool
+_mesa_validate_sync(struct gl_context *ctx,
+                    const struct gl_sync_object *syncObj);
 
 extern GLboolean GLAPIENTRY
 _mesa_IsSync(GLsync sync);

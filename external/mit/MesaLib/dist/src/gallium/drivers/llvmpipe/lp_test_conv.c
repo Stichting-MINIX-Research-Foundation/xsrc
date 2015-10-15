@@ -34,6 +34,8 @@
  */
 
 
+#include "util/u_pointer.h"
+#include "gallivm/lp_bld_init.h"
 #include "gallivm/lp_bld_type.h"
 #include "gallivm/lp_bld_const.h"
 #include "gallivm/lp_bld_conv.h"
@@ -95,49 +97,53 @@ dump_conv_types(FILE *fp,
 
 
 static LLVMValueRef
-add_conv_test(LLVMModuleRef module,
+add_conv_test(struct gallivm_state *gallivm,
               struct lp_type src_type, unsigned num_srcs,
               struct lp_type dst_type, unsigned num_dsts)
 {
+   LLVMModuleRef module = gallivm->module;
+   LLVMContextRef context = gallivm->context;
+   LLVMBuilderRef builder = gallivm->builder;
    LLVMTypeRef args[2];
    LLVMValueRef func;
    LLVMValueRef src_ptr;
    LLVMValueRef dst_ptr;
    LLVMBasicBlockRef block;
-   LLVMBuilderRef builder;
    LLVMValueRef src[LP_MAX_VECTOR_LENGTH];
    LLVMValueRef dst[LP_MAX_VECTOR_LENGTH];
    unsigned i;
 
-   args[0] = LLVMPointerType(lp_build_vec_type(src_type), 0);
-   args[1] = LLVMPointerType(lp_build_vec_type(dst_type), 0);
+   args[0] = LLVMPointerType(lp_build_vec_type(gallivm, src_type), 0);
+   args[1] = LLVMPointerType(lp_build_vec_type(gallivm, dst_type), 0);
 
-   func = LLVMAddFunction(module, "test", LLVMFunctionType(LLVMVoidType(), args, 2, 0));
+   func = LLVMAddFunction(module, "test",
+                          LLVMFunctionType(LLVMVoidTypeInContext(context),
+                                           args, 2, 0));
    LLVMSetFunctionCallConv(func, LLVMCCallConv);
    src_ptr = LLVMGetParam(func, 0);
    dst_ptr = LLVMGetParam(func, 1);
 
-   block = LLVMAppendBasicBlock(func, "entry");
-   builder = LLVMCreateBuilder();
+   block = LLVMAppendBasicBlockInContext(context, func, "entry");
    LLVMPositionBuilderAtEnd(builder, block);
 
    for(i = 0; i < num_srcs; ++i) {
-      LLVMValueRef index = LLVMConstInt(LLVMInt32Type(), i, 0);
+      LLVMValueRef index = LLVMConstInt(LLVMInt32TypeInContext(context), i, 0);
       LLVMValueRef ptr = LLVMBuildGEP(builder, src_ptr, &index, 1, "");
       src[i] = LLVMBuildLoad(builder, ptr, "");
    }
 
-   lp_build_conv(builder, src_type, dst_type, src, num_srcs, dst, num_dsts);
+   lp_build_conv(gallivm, src_type, dst_type, src, num_srcs, dst, num_dsts);
 
    for(i = 0; i < num_dsts; ++i) {
-      LLVMValueRef index = LLVMConstInt(LLVMInt32Type(), i, 0);
+      LLVMValueRef index = LLVMConstInt(LLVMInt32TypeInContext(context), i, 0);
       LLVMValueRef ptr = LLVMBuildGEP(builder, dst_ptr, &index, 1, "");
       LLVMBuildStore(builder, dst[i], ptr);
    }
 
    LLVMBuildRetVoid(builder);;
 
-   LLVMDisposeBuilder(builder);
+   gallivm_verify_function(gallivm, func);
+
    return func;
 }
 
@@ -149,12 +155,8 @@ test_one(unsigned verbose,
          struct lp_type src_type,
          struct lp_type dst_type)
 {
-   LLVMModuleRef module = NULL;
+   struct gallivm_state *gallivm;
    LLVMValueRef func = NULL;
-   LLVMExecutionEngineRef engine = NULL;
-   LLVMModuleProviderRef provider = NULL;
-   LLVMPassManagerRef pass = NULL;
-   char *error = NULL;
    conv_test_ptr_t conv_test_ptr;
    boolean success;
    const unsigned n = LP_TEST_NUM_SAMPLES;
@@ -165,73 +167,66 @@ test_one(unsigned verbose,
    double eps;
    unsigned i, j;
 
-   if(verbose >= 1)
-      dump_conv_types(stdout, src_type, dst_type);
+   if ((src_type.width >= dst_type.width && src_type.length > dst_type.length) ||
+       (src_type.width <= dst_type.width && src_type.length < dst_type.length)) {
+      return TRUE;
+   }
 
-   if(src_type.length > dst_type.length) {
+   /* Known failures
+    * - fixed point 32 -> float 32
+    * - float 32 -> signed normalised integer 32
+    */
+   if ((src_type.floating && !dst_type.floating && dst_type.sign && dst_type.norm && src_type.width == dst_type.width) ||
+       (!src_type.floating && dst_type.floating && src_type.fixed && src_type.width == dst_type.width)) {
+      return TRUE;
+   }
+
+   /* Known failures
+    * - fixed point 32 -> float 32
+    * - float 32 -> signed normalised integer 32
+    */
+   if ((src_type.floating && !dst_type.floating && dst_type.sign && dst_type.norm && src_type.width == dst_type.width) ||
+       (!src_type.floating && dst_type.floating && src_type.fixed && src_type.width == dst_type.width)) {
+      return TRUE;
+   }
+
+   if(verbose >= 1)
+      dump_conv_types(stderr, src_type, dst_type);
+
+   if (src_type.length > dst_type.length) {
       num_srcs = 1;
       num_dsts = src_type.length/dst_type.length;
    }
-   else  {
+   else if (src_type.length < dst_type.length) {
       num_dsts = 1;
       num_srcs = dst_type.length/src_type.length;
    }
-
-   assert(src_type.width * src_type.length == dst_type.width * dst_type.length);
+   else  {
+      num_dsts = 1;
+      num_srcs = 1;
+   }
 
    /* We must not loose or gain channels. Only precision */
    assert(src_type.length * num_srcs == dst_type.length * num_dsts);
 
    eps = MAX2(lp_const_eps(src_type), lp_const_eps(dst_type));
 
-   module = LLVMModuleCreateWithName("test");
+   gallivm = gallivm_create("test_module");
 
-   func = add_conv_test(module, src_type, num_srcs, dst_type, num_dsts);
+   func = add_conv_test(gallivm, src_type, num_srcs, dst_type, num_dsts);
 
-   if(LLVMVerifyModule(module, LLVMPrintMessageAction, &error)) {
-      LLVMDumpModule(module);
-      abort();
-   }
-   LLVMDisposeMessage(error);
+   gallivm_compile_module(gallivm);
 
-   provider = LLVMCreateModuleProviderForExistingModule(module);
-   if (LLVMCreateJITCompiler(&engine, provider, 1, &error)) {
-      if(verbose < 1)
-         dump_conv_types(stderr, src_type, dst_type);
-      fprintf(stderr, "%s\n", error);
-      LLVMDisposeMessage(error);
-      abort();
-   }
+   conv_test_ptr = (conv_test_ptr_t)gallivm_jit_function(gallivm, func);
 
-#if 0
-   pass = LLVMCreatePassManager();
-   LLVMAddTargetData(LLVMGetExecutionEngineTargetData(engine), pass);
-   /* These are the passes currently listed in llvm-c/Transforms/Scalar.h,
-    * but there are more on SVN. */
-   LLVMAddConstantPropagationPass(pass);
-   LLVMAddInstructionCombiningPass(pass);
-   LLVMAddPromoteMemoryToRegisterPass(pass);
-   LLVMAddGVNPass(pass);
-   LLVMAddCFGSimplificationPass(pass);
-   LLVMRunPassManager(pass, module);
-#else
-   (void)pass;
-#endif
-
-   if(verbose >= 2)
-      LLVMDumpModule(module);
-
-   conv_test_ptr = (conv_test_ptr_t)LLVMGetPointerToGlobal(engine, func);
-
-   if(verbose >= 2)
-      lp_disassemble(conv_test_ptr);
+   gallivm_free_ir(gallivm);
 
    success = TRUE;
    for(i = 0; i < n && success; ++i) {
       unsigned src_stride = src_type.length*src_type.width/8;
       unsigned dst_stride = dst_type.length*dst_type.width/8;
-      PIPE_ALIGN_VAR(16) uint8_t src[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
-      PIPE_ALIGN_VAR(16) uint8_t dst[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
+      PIPE_ALIGN_VAR(LP_MIN_VECTOR_ALIGN) uint8_t src[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
+      PIPE_ALIGN_VAR(LP_MIN_VECTOR_ALIGN) uint8_t dst[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
       double fref[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
       uint8_t ref[LP_MAX_VECTOR_LENGTH*LP_MAX_VECTOR_LENGTH];
       int64_t start_counter = 0;
@@ -257,10 +252,15 @@ test_one(unsigned verbose,
             success = FALSE;
       }
 
-      if (!success) {
+      if (!success || verbose >= 3) {
          if(verbose < 1)
             dump_conv_types(stderr, src_type, dst_type);
-         fprintf(stderr, "MISMATCH\n");
+         if (success) {
+            fprintf(stderr, "PASS\n");
+         }
+         else {
+            fprintf(stderr, "MISMATCH\n");
+         }
 
          for(j = 0; j < num_srcs; ++j) {
             fprintf(stderr, "  Src%u: ", j);
@@ -321,24 +321,7 @@ test_one(unsigned verbose,
    if(fp)
       write_tsv_row(fp, src_type, dst_type, cycles_avg, success);
 
-   if (!success) {
-      static boolean firsttime = TRUE;
-      if(firsttime) {
-         if(verbose < 2)
-            LLVMDumpModule(module);
-         LLVMWriteBitcodeToFile(module, "conv.bc");
-         fprintf(stderr, "conv.bc written\n");
-         fprintf(stderr, "Invoke as \"llc -o - conv.bc\"\n");
-         firsttime = FALSE;
-         /* abort(); */
-      }
-   }
-
-   LLVMFreeMachineCodeForFunction(engine, func);
-
-   LLVMDisposeExecutionEngine(engine);
-   if(pass)
-      LLVMDisposePassManager(pass);
+   gallivm_destroy(gallivm);
 
    return success;
 }
@@ -347,22 +330,38 @@ test_one(unsigned verbose,
 const struct lp_type conv_types[] = {
    /* float, fixed,  sign,  norm, width, len */
 
+   /* Float */
    {   TRUE, FALSE,  TRUE,  TRUE,    32,   4 },
    {   TRUE, FALSE,  TRUE, FALSE,    32,   4 },
    {   TRUE, FALSE, FALSE,  TRUE,    32,   4 },
    {   TRUE, FALSE, FALSE, FALSE,    32,   4 },
 
-   /* TODO: test fixed formats too */
+   {   TRUE, FALSE,  TRUE,  TRUE,    32,   8 },
+   {   TRUE, FALSE,  TRUE, FALSE,    32,   8 },
+   {   TRUE, FALSE, FALSE,  TRUE,    32,   8 },
+   {   TRUE, FALSE, FALSE, FALSE,    32,   8 },
 
-   {  FALSE, FALSE,  TRUE,  TRUE,    16,   8 },
-   {  FALSE, FALSE,  TRUE, FALSE,    16,   8 },
-   {  FALSE, FALSE, FALSE,  TRUE,    16,   8 },
-   {  FALSE, FALSE, FALSE, FALSE,    16,   8 },
+   /* Fixed */
+   {  FALSE,  TRUE,  TRUE,  TRUE,    32,   4 },
+   {  FALSE,  TRUE,  TRUE, FALSE,    32,   4 },
+   {  FALSE,  TRUE, FALSE,  TRUE,    32,   4 },
+   {  FALSE,  TRUE, FALSE, FALSE,    32,   4 },
 
+   {  FALSE,  TRUE,  TRUE,  TRUE,    32,   8 },
+   {  FALSE,  TRUE,  TRUE, FALSE,    32,   8 },
+   {  FALSE,  TRUE, FALSE,  TRUE,    32,   8 },
+   {  FALSE,  TRUE, FALSE, FALSE,    32,   8 },
+
+   /* Integer */
    {  FALSE, FALSE,  TRUE,  TRUE,    32,   4 },
    {  FALSE, FALSE,  TRUE, FALSE,    32,   4 },
    {  FALSE, FALSE, FALSE,  TRUE,    32,   4 },
    {  FALSE, FALSE, FALSE, FALSE,    32,   4 },
+
+   {  FALSE, FALSE,  TRUE,  TRUE,    32,   8 },
+   {  FALSE, FALSE,  TRUE, FALSE,    32,   8 },
+   {  FALSE, FALSE, FALSE,  TRUE,    32,   8 },
+   {  FALSE, FALSE, FALSE, FALSE,    32,   8 },
 
    {  FALSE, FALSE,  TRUE,  TRUE,    16,   8 },
    {  FALSE, FALSE,  TRUE, FALSE,    16,   8 },
@@ -373,6 +372,13 @@ const struct lp_type conv_types[] = {
    {  FALSE, FALSE,  TRUE, FALSE,     8,  16 },
    {  FALSE, FALSE, FALSE,  TRUE,     8,  16 },
    {  FALSE, FALSE, FALSE, FALSE,     8,  16 },
+
+   {  FALSE, FALSE,  TRUE,  TRUE,     8,   4 },
+   {  FALSE, FALSE,  TRUE, FALSE,     8,   4 },
+   {  FALSE, FALSE, FALSE,  TRUE,     8,   4 },
+   {  FALSE, FALSE, FALSE, FALSE,     8,   4 },
+
+   {  FALSE, FALSE,  FALSE,  TRUE,    8,   8 },
 };
 
 
@@ -384,7 +390,8 @@ test_all(unsigned verbose, FILE *fp)
 {
    const struct lp_type *src_type;
    const struct lp_type *dst_type;
-   bool success = TRUE;
+   boolean success = TRUE;
+   int error_count = 0;
 
    for(src_type = conv_types; src_type < &conv_types[num_types]; ++src_type) {
       for(dst_type = conv_types; dst_type < &conv_types[num_types]; ++dst_type) {
@@ -392,26 +399,27 @@ test_all(unsigned verbose, FILE *fp)
          if(src_type == dst_type)
             continue;
 
-         if(src_type->norm != dst_type->norm)
-            continue;
-
-         if(!test_one(verbose, fp, *src_type, *dst_type))
-           success = FALSE;
-
+         if(!test_one(verbose, fp, *src_type, *dst_type)){
+            success = FALSE;
+            ++error_count;
+         }
       }
    }
+
+   fprintf(stderr, "%d failures\n", error_count);
 
    return success;
 }
 
 
 boolean
-test_some(unsigned verbose, FILE *fp, unsigned long n)
+test_some(unsigned verbose, FILE *fp,
+          unsigned long n)
 {
    const struct lp_type *src_type;
    const struct lp_type *dst_type;
    unsigned long i;
-   bool success = TRUE;
+   boolean success = TRUE;
 
    for(i = 0; i < n; ++i) {
       src_type = &conv_types[rand() % num_types];
@@ -423,6 +431,23 @@ test_some(unsigned verbose, FILE *fp, unsigned long n)
       if(!test_one(verbose, fp, *src_type, *dst_type))
         success = FALSE;
    }
+
+   return success;
+}
+
+
+boolean
+test_single(unsigned verbose, FILE *fp)
+{
+   /*    float, fixed,  sign,  norm, width, len */
+   struct lp_type f32x4_type =
+      {   TRUE, FALSE,  TRUE,  TRUE,    32,   4 };
+   struct lp_type ub8x4_type =
+      {  FALSE, FALSE, FALSE,  TRUE,     8,  16 };
+
+   boolean success;
+
+   success = test_one(verbose, fp, f32x4_type, ub8x4_type);
 
    return success;
 }

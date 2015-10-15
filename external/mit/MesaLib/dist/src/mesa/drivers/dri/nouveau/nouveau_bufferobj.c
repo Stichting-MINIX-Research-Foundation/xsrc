@@ -30,8 +30,25 @@
 
 #include "main/bufferobj.h"
 
+static inline char *
+get_bufferobj_map(struct gl_context *ctx, struct gl_buffer_object *obj,
+		  unsigned flags)
+{
+	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
+	void *map = NULL;
+
+	if (nbo->sys) {
+		map = nbo->sys;
+	} else if (nbo->bo) {
+		nouveau_bo_map(nbo->bo, flags, context_client(ctx));
+		map = nbo->bo->map;
+	}
+
+	return map;
+}
+
 static struct gl_buffer_object *
-nouveau_bufferobj_new(GLcontext *ctx, GLuint buffer, GLenum target)
+nouveau_bufferobj_new(struct gl_context *ctx, GLuint buffer, GLenum target)
 {
 	struct nouveau_bufferobj *nbo;
 
@@ -39,23 +56,24 @@ nouveau_bufferobj_new(GLcontext *ctx, GLuint buffer, GLenum target)
 	if (!nbo)
 		return NULL;
 
-	_mesa_initialize_buffer_object(&nbo->base, buffer, target);
+	_mesa_initialize_buffer_object(ctx, &nbo->base, buffer, target);
 
 	return &nbo->base;
 }
 
 static void
-nouveau_bufferobj_del(GLcontext *ctx, struct gl_buffer_object *obj)
+nouveau_bufferobj_del(struct gl_context *ctx, struct gl_buffer_object *obj)
 {
 	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
 
 	nouveau_bo_ref(NULL, &nbo->bo);
-	FREE(nbo);
+	free(nbo->sys);
+	free(nbo);
 }
 
 static GLboolean
-nouveau_bufferobj_data(GLcontext *ctx, GLenum target, GLsizeiptrARB size,
-		       const GLvoid *data, GLenum usage,
+nouveau_bufferobj_data(struct gl_context *ctx, GLenum target, GLsizeiptrARB size,
+		       const GLvoid *data, GLenum usage, GLbitfield storageFlags,
 		       struct gl_buffer_object *obj)
 {
 	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
@@ -63,97 +81,90 @@ nouveau_bufferobj_data(GLcontext *ctx, GLenum target, GLsizeiptrARB size,
 
 	obj->Size = size;
 	obj->Usage = usage;
+        obj->StorageFlags = storageFlags;
 
+	/* Free previous storage */
 	nouveau_bo_ref(NULL, &nbo->bo);
-	ret = nouveau_bo_new(context_dev(ctx),
-			     NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
-			     size, &nbo->bo);
-	assert(!ret);
+	free(nbo->sys);
+	nbo->sys = NULL;
 
-	if (data) {
-		nouveau_bo_map(nbo->bo, NOUVEAU_BO_WR);
-		memcpy(nbo->bo->map, data, size);
-		nouveau_bo_unmap(nbo->bo);
+	if (target == GL_ELEMENT_ARRAY_BUFFER_ARB ||
+	    (size < 512 && usage == GL_DYNAMIC_DRAW_ARB) ||
+	    context_chipset(ctx) < 0x10) {
+		/* Heuristic: keep it in system ram */
+		nbo->sys = malloc(size);
+
+	} else {
+		/* Get a hardware BO */
+		ret = nouveau_bo_new(context_dev(ctx),
+				     NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
+				     ctx->Const.MinMapBufferAlignment,
+				     size, NULL, &nbo->bo);
+		assert(!ret);
 	}
+
+	if (data)
+		memcpy(get_bufferobj_map(ctx, obj, NOUVEAU_BO_WR), data, size);
 
 	return GL_TRUE;
 }
 
 static void
-nouveau_bufferobj_subdata(GLcontext *ctx, GLenum target, GLintptrARB offset,
+nouveau_bufferobj_subdata(struct gl_context *ctx, GLintptrARB offset,
 			  GLsizeiptrARB size, const GLvoid *data,
 			  struct gl_buffer_object *obj)
 {
-	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
-
-	nouveau_bo_map(nbo->bo, NOUVEAU_BO_WR);
-	memcpy(nbo->bo->map + offset, data, size);
-	nouveau_bo_unmap(nbo->bo);
+	memcpy(get_bufferobj_map(ctx, obj, NOUVEAU_BO_WR) + offset, data, size);
 }
 
 static void
-nouveau_bufferobj_get_subdata(GLcontext *ctx, GLenum target, GLintptrARB offset,
+nouveau_bufferobj_get_subdata(struct gl_context *ctx, GLintptrARB offset,
 			   GLsizeiptrARB size, GLvoid *data,
 			   struct gl_buffer_object *obj)
 {
-	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
-
-	nouveau_bo_map(nbo->bo, NOUVEAU_BO_RD);
-	memcpy(data, nbo->bo->map + offset, size);
-	nouveau_bo_unmap(nbo->bo);
+	memcpy(data, get_bufferobj_map(ctx, obj, NOUVEAU_BO_RD) + offset, size);
 }
 
 static void *
-nouveau_bufferobj_map(GLcontext *ctx, GLenum target, GLenum access,
-		   struct gl_buffer_object *obj)
+nouveau_bufferobj_map_range(struct gl_context *ctx, GLintptr offset,
+			    GLsizeiptr length, GLbitfield access,
+			    struct gl_buffer_object *obj,
+                            gl_map_buffer_index index)
 {
-	return ctx->Driver.MapBufferRange(ctx, target, 0, obj->Size, access,
-					  obj);
-}
+	unsigned flags = 0;
+	char *map;
 
-static void *
-nouveau_bufferobj_map_range(GLcontext *ctx, GLenum target, GLintptr offset,
-			    GLsizeiptr length, GLenum access,
-			    struct gl_buffer_object *obj)
-{
-	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
-	uint32_t flags = 0;
+	assert(!obj->Mappings[index].Pointer);
 
-	assert(!obj->Pointer);
+	if (!(access & GL_MAP_UNSYNCHRONIZED_BIT)) {
+		if (access & GL_MAP_READ_BIT)
+			flags |= NOUVEAU_BO_RD;
+		if (access & GL_MAP_WRITE_BIT)
+			flags |= NOUVEAU_BO_WR;
+	}
 
-	if (!nbo->bo)
+	map = get_bufferobj_map(ctx, obj, flags);
+	if (!map)
 		return NULL;
 
-	if (access == GL_READ_ONLY_ARB ||
-	    access == GL_READ_WRITE_ARB)
-		flags |= NOUVEAU_BO_RD;
-	if (access == GL_WRITE_ONLY_ARB ||
-	    access == GL_READ_WRITE_ARB)
-		flags |= NOUVEAU_BO_WR;
+	obj->Mappings[index].Pointer = map + offset;
+	obj->Mappings[index].Offset = offset;
+	obj->Mappings[index].Length = length;
+	obj->Mappings[index].AccessFlags = access;
 
-	nouveau_bo_map_range(nbo->bo, offset, length, flags);
-
-	obj->Pointer = nbo->bo->map;
-	obj->Offset = offset;
-	obj->Length = length;
-	obj->AccessFlags = access;
-
-	return obj->Pointer;
+	return obj->Mappings[index].Pointer;
 }
 
 static GLboolean
-nouveau_bufferobj_unmap(GLcontext *ctx, GLenum target, struct gl_buffer_object *obj)
+nouveau_bufferobj_unmap(struct gl_context *ctx, struct gl_buffer_object *obj,
+                        gl_map_buffer_index index)
 {
-	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
+	assert(obj->Mappings[index].Pointer);
 
-	assert(obj->Pointer);
-
-	nouveau_bo_unmap(nbo->bo);
-
-	obj->Pointer = NULL;
-	obj->Offset = 0;
-	obj->Length = 0;
-	obj->AccessFlags = 0;
+	obj->Mappings[index].Pointer = NULL;
+	obj->Mappings[index].Offset = 0;
+	obj->Mappings[index].Length = 0;
+	obj->Mappings[index].AccessFlags = 0;
 
 	return GL_TRUE;
 }
@@ -166,7 +177,6 @@ nouveau_bufferobj_functions_init(struct dd_function_table *functions)
 	functions->BufferData = nouveau_bufferobj_data;
 	functions->BufferSubData = nouveau_bufferobj_subdata;
 	functions->GetBufferSubData = nouveau_bufferobj_get_subdata;
-	functions->MapBuffer = nouveau_bufferobj_map;
 	functions->MapBufferRange = nouveau_bufferobj_map_range;
 	functions->UnmapBuffer = nouveau_bufferobj_unmap;
 }

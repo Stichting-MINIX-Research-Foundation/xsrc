@@ -27,12 +27,13 @@
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_util.h"
-#include "nouveau_class.h"
+#include "nv_object.xml.h"
+#include "nv04_3d.xml.h"
 #include "nv04_driver.h"
 
 #define COMBINER_SHIFT(in)						\
-	(NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ARGUMENT##in##_SHIFT	\
-	 - NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ARGUMENT0_SHIFT)
+	(NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ARGUMENT##in##__SHIFT	\
+	 - NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ARGUMENT0__SHIFT)
 #define COMBINER_SOURCE(reg)					\
 	NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ARGUMENT0_##reg
 #define COMBINER_INVERT					\
@@ -41,9 +42,10 @@
 	NV04_MULTITEX_TRIANGLE_COMBINE_COLOR_ALPHA0
 
 struct combiner_state {
-	GLcontext *ctx;
+	struct gl_context *ctx;
 	int unit;
 	GLboolean alpha;
+	GLboolean premodulate;
 
 	/* GL state */
 	GLenum mode;
@@ -66,6 +68,7 @@ struct combiner_state {
 		(rc)->ctx = ctx;				\
 		(rc)->unit = i;					\
 		(rc)->alpha = __INIT_COMBINER_ALPHA_##chan;	\
+		(rc)->premodulate = c->_NumArgs##chan == 4;	\
 		(rc)->mode = c->Mode##chan;			\
 		(rc)->source = c->Source##chan;			\
 		(rc)->operand = c->Operand##chan;		\
@@ -79,6 +82,9 @@ static uint32_t
 get_input_source(struct combiner_state *rc, int source)
 {
 	switch (source) {
+	case GL_ZERO:
+		return COMBINER_SOURCE(ZERO);
+
 	case GL_TEXTURE:
 		return rc->unit ? COMBINER_SOURCE(TEXTURE1) :
 			COMBINER_SOURCE(TEXTURE0);
@@ -133,15 +139,15 @@ get_input_arg(struct combiner_state *rc, int arg, int flags)
 		int i = (source == GL_TEXTURE ?
 			 rc->unit : source - GL_TEXTURE0);
 		struct gl_texture_object *t = rc->ctx->Texture.Unit[i]._Current;
-		gl_format format = t->Image[0][t->BaseLevel]->TexFormat;
+		mesa_format format = t->Image[0][t->BaseLevel]->TexFormat;
 
-		if (format == MESA_FORMAT_A8) {
+		if (format == MESA_FORMAT_A_UNORM8) {
 			/* Emulated using I8. */
 			if (is_color_operand(operand))
 				return COMBINER_SOURCE(ZERO) |
 					get_input_mapping(rc, operand, flags);
 
-		} else if (format == MESA_FORMAT_L8) {
+		} else if (format == MESA_FORMAT_L_UNORM8) {
 			/* Emulated using I8. */
 			if (!is_color_operand(operand))
 				return COMBINER_SOURCE(ZERO) |
@@ -195,11 +201,24 @@ setup_combiner(struct combiner_state *rc)
 		break;
 
 	case GL_ADD:
-		INPUT_ARG(rc, 0, 0, 0);
-		INPUT_SRC(rc, 1, ZERO, INVERT);
-		INPUT_ARG(rc, 2, 1, 0);
-		INPUT_SRC(rc, 3, ZERO, INVERT);
-		UNSIGNED_OP(rc);
+	case GL_ADD_SIGNED:
+		if (rc->premodulate) {
+			INPUT_ARG(rc, 0, 0, 0);
+			INPUT_ARG(rc, 1, 1, 0);
+			INPUT_ARG(rc, 2, 2, 0);
+			INPUT_ARG(rc, 3, 3, 0);
+		} else {
+			INPUT_ARG(rc, 0, 0, 0);
+			INPUT_SRC(rc, 1, ZERO, INVERT);
+			INPUT_ARG(rc, 2, 1, 0);
+			INPUT_SRC(rc, 3, ZERO, INVERT);
+		}
+
+		if (rc->mode == GL_ADD_SIGNED)
+			SIGNED_OP(rc);
+		else
+			UNSIGNED_OP(rc);
+
 		break;
 
 	case GL_INTERPOLATE:
@@ -210,34 +229,35 @@ setup_combiner(struct combiner_state *rc)
 		UNSIGNED_OP(rc);
 		break;
 
-	case GL_ADD_SIGNED:
-		INPUT_ARG(rc, 0, 0, 0);
-		INPUT_SRC(rc, 1, ZERO, INVERT);
-		INPUT_ARG(rc, 2, 1, 0);
-		INPUT_SRC(rc, 3, ZERO, INVERT);
-		SIGNED_OP(rc);
-		break;
+	default:
+		assert(0);
+	}
+}
 
+static unsigned
+get_texenv_mode(unsigned mode)
+{
+	switch (mode) {
+	case GL_REPLACE:
+		return 0x1;
+	case GL_DECAL:
+		return 0x3;
+	case GL_MODULATE:
+		return 0x4;
 	default:
 		assert(0);
 	}
 }
 
 void
-nv04_emit_tex_env(GLcontext *ctx, int emit)
+nv04_emit_tex_env(struct gl_context *ctx, int emit)
 {
+	struct nv04_context *nv04 = to_nv04_context(ctx);
 	const int i = emit - NOUVEAU_STATE_TEX_ENV0;
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *fahrenheit = nv04_context_engine(ctx);
 	struct combiner_state rc_a = {}, rc_c = {};
 
-	if (!nv04_mtex_engine(fahrenheit)) {
-		context_dirty(ctx, BLEND);
-		return;
-	}
-
 	/* Compute the new combiner state. */
-	if (ctx->Texture.Unit[i]._ReallyEnabled) {
+	if (ctx->Texture.Unit[i]._Current) {
 		INIT_COMBINER(A, ctx, &rc_a, i);
 		setup_combiner(&rc_a);
 
@@ -264,14 +284,16 @@ nv04_emit_tex_env(GLcontext *ctx, int emit)
 		UNSIGNED_OP(&rc_c);
 	}
 
-	/* Write the register combiner state out to the hardware. */
-	BEGIN_RING(chan, fahrenheit,
-		   NV04_MULTITEX_TRIANGLE_COMBINE_ALPHA(i), 2);
-	OUT_RING(chan, rc_a.hw);
-	OUT_RING(chan, rc_c.hw);
+	/* calculate non-multitex state */
+	nv04->blend &= ~NV04_TEXTURED_TRIANGLE_BLEND_TEXTURE_MAP__MASK;
+	if (ctx->Texture._MaxEnabledTexImageUnit != -1)
+		nv04->blend |= get_texenv_mode(ctx->Texture.Unit[0].EnvMode);
+	else
+		nv04->blend |= get_texenv_mode(GL_MODULATE);
 
-	BEGIN_RING(chan, fahrenheit,
-		   NV04_MULTITEX_TRIANGLE_COMBINE_FACTOR, 1);
-	OUT_RING(chan, pack_rgba_f(MESA_FORMAT_ARGB8888,
-				   ctx->Texture.Unit[0].EnvColor));
+	/* update calculated multitex state */
+	nv04->alpha[i] = rc_a.hw;
+	nv04->color[i] = rc_c.hw;
+	nv04->factor   = pack_rgba_f(MESA_FORMAT_B8G8R8A8_UNORM,
+				     ctx->Texture.Unit[0].EnvColor);
 }

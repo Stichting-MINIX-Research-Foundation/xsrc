@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,15 +16,15 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #include "main/glheader.h"
 #include "main/colormac.h"
-#include "main/context.h"
 #include "main/macros.h"
 #include "s_context.h"
 #include "s_feedback.h"
@@ -38,8 +37,8 @@
  */
 #define CULL_INVALID(V)                              \
    do {                                              \
-      float tmp = (V)->attrib[FRAG_ATTRIB_WPOS][0]   \
-                + (V)->attrib[FRAG_ATTRIB_WPOS][1];  \
+      float tmp = (V)->attrib[VARYING_SLOT_POS][0]   \
+                + (V)->attrib[VARYING_SLOT_POS][1];  \
       if (IS_INF_OR_NAN(tmp))                        \
 	 return;                                     \
    } while(0)
@@ -52,8 +51,8 @@
  * or just the glPointSize value.
  * Must also clamp to user-defined range and implmentation limits.
  */
-static INLINE GLfloat
-get_size(const GLcontext *ctx, const SWvertex *vert, GLboolean smoothed)
+static inline GLfloat
+get_size(const struct gl_context *ctx, const SWvertex *vert, GLboolean smoothed)
 {
    GLfloat size;
 
@@ -81,7 +80,7 @@ get_size(const GLcontext *ctx, const SWvertex *vert, GLboolean smoothed)
  * Draw a point sprite
  */
 static void
-sprite_point(GLcontext *ctx, const SWvertex *vert)
+sprite_point(struct gl_context *ctx, const SWvertex *vert)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
    SWspan span;
@@ -94,9 +93,9 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
 
    /* z coord */
    if (ctx->DrawBuffer->Visual.depthBits <= 16)
-      span.z = FloatToFixed(vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = FloatToFixed(vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    else
-      span.z = (GLuint) (vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = (GLuint) (vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    span.zStep = 0;
 
    size = get_size(ctx, vert, GL_FALSE);
@@ -117,9 +116,9 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
    span.alphaStep = 0;
 
    /* need these for fragment programs */
-   span.attrStart[FRAG_ATTRIB_WPOS][3] = 1.0F;
-   span.attrStepX[FRAG_ATTRIB_WPOS][3] = 0.0F;
-   span.attrStepY[FRAG_ATTRIB_WPOS][3] = 0.0F;
+   span.attrStart[VARYING_SLOT_POS][3] = 1.0F;
+   span.attrStepX[VARYING_SLOT_POS][3] = 0.0F;
+   span.attrStepY[VARYING_SLOT_POS][3] = 0.0F;
 
    {
       GLfloat s, r, dsdx;
@@ -138,9 +137,9 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
       }
 
       ATTRIB_LOOP_BEGIN
-         if (attr >= FRAG_ATTRIB_TEX0 && attr <= FRAG_ATTRIB_TEX7) {
+         if (attr >= VARYING_SLOT_TEX0 && attr <= VARYING_SLOT_TEX7) {
             /* a texcoord attribute */
-            const GLuint u = attr - FRAG_ATTRIB_TEX0;
+            const GLuint u = attr - VARYING_SLOT_TEX0;
             ASSERT(u < Elements(ctx->Point.CoordReplace));
             if (ctx->Point.CoordReplace[u]) {
                tCoords[numTcoords++] = attr;
@@ -170,15 +169,15 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
                continue;
             }
          }
-         else if (attr == FRAG_ATTRIB_PNTC) {
+         else if (attr == VARYING_SLOT_PNTC) {
             /* GLSL gl_PointCoord.xy (.zw undefined) */
-            span.attrStart[FRAG_ATTRIB_PNTC][0] = 0.0;
-            span.attrStart[FRAG_ATTRIB_PNTC][1] = 0.0; /* t0 set below */
-            span.attrStepX[FRAG_ATTRIB_PNTC][0] = dsdx;
-            span.attrStepX[FRAG_ATTRIB_PNTC][1] = 0.0;
-            span.attrStepY[FRAG_ATTRIB_PNTC][0] = 0.0;
-            span.attrStepY[FRAG_ATTRIB_PNTC][1] = dtdy;
-            tCoords[numTcoords++] = FRAG_ATTRIB_PNTC;
+            span.attrStart[VARYING_SLOT_PNTC][0] = 0.0;
+            span.attrStart[VARYING_SLOT_PNTC][1] = 0.0; /* t0 set below */
+            span.attrStepX[VARYING_SLOT_PNTC][0] = dsdx;
+            span.attrStepX[VARYING_SLOT_PNTC][1] = 0.0;
+            span.attrStepY[VARYING_SLOT_PNTC][0] = 0.0;
+            span.attrStepY[VARYING_SLOT_PNTC][1] = dtdy;
+            tCoords[numTcoords++] = VARYING_SLOT_PNTC;
             continue;
          }
          /* use vertex's texcoord/attrib */
@@ -190,8 +189,8 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
 
    /* compute pos, bounds and render */
    {
-      const GLfloat x = vert->attrib[FRAG_ATTRIB_WPOS][0];
-      const GLfloat y = vert->attrib[FRAG_ATTRIB_WPOS][1];
+      const GLfloat x = vert->attrib[VARYING_SLOT_POS][0];
+      const GLfloat y = vert->attrib[VARYING_SLOT_POS][1];
       GLint iSize = (GLint) (size + 0.5F);
       GLint xmin, xmax, ymin, ymax, iy;
       GLint iRadius;
@@ -241,7 +240,7 @@ sprite_point(GLcontext *ctx, const SWvertex *vert)
  * Draw smooth/antialiased point.  RGB or CI mode.
  */
 static void
-smooth_point(GLcontext *ctx, const SWvertex *vert)
+smooth_point(struct gl_context *ctx, const SWvertex *vert)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
    SWspan span;
@@ -251,9 +250,9 @@ smooth_point(GLcontext *ctx, const SWvertex *vert)
 
    /* z coord */
    if (ctx->DrawBuffer->Visual.depthBits <= 16)
-      span.z = FloatToFixed(vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = FloatToFixed(vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    else
-      span.z = (GLuint) (vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = (GLuint) (vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    span.zStep = 0;
 
    size = get_size(ctx, vert, GL_TRUE);
@@ -290,9 +289,9 @@ smooth_point(GLcontext *ctx, const SWvertex *vert)
    span.alphaStep = 0;
 
    /* need these for fragment programs */
-   span.attrStart[FRAG_ATTRIB_WPOS][3] = 1.0F;
-   span.attrStepX[FRAG_ATTRIB_WPOS][3] = 0.0F;
-   span.attrStepY[FRAG_ATTRIB_WPOS][3] = 0.0F;
+   span.attrStart[VARYING_SLOT_POS][3] = 1.0F;
+   span.attrStepX[VARYING_SLOT_POS][3] = 0.0F;
+   span.attrStepY[VARYING_SLOT_POS][3] = 0.0F;
 
    ATTRIB_LOOP_BEGIN
       COPY_4V(span.attrStart[attr], vert->attrib[attr]);
@@ -302,8 +301,8 @@ smooth_point(GLcontext *ctx, const SWvertex *vert)
 
    /* compute pos, bounds and render */
    {
-      const GLfloat x = vert->attrib[FRAG_ATTRIB_WPOS][0];
-      const GLfloat y = vert->attrib[FRAG_ATTRIB_WPOS][1];
+      const GLfloat x = vert->attrib[VARYING_SLOT_POS][0];
+      const GLfloat y = vert->attrib[VARYING_SLOT_POS][1];
       const GLfloat radius = 0.5F * size;
       const GLfloat rmin = radius - 0.7071F;  /* 0.7071 = sqrt(2)/2 */
       const GLfloat rmax = radius + 0.7071F;
@@ -361,7 +360,7 @@ smooth_point(GLcontext *ctx, const SWvertex *vert)
  * Draw large (size >= 1) non-AA point.  RGB or CI mode.
  */
 static void
-large_point(GLcontext *ctx, const SWvertex *vert)
+large_point(struct gl_context *ctx, const SWvertex *vert)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
    SWspan span;
@@ -371,9 +370,9 @@ large_point(GLcontext *ctx, const SWvertex *vert)
 
    /* z coord */
    if (ctx->DrawBuffer->Visual.depthBits <= 16)
-      span.z = FloatToFixed(vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = FloatToFixed(vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    else
-      span.z = (GLuint) (vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+      span.z = (GLuint) (vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
    span.zStep = 0;
 
    size = get_size(ctx, vert, GL_FALSE);
@@ -394,9 +393,9 @@ large_point(GLcontext *ctx, const SWvertex *vert)
    span.alphaStep = 0;
 
    /* need these for fragment programs */
-   span.attrStart[FRAG_ATTRIB_WPOS][3] = 1.0F;
-   span.attrStepX[FRAG_ATTRIB_WPOS][3] = 0.0F;
-   span.attrStepY[FRAG_ATTRIB_WPOS][3] = 0.0F;
+   span.attrStart[VARYING_SLOT_POS][3] = 1.0F;
+   span.attrStepX[VARYING_SLOT_POS][3] = 0.0F;
+   span.attrStepY[VARYING_SLOT_POS][3] = 0.0F;
 
    ATTRIB_LOOP_BEGIN
       COPY_4V(span.attrStart[attr], vert->attrib[attr]);
@@ -406,8 +405,8 @@ large_point(GLcontext *ctx, const SWvertex *vert)
 
    /* compute pos, bounds and render */
    {
-      const GLfloat x = vert->attrib[FRAG_ATTRIB_WPOS][0];
-      const GLfloat y = vert->attrib[FRAG_ATTRIB_WPOS][1];
+      const GLfloat x = vert->attrib[VARYING_SLOT_POS][0];
+      const GLfloat y = vert->attrib[VARYING_SLOT_POS][1];
       GLint iSize = (GLint) (size + 0.5F);
       GLint xmin, xmax, ymin, ymax, ix, iy;
       GLint iRadius;
@@ -440,7 +439,7 @@ large_point(GLcontext *ctx, const SWvertex *vert)
             span.end++;
          }
       }
-      assert(span.end <= MAX_WIDTH);
+      assert(span.end <= SWRAST_MAX_WIDTH);
       _swrast_write_rgba_span(ctx, &span);
    }
 }
@@ -450,7 +449,7 @@ large_point(GLcontext *ctx, const SWvertex *vert)
  * Draw size=1, single-pixel point
  */
 static void
-pixel_point(GLcontext *ctx, const SWvertex *vert)
+pixel_point(struct gl_context *ctx, const SWvertex *vert)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
    /*
@@ -471,12 +470,12 @@ pixel_point(GLcontext *ctx, const SWvertex *vert)
    span->arrayAttribs = swrast->_ActiveAttribMask; /* we'll produce these vals */
 
    /* need these for fragment programs */
-   span->attrStart[FRAG_ATTRIB_WPOS][3] = 1.0F;
-   span->attrStepX[FRAG_ATTRIB_WPOS][3] = 0.0F;
-   span->attrStepY[FRAG_ATTRIB_WPOS][3] = 0.0F;
+   span->attrStart[VARYING_SLOT_POS][3] = 1.0F;
+   span->attrStepX[VARYING_SLOT_POS][3] = 0.0F;
+   span->attrStepY[VARYING_SLOT_POS][3] = 0.0F;
 
    /* check if we need to flush */
-   if (span->end >= MAX_WIDTH ||
+   if (span->end >= SWRAST_MAX_WIDTH ||
        (swrast->_RasterMask & (BLEND_BIT | LOGIC_OP_BIT | MASKING_BIT)) ||
        span->facing != swrast->PointLineFacing) {
       if (span->end > 0) {
@@ -500,12 +499,12 @@ pixel_point(GLcontext *ctx, const SWvertex *vert)
    ATTRIB_LOOP_END
 
    /* fragment position */
-   span->array->x[count] = (GLint) vert->attrib[FRAG_ATTRIB_WPOS][0];
-   span->array->y[count] = (GLint) vert->attrib[FRAG_ATTRIB_WPOS][1];
-   span->array->z[count] = (GLint) (vert->attrib[FRAG_ATTRIB_WPOS][2] + 0.5F);
+   span->array->x[count] = (GLint) vert->attrib[VARYING_SLOT_POS][0];
+   span->array->y[count] = (GLint) vert->attrib[VARYING_SLOT_POS][1];
+   span->array->z[count] = (GLint) (vert->attrib[VARYING_SLOT_POS][2] + 0.5F);
 
    span->end = count + 1;
-   ASSERT(span->end <= MAX_WIDTH);
+   ASSERT(span->end <= SWRAST_MAX_WIDTH);
 }
 
 
@@ -514,7 +513,7 @@ pixel_point(GLcontext *ctx, const SWvertex *vert)
  * primary color.
  */
 void
-_swrast_add_spec_terms_point(GLcontext *ctx, const SWvertex *v0)
+_swrast_add_spec_terms_point(struct gl_context *ctx, const SWvertex *v0)
 {
    SWvertex *ncv0 = (SWvertex *) v0; /* cast away const */
    GLfloat rSum, gSum, bSum;
@@ -523,9 +522,9 @@ _swrast_add_spec_terms_point(GLcontext *ctx, const SWvertex *v0)
    /* save */
    COPY_CHAN4(cSave, ncv0->color);
    /* sum */
-   rSum = CHAN_TO_FLOAT(ncv0->color[0]) + ncv0->attrib[FRAG_ATTRIB_COL1][0];
-   gSum = CHAN_TO_FLOAT(ncv0->color[1]) + ncv0->attrib[FRAG_ATTRIB_COL1][1];
-   bSum = CHAN_TO_FLOAT(ncv0->color[2]) + ncv0->attrib[FRAG_ATTRIB_COL1][2];
+   rSum = CHAN_TO_FLOAT(ncv0->color[0]) + ncv0->attrib[VARYING_SLOT_COL1][0];
+   gSum = CHAN_TO_FLOAT(ncv0->color[1]) + ncv0->attrib[VARYING_SLOT_COL1][1];
+   bSum = CHAN_TO_FLOAT(ncv0->color[2]) + ncv0->attrib[VARYING_SLOT_COL1][2];
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[0], rSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[1], gSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[2], bSum);
@@ -540,7 +539,7 @@ _swrast_add_spec_terms_point(GLcontext *ctx, const SWvertex *v0)
  * Examine current state to determine which point drawing function to use.
  */
 void
-_swrast_choose_point(GLcontext *ctx)
+_swrast_choose_point(struct gl_context *ctx)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
    const GLfloat size = CLAMP(ctx->Point.Size,

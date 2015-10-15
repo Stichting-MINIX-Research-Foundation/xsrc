@@ -1,6 +1,7 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
+ * Copyright 2010 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,22 +19,42 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Author:
- *    Keith Whitwell
+/* Authors:
+ *    Keith Whitwell, Qicheng Christopher Li, Brian Paul
  */
 
 #ifndef LP_QUERY_H
 #define LP_QUERY_H
 
+#include <limits.h>
+#include "os/os_thread.h"
+#include "lp_limits.h"
+
+
 struct llvmpipe_context;
+
+
+struct llvmpipe_query {
+   uint64_t start[LP_MAX_THREADS];  /* start count value for each thread */
+   uint64_t end[LP_MAX_THREADS];    /* end count value for each thread */
+   struct lp_fence *fence;          /* fence from last scene this was binned in */
+   unsigned type;                   /* PIPE_QUERY_* */
+   unsigned num_primitives_generated;
+   unsigned num_primitives_written;
+
+   struct pipe_query_data_pipeline_statistics stats;
+};
+
+
 extern void llvmpipe_init_query_funcs(struct llvmpipe_context * );
 
+extern boolean llvmpipe_check_render_cond(struct llvmpipe_context *);
 
 #endif /* LP_QUERY_H */

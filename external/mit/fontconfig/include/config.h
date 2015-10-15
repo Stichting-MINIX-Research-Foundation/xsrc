@@ -85,10 +85,10 @@
 /* Define to 1 if you have the `getprogname' function. */
 #define HAVE_GETPROGNAME 1
 
-#if 0
+//#if 0 // fontconfig 2.10, but we should have this in -current now
 /* Have Intel __sync_* atomic primitives */
 #define HAVE_INTEL_ATOMIC_PRIMITIVES 1
-#endif
+//#endif
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
@@ -105,6 +105,9 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #define HAVE_MEMORY_H 1
 
+/* Define to 1 if you have the `mkdtemp' function. */
+#define HAVE_MKDTEMP 1
+
 /* Define to 1 if you have the `mkostemp' function. */
 /* #undef HAVE_MKOSTEMP */
 
@@ -117,7 +120,7 @@
 /* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
 /* #undef HAVE_NDIR_H */
 
-/* Define to 1 if you have the 'posix_fadvise' function. */
+/* Define to 1 if you have the 'posix_fadivse' function. */
 #define HAVE_POSIX_FADVISE 1
 
 /* Have POSIX threads */
@@ -138,6 +141,9 @@
 /* Define to 1 if you have the `rand_r' function. */
 #define HAVE_RAND_R 1
 
+/* Define to 1 if you have the `readlink' function. */
+#define HAVE_READLINK 1
+
 /* Define to 1 if you have the `regcomp' function. */
 #define HAVE_REGCOMP 1
 
@@ -152,6 +158,13 @@
 
 /* Define to 1 if you have the `regfree' function. */
 #define HAVE_REGFREE 1
+
+/* Define to 1 if you have the 'scandir' function. */
+/* #undef HAVE_SCANDIR */
+
+/* Define to 1 if you have the 'scandir' function with int (* compar)(const
+   void *, const void *) */
+#define HAVE_SCANDIR_VOID_P 1
 
 /* Define to 1 if you have the <sched.h> header file. */
 /* #undef HAVE_SCHED_H */
@@ -206,6 +219,9 @@
 /* Define to 1 if you have the <sys/statfs.h> header file. */
 /* #undef HAVE_SYS_STATFS_H */
 
+/* Define to 1 if you have the <sys/statvfs.h> header file. */
+#define HAVE_SYS_STATVFS_H 1
+
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
 
@@ -241,13 +257,13 @@
 #define PACKAGE "fontconfig"
 
 /* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "https://bugs.freedesktop.org/enger_bug.cgi?product=fontconfig"
+#define PACKAGE_BUGREPORT "https://bugs.freedesktop.org/enter_bug.cgi?product=fontconfig"
 
 /* Define to the full name of this package. */
 #define PACKAGE_NAME "fontconfig"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "fontconfig 2.10.93"
+#define PACKAGE_STRING "fontconfig 2.11.0"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "fontconfig"
@@ -256,7 +272,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "2.10.93"
+#define PACKAGE_VERSION "2.11.0"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
@@ -312,7 +328,7 @@
 
 
 /* Version number of package */
-#define VERSION "2.10.93"
+#define VERSION "2.11.0"
 
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */

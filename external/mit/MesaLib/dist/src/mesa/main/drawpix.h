@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,40 +16,31 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef DRAWPIX_H
 #define DRAWPIX_H
 
 
-#include "main/mtypes.h"
+#include "compiler.h"
+
+struct _glapi_table;
 
 
-#if FEATURE_drawpix
-
-#define _MESA_INIT_DRAWPIX_FUNCTIONS(driver, impl) \
-   do {                                            \
-      (driver)->DrawPixels = impl ## DrawPixels;   \
-      (driver)->CopyPixels = impl ## CopyPixels;   \
-      (driver)->Bitmap     = impl ## Bitmap;       \
-   } while (0)
-
-extern void
-_mesa_init_drawpix_dispatch(struct _glapi_table *disp);
-
-#else /* FEATURE_drawpix */
-
-#define _MESA_INIT_DRAWPIX_FUNCTIONS(driver, impl) do { } while (0)
-
-static INLINE void
-_mesa_init_drawpix_dispatch(struct _glapi_table *disp)
-{
-}
-
-#endif /* FEATURE_drawpix */
+void GLAPIENTRY
+_mesa_DrawPixels( GLsizei width, GLsizei height,
+                  GLenum format, GLenum type, const GLvoid *pixels );
+void GLAPIENTRY
+_mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
+                  GLenum type );
+void GLAPIENTRY
+_mesa_Bitmap( GLsizei width, GLsizei height,
+              GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove,
+              const GLubyte *bitmap );
 
 
 #endif /* DRAWPIX_H */

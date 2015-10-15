@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,12 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #if !HAVE_SPEC
@@ -32,7 +32,7 @@
 #define VERT_RESTORE_SPEC( idx )
 #endif
 
-static void TAG(unfilled_tri)( GLcontext *ctx,
+static void TAG(unfilled_tri)( struct gl_context *ctx,
 			       GLenum mode,
 			       GLuint e0, GLuint e1, GLuint e2 )
 {
@@ -95,7 +95,7 @@ static void TAG(unfilled_tri)( GLcontext *ctx,
 }
 
 
-static void TAG(unfilled_quad)( GLcontext *ctx,
+static void TAG(unfilled_quad)( struct gl_context *ctx,
 				GLenum mode,
 				GLuint e0, GLuint e1,
 				GLuint e2, GLuint e3 )

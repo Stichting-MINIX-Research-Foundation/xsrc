@@ -1,7 +1,7 @@
-/* $XTermId: input.c,v 1.345 2013/02/06 09:51:33 tom Exp $ */
+/* $XTermId: input.c,v 1.354 2015/04/10 10:50:21 tom Exp $ */
 
 /*
- * Copyright 1999-2011,2012 by Thomas E. Dickey
+ * Copyright 1999-2014,2015 by Thomas E. Dickey
  *
  *                         All Rights Reserved
  *
@@ -130,13 +130,13 @@ typedef struct {
 } KEY_DATA;
 
 static
-const char *kypd_num = " XXXXXXXX\tXXX\rXXXxxxxXXXXXXXXXXXXXXXXXXXXX*+,-./0123456789XXX=";
-/*                      0123456789 abc def0123456789abcdef0123456789abcdef0123456789abcd */
+const char kypd_num[] = " XXXXXXXX\tXXX\rXXXxxxxXXXXXXXXXXXXXXXXXXXXX*+,-./0123456789XXX=";
+/*                       0123456789 abc def0123456789abcdef0123456789abcdef0123456789abcd */
 static
-const char *kypd_apl = " ABCDEFGHIJKLMNOPQRSTUVWXYZ??????abcdefghijklmnopqrstuvwxyzXXX";
-/*                      0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd */
+const char kypd_apl[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ??????abcdefghijklmnopqrstuvwxyzXXX";
+/*                       0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd */
 static
-const char *curfinal = "HDACB  FE";
+const char curfinal[] = "HDACB  FE";
 
 static int decfuncvalue(KEY_DATA *);
 static void sunfuncvalue(ANSI *, KEY_DATA *);
@@ -321,8 +321,6 @@ static Bool
 allowModifierParm(XtermWidget xw, KEY_DATA * kd)
 {
     TKeyboard *keyboard = &(xw->keyboard);
-    TScreen *screen = TScreenOf(xw);
-    int keypad_mode = ((keyboard->flags & MODE_DECKPAM) != 0);
     int is_legacy = (keyboard->type == keyboardIsLegacy);
     Bool result = False;
 
@@ -331,17 +329,14 @@ allowModifierParm(XtermWidget xw, KEY_DATA * kd)
 	is_legacy = True;
 #endif
 
-    (void) screen;
 #if OPT_VT52_MODE
-    if (screen->vtXX_level != 0)
+    if (TScreenOf(xw)->vtXX_level != 0)
 #endif
     {
 	if (IsCursorKey(kd->keysym) || IsEditFunctionKey(xw, kd->keysym)) {
 	    result = LegacyAllows(2);
 	} else if (IsKeypadKey(kd->keysym)) {
-	    if (keypad_mode) {
-		result = LegacyAllows(1);
-	    }
+	    result = LegacyAllows(1);
 	} else if (IsFunctionKey(kd->keysym)) {
 	    result = LegacyAllows(4);
 	} else if (IsMiscFunctionKey(kd->keysym)) {
@@ -664,7 +659,7 @@ ModifyOtherKeys(XtermWidget xw,
  * for more information.
  */
 static Bool
-modifyOtherKey(ANSI * reply, int input_char, unsigned modify_parm, int format_keys)
+modifyOtherKey(ANSI *reply, int input_char, unsigned modify_parm, int format_keys)
 {
     Bool result = False;
 
@@ -687,7 +682,7 @@ modifyOtherKey(ANSI * reply, int input_char, unsigned modify_parm, int format_ke
 }
 
 static void
-modifyCursorKey(ANSI * reply, int modify, unsigned *modify_parm)
+modifyCursorKey(ANSI *reply, int modify, unsigned *modify_parm)
 {
     if (*modify_parm != 0) {
 	if (modify < 0) {
@@ -811,7 +806,7 @@ xtermDeleteIsDEL(XtermWidget xw)
 }
 
 static Boolean
-lookupKeyData(KEY_DATA * kd, XtermWidget xw, XKeyEvent * event)
+lookupKeyData(KEY_DATA * kd, XtermWidget xw, XKeyEvent *event)
 {
     TScreen *screen = TScreenOf(xw);
     TKeyboard *keyboard = &(xw->keyboard);
@@ -880,7 +875,7 @@ lookupKeyData(KEY_DATA * kd, XtermWidget xw, XKeyEvent * event)
 
 void
 Input(XtermWidget xw,
-      XKeyEvent * event,
+      XKeyEvent *event,
       Bool eightbit)
 {
     Char *string;
@@ -1147,7 +1142,7 @@ Input(XtermWidget xw,
 #if OPT_SUNPC_KBD
 	    && keyboard->type == keyboardIsVT220
 #endif
-	    && ((string = (Char *) udk_lookup(dec_code, &kd.nbytes)) != 0)) {
+	    && ((string = (Char *) udk_lookup(xw, dec_code, &kd.nbytes)) != 0)) {
 	    UIntClr(evt_state, ShiftMask);
 	    while (kd.nbytes-- > 0)
 		unparseputc(xw, CharOf(*string++));
@@ -1347,7 +1342,8 @@ Input(XtermWidget xw,
 	    {
 		/* VT220 & up: National Replacement Characters */
 		if ((xw->flags & NATIONAL) != 0) {
-		    unsigned cmp = xtermCharSetIn(CharOf(kd.strbuf[0]),
+		    unsigned cmp = xtermCharSetIn(screen,
+						  CharOf(kd.strbuf[0]),
 						  screen->keyboard_dialect[0]);
 		    TRACE(("...input NRC %d, %s %d\n",
 			   CharOf(kd.strbuf[0]),
@@ -1381,7 +1377,7 @@ Input(XtermWidget xw,
 }
 
 void
-StringInput(XtermWidget xw, const Char * string, size_t nbytes)
+StringInput(XtermWidget xw, const Char *string, size_t nbytes)
 {
     TRACE(("InputString (%s,%lu)\n",
 	   visibleChars(string, (unsigned) nbytes),
@@ -1464,7 +1460,7 @@ decfuncvalue(KEY_DATA * kd)
 }
 
 static void
-hpfuncvalue(ANSI * reply, KEY_DATA * kd)
+hpfuncvalue(ANSI *reply, KEY_DATA * kd)
 {
 #if OPT_HP_FUNC_KEYS
     int result;
@@ -1521,7 +1517,7 @@ hpfuncvalue(ANSI * reply, KEY_DATA * kd)
 }
 
 static void
-scofuncvalue(ANSI * reply, KEY_DATA * kd)
+scofuncvalue(ANSI *reply, KEY_DATA * kd)
 {
 #if OPT_SCO_FUNC_KEYS
     int result;
@@ -1575,7 +1571,7 @@ scofuncvalue(ANSI * reply, KEY_DATA * kd)
 	    MAP(XK_Fn(45), '^');
 	    MAP(XK_Fn(46), '_');
 	    MAP(XK_Fn(47), '`');
-	    MAP(XK_Fn(48), '{');	/* no matching '}' */
+	    MAP(XK_Fn(48), L_CURL);
 	default:
 	    result = -1;
 	    break;
@@ -1611,7 +1607,7 @@ scofuncvalue(ANSI * reply, KEY_DATA * kd)
 }
 
 static void
-sunfuncvalue(ANSI * reply, KEY_DATA * kd)
+sunfuncvalue(ANSI *reply, KEY_DATA * kd)
 {
 #if OPT_SUN_FUNC_KEYS
     ParmType result;
@@ -1730,7 +1726,7 @@ keyCanInsert(const char *parse)
     Boolean escape = False;
     Boolean quoted = False;
 
-    static const char *table[] =
+    static const char *const table[] =
     {
 	"insert",
 	"insert-seven-bit",
@@ -1746,7 +1742,7 @@ keyCanInsert(const char *parse)
 	} else if (ch == '\\') {
 	    escape = True;
 	} else if (ch == '"') {
-	    quoted = (Boolean) ! quoted;
+	    quoted = (Boolean) !quoted;
 	} else if (!quoted && isName(ch)) {
 	    const char *next = skipName(--parse);
 	    size_t need = (size_t) (next - parse);
@@ -1858,26 +1854,14 @@ stripTranslations(const char *s, Bool onlyInsert)
 static Bool
 TranslationsUseKeyword(Widget w, char **cache, const char *keyword, Bool onlyInsert)
 {
-    static String data;
-    static XtResource key_resources[] =
-    {
-	{XtNtranslations, XtCTranslations, XtRString,
-	 sizeof(data), 0, XtRString, (XtPointer) NULL}
-    };
     Bool result = False;
     char *copy;
     char *test;
 
     if ((test = stripTranslations(keyword, onlyInsert)) != 0) {
 	if (*cache == 0) {
-	    XtGetSubresources(w,
-			      (XtPointer) &data,
-			      "vt100",
-			      "VT100",
-			      key_resources,
-			      XtNumber(key_resources),
-			      NULL,
-			      (Cardinal) 0);
+	    String data = 0;
+	    getKeymapResources(w, "vt100", "VT100", XtRString, &data, sizeof(data));
 	    if (data != 0 && (copy = stripTranslations(data, onlyInsert)) != 0) {
 		*cache = copy;
 	    }
@@ -2008,7 +1992,7 @@ VTInitModifiers(XtermWidget xw)
 		if (theMap[i] == XF86XK_Paste) {
 		    TRACE(("keyboard has XF86XK_Paste\n"));
 		    addTranslation(xw,
-				   "<KeyPress> XF86Paste",
+				   ":<KeyPress> XF86Paste",
 				   "insert-selection(SELECT, CUT_BUFFER0)");
 		}
 #endif
@@ -2016,7 +2000,7 @@ VTInitModifiers(XtermWidget xw)
 		if (theMap[i] == SunXK_Paste) {
 		    TRACE(("keyboard has SunXK_Paste\n"));
 		    addTranslation(xw,
-				   "<KeyPress> SunPaste",
+				   ":<KeyPress> SunPaste",
 				   "insert-selection(SELECT, CUT_BUFFER0)");
 		}
 #endif

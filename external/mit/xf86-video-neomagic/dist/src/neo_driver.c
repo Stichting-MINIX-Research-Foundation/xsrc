@@ -60,9 +60,6 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include "xf86RAC.h"
 #endif
 
-/* Drivers for PCI hardware need this */
-#include "xf86PciInfo.h"
-
 /* Drivers that need to access the PCI config space directly need this */
 #include "xf86Pci.h"
 
@@ -71,9 +68,6 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 /* All drivers initialising the SW cursor need this */
 #include "mipointer.h"
-
-/* All drivers implementing backing store need this */
-#include "mibstore.h"
 
 /* All drivers using the mi colormap manipulation need this */
 #include "micmap.h"
@@ -642,7 +636,7 @@ NEOPreInit(ScrnInfoPtr pScrn, int flags)
     int apertureSize;
     Bool height_480 = FALSE;
     Bool lcdCenterOptSet = FALSE;
-    char *s;
+    const char *s;
     
     if (flags & PROBE_DETECT)  {
 	neoProbeDDC( pScrn, xf86GetEntityInfo(pScrn->entityList[0])->index );
@@ -1407,6 +1401,50 @@ NEOLoadPalette(
    } 
 }
 
+static Bool
+NEOCreateScreenResources(ScreenPtr pScreen)
+{
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+	NEOPtr pNeo = NEOPTR(pScrn);
+	PixmapPtr pPixmap;
+	Bool ret;
+
+	pScreen->CreateScreenResources = pNeo->CreateScreenResources;
+	ret = pScreen->CreateScreenResources(pScreen);
+	pScreen->CreateScreenResources = NEOCreateScreenResources;
+
+	if (!ret)
+		return FALSE;
+
+	pPixmap = pScreen->GetScreenPixmap(pScreen);
+
+	if (!shadowAdd(pScreen, pPixmap, neoShadowUpdate,
+		NULL, 0, NULL)) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static Bool
+NEOShadowInit(ScreenPtr pScreen)
+{
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+	NEOPtr pNeo = NEOPTR(pScrn);
+
+	if (!shadowSetup(pScreen))
+		return FALSE;
+	pNeo->CreateScreenResources = pScreen->CreateScreenResources;
+	pScreen->CreateScreenResources = NEOCreateScreenResources;
+
+	return TRUE;
+}
+
+static Bool
+NEOSaveScreen(ScreenPtr pScreen, int mode)
+{
+    return vgaHWSaveScreen(pScreen, mode);
+}
+
 /* Mandatory */
 static Bool
 NEOScreenInit(SCREEN_INIT_ARGS_DECL)
@@ -1621,7 +1659,6 @@ NEOScreenInit(SCREEN_INIT_ARGS_DECL)
                    "Acceleration %s Initialized\n",ret ? "" : "not");
     } 
 
-    miInitializeBackingStore(pScreen);
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
 
@@ -1658,7 +1695,7 @@ NEOScreenInit(SCREEN_INIT_ARGS_DECL)
 #if 0
 	ShadowFBInit(pScreen, nPtr->refreshArea);
 #else
-	shadowInit (pScreen, neoShadowUpdate, 0);
+	NEOShadowInit (pScreen);
 #endif
     }
     
@@ -1681,7 +1718,7 @@ NEOScreenInit(SCREEN_INIT_ARGS_DECL)
 
     NEOInitVideo(pScreen);
 
-    pScreen->SaveScreen = vgaHWSaveScreenWeak();
+    pScreen->SaveScreen = NEOSaveScreen;
 
     /* Setup DPMS mode */
     if (nPtr->NeoChipset != NM2070)
@@ -1957,10 +1994,12 @@ neoMapMem(ScrnInfoPtr pScrn)
             }
 #endif
         } else
+#ifdef VIDMEM_MMIO
             nPtr->NeoMMIOBase =
                 xf86MapVidMem(pScrn->scrnIndex,
                               VIDMEM_MMIO, nPtr->NeoMMIOAddr,
                               0x200000L);
+#endif
         if (nPtr->NeoMMIOBase == NULL)
             return FALSE;
     }
@@ -1987,10 +2026,12 @@ neoMapMem(ScrnInfoPtr pScrn)
     }
 #endif
     else
+#ifdef VIDMEM_FRAMEBUFFER
         nPtr->NeoFbBase =
             xf86MapVidMem(pScrn->scrnIndex, VIDMEM_FRAMEBUFFER,
                           (unsigned long)nPtr->NeoLinearAddr,
                           nPtr->NeoFbMapSize);
+#endif
     if (nPtr->NeoFbBase == NULL)
         return FALSE;
     return TRUE;
@@ -3018,6 +3059,12 @@ neo_ddc1Read(ScrnInfoPtr pScrn)
     return (tmp);
 }
 
+static void
+neo_ddc1SetSpeed(ScrnInfoPtr pScrn, xf86ddcSpeed speed)
+{
+    vgaHWddc1SetSpeed(pScrn, speed);
+}
+
 static xf86MonPtr
 neo_ddc1(ScrnInfoPtr pScrn)
 {
@@ -3032,7 +3079,7 @@ neo_ddc1(ScrnInfoPtr pScrn)
     VGAwCR(0x21,0x00);
     VGAwCR(0x1D,0x01);  /* some Voodoo */ 
     VGAwGR(0xA1,0x2F);
-    ret =  xf86DoEDID_DDC1(XF86_SCRN_ARG(pScrn),vgaHWddc1SetSpeedWeak(),neo_ddc1Read);
+    ret =  xf86DoEDID_DDC1(XF86_SCRN_ARG(pScrn),neo_ddc1SetSpeed,neo_ddc1Read);
     /* undo initialization */
     VGAwCR(0x21,reg1);
     VGAwCR(0x1D,reg2);

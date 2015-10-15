@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -36,6 +36,8 @@
 #include "main/imports.h"
 #include "main/mtypes.h"
 #include "main/enums.h"
+
+#include "math/m_xform.h"
 
 #include "tnl/t_context.h"
 #include "tnl/t_vertex.h"
@@ -117,13 +119,15 @@ intelDmaPrimitive(struct intel_context *intel, GLenum prim)
    intel_set_prim(intel, hw_prim[prim]);
 }
 
+#define INTEL_NO_VBO_STATE_RESERVED 1500
+
 static INLINE GLuint intel_get_vb_max(struct intel_context *intel)
 {
    GLuint ret;
 
-   if (intel->intelScreen->no_vbo)
-      ret = intel->batch->size - 1500;
-   else
+   if (intel->intelScreen->no_vbo) {
+      ret = intel->batch.bo->size - INTEL_NO_VBO_STATE_RESERVED;
+   } else
       ret = INTEL_VB_SIZE;
    ret /= (intel->vertex_size * 4);
    return ret;
@@ -131,11 +135,15 @@ static INLINE GLuint intel_get_vb_max(struct intel_context *intel)
 
 static INLINE GLuint intel_get_current_max(struct intel_context *intel)
 {
+   GLuint ret;
 
-   if (intel->intelScreen->no_vbo)
-      return intel_get_vb_max(intel);
-   else
-      return (INTEL_VB_SIZE - intel->prim.current_offset) / (intel->vertex_size * 4);
+   if (intel->intelScreen->no_vbo) {
+      ret = intel_batchbuffer_space(intel);
+      ret = ret <= INTEL_NO_VBO_STATE_RESERVED ? 0 : ret - INTEL_NO_VBO_STATE_RESERVED;
+   } else
+      ret = (INTEL_VB_SIZE - intel->prim.current_offset);
+
+   return ret / (intel->vertex_size * 4);
 }
 
 #define LOCAL_VARS struct intel_context *intel = intel_context(ctx)
@@ -164,7 +172,7 @@ do {						\
 
 /* Heuristic to choose between the two render paths:  
  */
-static GLboolean
+static bool
 choose_render(struct intel_context *intel, struct vertex_buffer *VB)
 {
    int vertsz = intel->vertex_size;
@@ -207,14 +215,14 @@ choose_render(struct intel_context *intel, struct vertex_buffer *VB)
               cost_render, cost_fallback);
 
    if (cost_render > cost_fallback)
-      return GL_FALSE;
+      return false;
 
-   return GL_TRUE;
+   return true;
 }
 
 
 static GLboolean
-intel_run_render(GLcontext * ctx, struct tnl_pipeline_stage *stage)
+intel_run_render(struct gl_context * ctx, struct tnl_pipeline_stage *stage)
 {
    struct intel_context *intel = intel_context(ctx);
    TNLcontext *tnl = TNL_CONTEXT(ctx);
@@ -227,7 +235,7 @@ intel_run_render(GLcontext * ctx, struct tnl_pipeline_stage *stage)
     */
    if (intel->RenderIndex != 0 ||
        !intel_validate_render(ctx, VB) || !choose_render(intel, VB)) {
-      return GL_TRUE;
+      return true;
    }
 
    tnl->clipspace.new_inputs |= VERT_BIT_POS;
@@ -250,7 +258,7 @@ intel_run_render(GLcontext * ctx, struct tnl_pipeline_stage *stage)
 
    INTEL_FIREVERTICES(intel);
 
-   return GL_FALSE;             /* finished the pipe */
+   return false;             /* finished the pipe */
 }
 
 static const struct tnl_pipeline_stage _intel_render_stage = {
@@ -264,7 +272,6 @@ static const struct tnl_pipeline_stage _intel_render_stage = {
 
 const struct tnl_pipeline_stage *intel_pipeline[] = {
    &_tnl_vertex_transform_stage,
-   &_tnl_vertex_cull_stage,
    &_tnl_normal_transform_stage,
    &_tnl_lighting_stage,
    &_tnl_fog_coordinate_stage,

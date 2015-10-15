@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.   All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -28,8 +28,9 @@
 #define MATRIX_H
 
 
-#include "mtypes.h"
+#include "glheader.h"
 
+struct gl_context;
 
 extern void GLAPIENTRY
 _mesa_Frustum( GLdouble left, GLdouble right,
@@ -84,29 +85,29 @@ extern void GLAPIENTRY
 _mesa_Translated( GLdouble x, GLdouble y, GLdouble z );
 
 extern void GLAPIENTRY
-_mesa_LoadTransposeMatrixfARB( const GLfloat *m );
+_mesa_LoadTransposeMatrixf( const GLfloat *m );
 
 extern void GLAPIENTRY
-_mesa_LoadTransposeMatrixdARB( const GLdouble *m );
+_mesa_LoadTransposeMatrixd( const GLdouble *m );
 
 extern void GLAPIENTRY
-_mesa_MultTransposeMatrixfARB( const GLfloat *m );
+_mesa_MultTransposeMatrixf( const GLfloat *m );
 
 extern void GLAPIENTRY
-_mesa_MultTransposeMatrixdARB( const GLdouble *m );
+_mesa_MultTransposeMatrixd( const GLdouble *m );
 
 
 extern void 
-_mesa_init_matrix( GLcontext * ctx );
+_mesa_init_matrix( struct gl_context * ctx );
 
 extern void 
-_mesa_init_transform( GLcontext *ctx );
+_mesa_init_transform( struct gl_context *ctx );
 
 extern void
-_mesa_free_matrix_data( GLcontext *ctx );
+_mesa_free_matrix_data( struct gl_context *ctx );
 
 extern void 
-_mesa_update_modelview_project( GLcontext *ctx, GLuint newstate );
+_mesa_update_modelview_project( struct gl_context *ctx, GLuint newstate );
 
 
 #endif

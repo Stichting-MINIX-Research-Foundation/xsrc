@@ -35,7 +35,10 @@
 struct svga_context;
 struct u_upload_mgr;
 
-/* Should include polygon?
+/**
+ * Mask indicating which types of gallium primitives are actually
+ * handled by the svga device.  Other types will be converted to
+ * these types by the index/translation code.
  */
 static const unsigned svga_hw_prims = 
    ((1 << PIPE_PRIM_POINTS) |
@@ -46,38 +49,45 @@ static const unsigned svga_hw_prims =
     (1 << PIPE_PRIM_TRIANGLE_FAN));
 
 
-static INLINE unsigned svga_translate_prim(unsigned mode, 
-                                           unsigned count,
-                                           unsigned *out_count)
+/**
+ * Translate a gallium PIPE_PRIM_x value to an SVGA3D_PRIMITIVE_x value.
+ * Also, compute the number of primitives that'll be drawn given a
+ * vertex count.
+ * Note that this function doesn't have to handle PIPE_PRIM_LINE_LOOP,
+ * PIPE_PRIM_QUADS, PIPE_PRIM_QUAD_STRIP or PIPE_PRIM_POLYGON.  We convert
+ * those to other types of primitives with index/translation code.
+ */
+static INLINE unsigned
+svga_translate_prim(unsigned mode, unsigned vcount,unsigned *prim_count)
 {
    switch (mode) {
    case PIPE_PRIM_POINTS:
-      *out_count = count;
+      *prim_count = vcount;
       return SVGA3D_PRIMITIVE_POINTLIST;
 
    case PIPE_PRIM_LINES:
-      *out_count = count / 2;
+      *prim_count = vcount / 2;
       return SVGA3D_PRIMITIVE_LINELIST; 
 
    case PIPE_PRIM_LINE_STRIP:
-      *out_count = count - 1;
+      *prim_count = vcount - 1;
       return SVGA3D_PRIMITIVE_LINESTRIP; 
 
    case PIPE_PRIM_TRIANGLES:
-      *out_count = count / 3;
+      *prim_count = vcount / 3;
       return SVGA3D_PRIMITIVE_TRIANGLELIST; 
 
    case PIPE_PRIM_TRIANGLE_STRIP:
-      *out_count = count - 2;
+      *prim_count = vcount - 2;
       return SVGA3D_PRIMITIVE_TRIANGLESTRIP; 
 
    case PIPE_PRIM_TRIANGLE_FAN:
-      *out_count = count - 2;
+      *prim_count = vcount - 2;
       return SVGA3D_PRIMITIVE_TRIANGLEFAN; 
 
    default:
       assert(0);
-      *out_count = 0;
+      *prim_count = 0;
       return 0;
    }
 }
@@ -90,20 +100,22 @@ struct index_cache {
    /* If non-null, this buffer is filled by calling 
     *   generate(nr, map(buffer))
     */
-   struct pipe_buffer *buffer;
+   struct pipe_resource *buffer;
 };
 
-#define QSZ 32
+
+/** Max number of primitives per draw call */
+#define QSZ SVGA3D_MAX_DRAW_PRIMITIVE_RANGES
 
 struct draw_cmd {
    struct svga_winsys_context *swc;
 
    SVGA3dVertexDecl vdecl[SVGA3D_INPUTREG_MAX];
-   struct pipe_buffer *vdecl_vb[SVGA3D_INPUTREG_MAX];
+   struct pipe_resource *vdecl_vb[SVGA3D_INPUTREG_MAX];
    unsigned vdecl_count;
 
    SVGA3dPrimitiveRange prim[QSZ];
-   struct pipe_buffer *prim_ib[QSZ];
+   struct pipe_resource *prim_ib[QSZ];
    unsigned prim_count;
    unsigned min_index[QSZ];
    unsigned max_index[QSZ];
@@ -114,6 +126,13 @@ struct draw_cmd {
 struct svga_hwtnl {
    struct svga_context *svga;
    struct u_upload_mgr *upload_ib;
+
+   /* Additional negative index bias due to partial buffer uploads
+    * This is compensated for in the offset associated with all
+    * vertex buffers.
+    */
+
+   int index_bias;
    
    /* Flatshade information:
     */
@@ -141,18 +160,18 @@ svga_hwtnl_prim( struct svga_hwtnl *hwtnl,
                  const SVGA3dPrimitiveRange *range,
                  unsigned min_index,
                  unsigned max_index,
-                 struct pipe_buffer *ib );
+                 struct pipe_resource *ib );
 
 enum pipe_error
 svga_hwtnl_simple_draw_range_elements( struct svga_hwtnl *hwtnl,
-                                       struct pipe_buffer *indexBuffer,
+                                       struct pipe_resource *indexBuffer,
                                        unsigned index_size,
+                                       int index_bias,
                                        unsigned min_index,
                                        unsigned max_index,
                                        unsigned prim, 
                                        unsigned start,
-                                       unsigned count,
-                                       unsigned bias );
+                                       unsigned count );
 
 
 #endif

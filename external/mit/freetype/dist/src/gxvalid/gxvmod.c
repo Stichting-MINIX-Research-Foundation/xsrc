@@ -4,8 +4,8 @@
 /*                                                                         */
 /*    FreeType's TrueTypeGX/AAT validation module implementation (body).   */
 /*                                                                         */
-/*  Copyright 2004-2006, 2013                                              */
-/*  by suzuki toshiya, Masatake YAMATO, Red Hat K.K.,                      */
+/*  Copyright 2004-2015 by                                                 */
+/*  suzuki toshiya, Masatake YAMATO, Red Hat K.K.,                         */
 /*  David Turner, Robert Wilhelm, and Werner Lemberg.                      */
 /*                                                                         */
 /*  This file is part of the FreeType project, and may only be used,       */
@@ -200,7 +200,7 @@
     /* without volatile on `error' GCC 4.1.1. emits:                         */
     /*  warning: variable 'error' might be clobbered by 'longjmp' or 'vfork' */
     /* this warning seems spurious but ---                                   */
-    FT_Error volatile         error = FT_Err_Ok;
+    FT_Error volatile         error;
     FT_ValidatorRec volatile  valid;
 
 

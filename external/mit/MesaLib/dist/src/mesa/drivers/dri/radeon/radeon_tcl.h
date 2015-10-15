@@ -1,7 +1,7 @@
 /**************************************************************************
 
 Copyright 2000, 2001 ATI Technologies Inc., Ontario, Canada, and
-                     Tungsten Grahpics Inc., Austin, Texas.
+                     VMware, Inc.
 
 All Rights Reserved.
 
@@ -29,7 +29,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  *
  */
 
@@ -38,16 +38,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "radeon_context.h"
 
-extern void radeonTclPrimitive( GLcontext *ctx, GLenum prim, int hw_prim );
-extern void radeonEmitEltPrimitive( GLcontext *ctx, GLuint first, GLuint last,
+extern void radeonTclPrimitive( struct gl_context *ctx, GLenum prim, int hw_prim );
+extern void radeonEmitEltPrimitive( struct gl_context *ctx, GLuint first, GLuint last,
 				    GLuint flags );
-extern void radeonEmitPrimitive( GLcontext *ctx, GLuint first, GLuint last,
+extern void radeonEmitPrimitive( struct gl_context *ctx, GLuint first, GLuint last,
 				 GLuint flags );
 
-extern void radeonTclFallback( GLcontext *ctx, GLuint bit, GLboolean mode );
-
-extern void radeonInitStaticFogData( void );
-extern float radeonComputeFogBlendFactor( GLcontext *ctx, GLfloat fogcoord );
+extern void radeonTclFallback( struct gl_context *ctx, GLuint bit, GLboolean mode );
 
 #define RADEON_TCL_FALLBACK_RASTER            0x1 /* rasterization */
 #define RADEON_TCL_FALLBACK_UNFILLED          0x2 /* unfilled tris */

@@ -27,164 +27,194 @@
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_fbo.h"
-#include "nouveau_class.h"
 #include "nouveau_util.h"
+#include "nv_object.xml.h"
+#include "nv10_3d.xml.h"
 #include "nv10_driver.h"
 
 static inline unsigned
-get_rt_format(gl_format format)
+get_rt_format(mesa_format format)
 {
 	switch (format) {
-	case MESA_FORMAT_XRGB8888:
-		return 0x05;
-	case MESA_FORMAT_ARGB8888:
-		return 0x08;
-	case MESA_FORMAT_RGB565:
-		return 0x03;
-	case MESA_FORMAT_Z16:
-		return 0x10;
-	case MESA_FORMAT_Z24_S8:
-		return 0x0;
+	case MESA_FORMAT_B8G8R8X8_UNORM:
+		return NV10_3D_RT_FORMAT_COLOR_X8R8G8B8;
+	case MESA_FORMAT_B8G8R8A8_UNORM:
+		return NV10_3D_RT_FORMAT_COLOR_A8R8G8B8;
+	case MESA_FORMAT_B5G6R5_UNORM:
+		return NV10_3D_RT_FORMAT_COLOR_R5G6B5;
+	case MESA_FORMAT_Z_UNORM16:
+		return NV10_3D_RT_FORMAT_DEPTH_Z16;
+	case MESA_FORMAT_S8_UINT_Z24_UNORM:
+		return NV10_3D_RT_FORMAT_DEPTH_Z24S8;
 	default:
 		assert(0);
 	}
 }
 
 static void
-setup_lma_buffer(GLcontext *ctx)
+setup_hierz_buffer(struct gl_context *ctx)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
-	struct nouveau_bo_context *bctx = context_bctx(ctx, LMA_DEPTH);
+	struct nouveau_pushbuf *push = context_push(ctx);
 	struct gl_framebuffer *fb = ctx->DrawBuffer;
 	struct nouveau_framebuffer *nfb = to_nouveau_framebuffer(fb);
 	unsigned pitch = align(fb->Width, 128),
 		height = align(fb->Height, 2),
 		size = pitch * height;
 
-	if (!nfb->lma_bo || nfb->lma_bo->size != size) {
-		nouveau_bo_ref(NULL, &nfb->lma_bo);
+	if (!nfb->hierz.bo || nfb->hierz.bo->size != size) {
+		union nouveau_bo_config config = {
+			.nv04.surf_flags = NV04_BO_ZETA,
+			.nv04.surf_pitch = 0
+		};
+
+		nouveau_bo_ref(NULL, &nfb->hierz.bo);
 		nouveau_bo_new(context_dev(ctx), NOUVEAU_BO_VRAM, 0, size,
-			       &nfb->lma_bo);
+			       &config, &nfb->hierz.bo);
 	}
 
-	nouveau_bo_markl(bctx, celsius, NV17TCL_LMA_DEPTH_BUFFER_OFFSET,
-			 nfb->lma_bo, 0, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
+	PUSH_SPACE(push, 11);
+	BEGIN_NV04(push, NV17_3D(HIERZ_OFFSET), 1);
+	PUSH_MTHDl(push, NV17_3D(HIERZ_OFFSET), BUFCTX_FB,
+			 nfb->hierz.bo, 0, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
+	BEGIN_NV04(push, NV17_3D(HIERZ_WINDOW_X), 4);
+	PUSH_DATAf(push, - 1792);
+	PUSH_DATAf(push, - 2304 + fb->Height);
+	PUSH_DATAf(push, fb->_DepthMaxF / 2);
+	PUSH_DATAf(push, 0);
 
-	BEGIN_RING(chan, celsius, NV17TCL_LMA_DEPTH_WINDOW_X, 4);
-	OUT_RINGf(chan, - 1792);
-	OUT_RINGf(chan, - 2304 + fb->Height);
-	OUT_RINGf(chan, fb->_DepthMaxF / 2);
-	OUT_RINGf(chan, 0);
+	BEGIN_NV04(push, NV17_3D(HIERZ_PITCH), 1);
+	PUSH_DATA (push, pitch);
 
-	BEGIN_RING(chan, celsius, NV17TCL_LMA_DEPTH_BUFFER_PITCH, 1);
-	OUT_RING(chan, pitch);
-
-	BEGIN_RING(chan, celsius, NV17TCL_LMA_DEPTH_ENABLE, 1);
-	OUT_RING(chan, 1);
+	BEGIN_NV04(push, NV17_3D(HIERZ_ENABLE), 1);
+	PUSH_DATA (push, 1);
 }
 
 void
-nv10_emit_framebuffer(GLcontext *ctx, int emit)
+nv10_emit_framebuffer(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
-	struct nouveau_bo_context *bctx = context_bctx(ctx, FRAMEBUFFER);
+	struct nouveau_pushbuf *push = context_push(ctx);
 	struct gl_framebuffer *fb = ctx->DrawBuffer;
 	struct nouveau_surface *s;
-	unsigned rt_format = NV10TCL_RT_FORMAT_TYPE_LINEAR;
+	unsigned rt_format = NV10_3D_RT_FORMAT_TYPE_LINEAR;
 	unsigned rt_pitch = 0, zeta_pitch = 0;
 	unsigned bo_flags = NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR;
 
 	if (fb->_Status != GL_FRAMEBUFFER_COMPLETE_EXT)
 		return;
 
+	PUSH_RESET(push, BUFCTX_FB);
+
 	/* At least nv11 seems to get sad if we don't do this before
 	 * swapping RTs.*/
-	if (context_chipset(ctx) < 0x17) {
+	if (context_eng3d(ctx)->oclass < NV17_3D_CLASS) {
 		int i;
 
 		for (i = 0; i < 6; i++) {
-			BEGIN_RING(chan, celsius, NV10TCL_NOP, 1);
-			OUT_RING(chan, 0);
+			BEGIN_NV04(push, NV04_GRAPH(3D, NOP), 1);
+			PUSH_DATA (push, 0);
 		}
 	}
 
 	/* Render target */
-	if (fb->_NumColorDrawBuffers) {
+	if (fb->_ColorDrawBuffers[0]) {
 		s = &to_nouveau_renderbuffer(
 			fb->_ColorDrawBuffers[0])->surface;
 
 		rt_format |= get_rt_format(s->format);
 		zeta_pitch = rt_pitch = s->pitch;
 
-		nouveau_bo_markl(bctx, celsius, NV10TCL_COLOR_OFFSET,
+		BEGIN_NV04(push, NV10_3D(COLOR_OFFSET), 1);
+		PUSH_MTHDl(push, NV10_3D(COLOR_OFFSET), BUFCTX_FB,
 				 s->bo, 0, bo_flags);
 	}
 
 	/* depth/stencil */
-	if (fb->_DepthBuffer) {
+	if (fb->Attachment[BUFFER_DEPTH].Renderbuffer) {
 		s = &to_nouveau_renderbuffer(
-			fb->_DepthBuffer->Wrapped)->surface;
+			fb->Attachment[BUFFER_DEPTH].Renderbuffer)->surface;
 
 		rt_format |= get_rt_format(s->format);
 		zeta_pitch = s->pitch;
 
-		nouveau_bo_markl(bctx, celsius, NV10TCL_ZETA_OFFSET,
+		BEGIN_NV04(push, NV10_3D(ZETA_OFFSET), 1);
+		PUSH_MTHDl(push, NV10_3D(ZETA_OFFSET), BUFCTX_FB,
 				 s->bo, 0, bo_flags);
 
-		if (context_chipset(ctx) >= 0x17)
-			setup_lma_buffer(ctx);
+		if (context_eng3d(ctx)->oclass >= NV17_3D_CLASS) {
+			setup_hierz_buffer(ctx);
+			context_dirty(ctx, ZCLEAR);
+		}
 	}
 
-	BEGIN_RING(chan, celsius, NV10TCL_RT_FORMAT, 2);
-	OUT_RING(chan, rt_format);
-	OUT_RING(chan, zeta_pitch << 16 | rt_pitch);
+	BEGIN_NV04(push, NV10_3D(RT_FORMAT), 2);
+	PUSH_DATA (push, rt_format);
+	PUSH_DATA (push, zeta_pitch << 16 | rt_pitch);
 
 	context_dirty(ctx, VIEWPORT);
 	context_dirty(ctx, SCISSOR);
+	context_dirty(ctx, DEPTH);
 }
 
 void
-nv10_emit_render_mode(GLcontext *ctx, int emit)
+nv10_emit_render_mode(struct gl_context *ctx, int emit)
 {
 }
 
 void
-nv10_emit_scissor(GLcontext *ctx, int emit)
+nv10_emit_scissor(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 	int x, y, w, h;
 
 	get_scissors(ctx->DrawBuffer, &x, &y, &w, &h);
 
-	BEGIN_RING(chan, celsius, NV10TCL_RT_HORIZ, 2);
-	OUT_RING(chan, w << 16 | x);
-	OUT_RING(chan, h << 16 | y);
+	BEGIN_NV04(push, NV10_3D(RT_HORIZ), 2);
+	PUSH_DATA (push, w << 16 | x);
+	PUSH_DATA (push, h << 16 | y);
 }
 
 void
-nv10_emit_viewport(GLcontext *ctx, int emit)
+nv10_emit_viewport(struct gl_context *ctx, int emit)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
-	struct nouveau_grobj *celsius = context_eng3d(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
+	struct gl_viewport_attrib *vp = &ctx->ViewportArray[0];
 	struct gl_framebuffer *fb = ctx->DrawBuffer;
 	float a[4] = {};
-	int i;
 
 	get_viewport_translate(ctx, a);
 	a[0] -= 2048;
 	a[1] -= 2048;
+	if (nv10_use_viewport_zclear(ctx))
+		a[2] = nv10_transform_depth(ctx, (vp->Far + vp->Near) / 2);
 
-	BEGIN_RING(chan, celsius, NV10TCL_VIEWPORT_TRANSLATE_X, 4);
-	for (i = 0; i < 4; i++)
-		OUT_RINGf(chan, a[i]);
+	BEGIN_NV04(push, NV10_3D(VIEWPORT_TRANSLATE_X), 4);
+	PUSH_DATAp(push, a, 4);
 
-	BEGIN_RING(chan, celsius, NV10TCL_VIEWPORT_CLIP_HORIZ(0), 1);
-	OUT_RING(chan, (fb->Width - 1) << 16 | 0x08000800);
-	BEGIN_RING(chan, celsius, NV10TCL_VIEWPORT_CLIP_VERT(0), 1);
-	OUT_RING(chan, (fb->Height - 1) << 16 | 0x08000800);
+	BEGIN_NV04(push, NV10_3D(VIEWPORT_CLIP_HORIZ(0)), 1);
+	PUSH_DATA (push, (fb->Width - 1) << 16 | 0x08000800);
+	BEGIN_NV04(push, NV10_3D(VIEWPORT_CLIP_VERT(0)), 1);
+	PUSH_DATA (push, (fb->Height - 1) << 16 | 0x08000800);
 
 	context_dirty(ctx, PROJECTION);
+}
+
+void
+nv10_emit_zclear(struct gl_context *ctx, int emit)
+{
+	struct nouveau_context *nctx = to_nouveau_context(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
+	struct nouveau_framebuffer *nfb =
+		to_nouveau_framebuffer(ctx->DrawBuffer);
+
+	if (nfb->hierz.bo) {
+		BEGIN_NV04(push, NV17_3D(ZCLEAR_ENABLE), 2);
+		PUSH_DATAb(push, !nctx->hierz.clear_blocked);
+		PUSH_DATA (push, nfb->hierz.clear_value |
+			 (nctx->hierz.clear_seq & 0xff));
+	} else {
+		BEGIN_NV04(push, NV10_3D(DEPTH_RANGE_NEAR), 2);
+		PUSH_DATAf(push, nv10_transform_depth(ctx, 0));
+		PUSH_DATAf(push, nv10_transform_depth(ctx, 1));
+		context_dirty(ctx, VIEWPORT);
+	}
 }

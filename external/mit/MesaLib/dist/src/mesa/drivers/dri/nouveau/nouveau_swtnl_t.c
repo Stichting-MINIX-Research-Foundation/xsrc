@@ -28,6 +28,8 @@
 #include "tnl/t_pipeline.h"
 #include "tnl/t_vertex.h"
 
+#define SWTNL_VBO_SIZE 65536
+
 static enum tnl_attr_format
 swtnl_get_format(int type, int fields) {
 	switch (type) {
@@ -99,13 +101,13 @@ static struct swtnl_attr_info {
 };
 
 static void
-swtnl_choose_attrs(GLcontext *ctx)
+swtnl_choose_attrs(struct gl_context *ctx)
 {
 	struct nouveau_render_state *render = to_render_state(ctx);
 	TNLcontext *tnl = TNL_CONTEXT(ctx);
 	struct tnl_clipspace *vtx = &tnl->clipspace;
 	static struct tnl_attr_map map[NUM_VERTEX_ATTRS];
-	int fields, i, n = 0;
+	int fields, attr, i, n = 0;
 
 	render->mode = VBO;
 	render->attr_count = NUM_VERTEX_ATTRS;
@@ -116,12 +118,12 @@ swtnl_choose_attrs(GLcontext *ctx)
 	for (i = 0; i < VERT_ATTRIB_MAX; i++) {
 		struct nouveau_attr_info *ha = &TAG(vertex_attrs)[i];
 		struct swtnl_attr_info *sa = &swtnl_attrs[i];
-		struct nouveau_array_state *a = &render->attrs[i];
+		struct nouveau_array *a = &render->attrs[i];
 
 		if (!sa->fields)
 			continue; /* Unsupported attribute. */
 
-		if (RENDERINPUTS_TEST(tnl->render_inputs_bitset, i)) {
+		if (tnl->render_inputs_bitset & BITFIELD64_BIT(i)) {
 			if (sa->fields > 0)
 				fields = sa->fields;
 			else
@@ -141,89 +143,83 @@ swtnl_choose_attrs(GLcontext *ctx)
 
 	_tnl_install_attrs(ctx, map, n, NULL, 0);
 
-	for (i = 0; i < vtx->attr_count; i++) {
-		struct tnl_clipspace_attr *ta = &vtx->attr[i];
-		struct nouveau_array_state *a = &render->attrs[ta->attrib];
-
-		a->stride = vtx->vertex_size;
-		a->offset = ta->vertoffset;
-	}
+	FOR_EACH_BOUND_ATTR(render, i, attr)
+		render->attrs[attr].stride = vtx->vertex_size;
 
 	TAG(render_set_format)(ctx);
 }
 
 static void
-swtnl_alloc_vertices(GLcontext *ctx)
+swtnl_alloc_vertices(struct gl_context *ctx)
 {
 	struct nouveau_swtnl_state *swtnl = &to_render_state(ctx)->swtnl;
 
 	nouveau_bo_ref(NULL, &swtnl->vbo);
-	swtnl->buf = get_scratch_vbo(ctx, RENDER_SCRATCH_SIZE,
-				     &swtnl->vbo, NULL);
+	swtnl->buf = nouveau_get_scratch(ctx, SWTNL_VBO_SIZE, &swtnl->vbo,
+					 &swtnl->offset);
 	swtnl->vertex_count = 0;
 }
 
 static void
-swtnl_bind_vertices(GLcontext *ctx)
+swtnl_bind_vertices(struct gl_context *ctx)
 {
 	struct nouveau_render_state *render = to_render_state(ctx);
 	struct nouveau_swtnl_state *swtnl = &render->swtnl;
+	struct tnl_clipspace *vtx = &TNL_CONTEXT(ctx)->clipspace;
 	int i;
 
-	for (i = 0; i < render->attr_count; i++) {
-		int attr = render->map[i];
+	for (i = 0; i < vtx->attr_count; i++) {
+		struct tnl_clipspace_attr *ta = &vtx->attr[i];
+		struct nouveau_array *a = &render->attrs[ta->attrib];
 
-		if (attr >= 0)
-			nouveau_bo_ref(swtnl->vbo,
-				       &render->attrs[attr].bo);
+		nouveau_bo_ref(swtnl->vbo, &a->bo);
+		a->offset = swtnl->offset + ta->vertoffset;
 	}
 
 	TAG(render_bind_vertices)(ctx);
 }
 
 static void
-swtnl_unbind_vertices(GLcontext *ctx)
+swtnl_unbind_vertices(struct gl_context *ctx)
 {
 	struct nouveau_render_state *render = to_render_state(ctx);
-	int i;
+	int i, attr;
 
-	for (i = 0; i < render->attr_count; i++) {
-		int *attr = &render->map[i];
+	TAG(render_release_vertices)(ctx);
 
-		if (*attr >= 0) {
-			nouveau_bo_ref(NULL, &render->attrs[*attr].bo);
-			*attr = -1;
-		}
+	FOR_EACH_BOUND_ATTR(render, i, attr) {
+		nouveau_bo_ref(NULL, &render->attrs[attr].bo);
+		render->map[i] = -1;
 	}
 
 	render->attr_count = 0;
 }
 
 static void
-swtnl_flush_vertices(GLcontext *ctx)
+swtnl_flush_vertices(struct gl_context *ctx)
 {
-	struct nouveau_channel *chan = context_chan(ctx);
+	struct nouveau_pushbuf *push = context_push(ctx);
 	struct nouveau_swtnl_state *swtnl = &to_render_state(ctx)->swtnl;
-	unsigned push, start = 0, count = swtnl->vertex_count;
+	unsigned npush, start = 0, count = swtnl->vertex_count;
 	RENDER_LOCALS(ctx);
 
 	swtnl_bind_vertices(ctx);
 
 	while (count) {
-		push = get_max_vertices(ctx, NULL, AVAIL_RING(chan));
-		push = MIN2(push / 12 * 12, count);
-		count -= push;
+		npush = get_max_vertices(ctx, NULL, PUSH_AVAIL(push));
+		npush = MIN2(npush / 12 * 12, count);
+		count -= npush;
 
-		if (!push) {
-			FIRE_RING(chan);
+		if (!npush) {
+			PUSH_KICK(push);
 			continue;
 		}
 
 		BATCH_BEGIN(nvgl_primitive(swtnl->primitive));
-		EMIT_VBO(L, ctx, start, 0, push);
+		EMIT_VBO(L, ctx, start, 0, npush);
 		BATCH_END();
 
-		FIRE_RING(chan);
+		PUSH_KICK(push);
 	}
 
 	swtnl_alloc_vertices(ctx);
@@ -232,25 +228,25 @@ swtnl_flush_vertices(GLcontext *ctx)
 /* TnL renderer entry points */
 
 static void
-swtnl_start(GLcontext *ctx)
+swtnl_start(struct gl_context *ctx)
 {
 	swtnl_choose_attrs(ctx);
 }
 
 static void
-swtnl_finish(GLcontext *ctx)
+swtnl_finish(struct gl_context *ctx)
 {
 	swtnl_flush_vertices(ctx);
 	swtnl_unbind_vertices(ctx);
 }
 
 static void
-swtnl_primitive(GLcontext *ctx, GLenum mode)
+swtnl_primitive(struct gl_context *ctx, GLenum mode)
 {
 }
 
 static void
-swtnl_reset_stipple(GLcontext *ctx)
+swtnl_reset_stipple(struct gl_context *ctx)
 {
 }
 
@@ -260,7 +256,7 @@ swtnl_reset_stipple(GLcontext *ctx)
 	struct nouveau_swtnl_state *swtnl = &to_render_state(ctx)->swtnl; \
 	int vertex_len = TNL_CONTEXT(ctx)->clipspace.vertex_size;	\
 									\
-	if (swtnl->vertex_count + (n) > swtnl->vbo->size/vertex_len	\
+	if (swtnl->vertex_count + (n) > SWTNL_VBO_SIZE/vertex_len	\
 	    || (swtnl->vertex_count && swtnl->primitive != p))		\
 		swtnl_flush_vertices(ctx);				\
 									\
@@ -273,14 +269,14 @@ swtnl_reset_stipple(GLcontext *ctx)
 	} while (0)
 
 static void
-swtnl_points(GLcontext *ctx, GLuint first, GLuint last)
+swtnl_points(struct gl_context *ctx, GLuint first, GLuint last)
 {
 	int i, count;
 
 	while (first < last) {
 		BEGIN_PRIMITIVE(GL_POINTS, last - first);
 
-		count = MIN2(swtnl->vbo->size / vertex_len, last - first);
+		count = MIN2(SWTNL_VBO_SIZE / vertex_len, last - first);
 		for (i = 0; i < count; i++)
 			OUT_VERTEX(first + i);
 
@@ -289,7 +285,7 @@ swtnl_points(GLcontext *ctx, GLuint first, GLuint last)
 }
 
 static void
-swtnl_line(GLcontext *ctx, GLuint v1, GLuint v2)
+swtnl_line(struct gl_context *ctx, GLuint v1, GLuint v2)
 {
 	BEGIN_PRIMITIVE(GL_LINES, 2);
 	OUT_VERTEX(v1);
@@ -297,7 +293,7 @@ swtnl_line(GLcontext *ctx, GLuint v1, GLuint v2)
 }
 
 static void
-swtnl_triangle(GLcontext *ctx, GLuint v1, GLuint v2, GLuint v3)
+swtnl_triangle(struct gl_context *ctx, GLuint v1, GLuint v2, GLuint v3)
 {
 	BEGIN_PRIMITIVE(GL_TRIANGLES, 3);
 	OUT_VERTEX(v1);
@@ -306,7 +302,7 @@ swtnl_triangle(GLcontext *ctx, GLuint v1, GLuint v2, GLuint v3)
 }
 
 static void
-swtnl_quad(GLcontext *ctx, GLuint v1, GLuint v2, GLuint v3, GLuint v4)
+swtnl_quad(struct gl_context *ctx, GLuint v1, GLuint v2, GLuint v3, GLuint v4)
 {
 	BEGIN_PRIMITIVE(GL_QUADS, 4);
 	OUT_VERTEX(v1);
@@ -316,8 +312,8 @@ swtnl_quad(GLcontext *ctx, GLuint v1, GLuint v2, GLuint v3, GLuint v4)
 }
 
 /* TnL initialization. */
-static void
-TAG(swtnl_init)(GLcontext *ctx)
+void
+TAG(swtnl_init)(struct gl_context *ctx)
 {
 	TNLcontext *tnl = TNL_CONTEXT(ctx);
 
@@ -347,8 +343,8 @@ TAG(swtnl_init)(GLcontext *ctx)
 	swtnl_alloc_vertices(ctx);
 }
 
-static void
-TAG(swtnl_destroy)(GLcontext *ctx)
+void
+TAG(swtnl_destroy)(struct gl_context *ctx)
 {
 	nouveau_bo_ref(NULL, &to_render_state(ctx)->swtnl.vbo);
 }

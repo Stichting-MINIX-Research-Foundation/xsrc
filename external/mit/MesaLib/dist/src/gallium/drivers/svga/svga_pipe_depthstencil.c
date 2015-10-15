@@ -57,10 +57,10 @@ svga_translate_stencil_op(unsigned op)
    case PIPE_STENCIL_OP_KEEP:      return SVGA3D_STENCILOP_KEEP;
    case PIPE_STENCIL_OP_ZERO:      return SVGA3D_STENCILOP_ZERO;
    case PIPE_STENCIL_OP_REPLACE:   return SVGA3D_STENCILOP_REPLACE;
-   case PIPE_STENCIL_OP_INCR:      return SVGA3D_STENCILOP_INCR;
-   case PIPE_STENCIL_OP_DECR:      return SVGA3D_STENCILOP_DECR;
-   case PIPE_STENCIL_OP_INCR_WRAP: return SVGA3D_STENCILOP_INCRSAT; /* incorrect? */
-   case PIPE_STENCIL_OP_DECR_WRAP: return SVGA3D_STENCILOP_DECRSAT; /* incorrect? */
+   case PIPE_STENCIL_OP_INCR:      return SVGA3D_STENCILOP_INCRSAT;
+   case PIPE_STENCIL_OP_DECR:      return SVGA3D_STENCILOP_DECRSAT;
+   case PIPE_STENCIL_OP_INCR_WRAP: return SVGA3D_STENCILOP_INCR;
+   case PIPE_STENCIL_OP_DECR_WRAP: return SVGA3D_STENCILOP_DECR;
    case PIPE_STENCIL_OP_INVERT:    return SVGA3D_STENCILOP_INVERT;
    default:
       assert(0);
@@ -147,6 +147,12 @@ static void svga_set_stencil_ref( struct pipe_context *pipe,
    svga->dirty |= SVGA_NEW_STENCIL_REF;
 }
 
+static void
+svga_set_sample_mask(struct pipe_context *pipe,
+                     unsigned sample_mask)
+{
+}
+
 
 void svga_init_depth_stencil_functions( struct svga_context *svga )
 {
@@ -155,6 +161,7 @@ void svga_init_depth_stencil_functions( struct svga_context *svga )
    svga->pipe.delete_depth_stencil_alpha_state = svga_delete_depth_stencil_state;
 
    svga->pipe.set_stencil_ref = svga_set_stencil_ref;
+   svga->pipe.set_sample_mask = svga_set_sample_mask;
 }
 
 

@@ -42,6 +42,7 @@ in this Software without prior written authorization from The Open Group.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <limits.h>
 
 static Bool AddFileNameAliases ( FontDirectoryPtr dir );
 static int ReadFontAlias ( char *directory, Bool isFile,
@@ -49,8 +50,10 @@ static int ReadFontAlias ( char *directory, Bool isFile,
 static int lexAlias ( FILE *file, char **lexToken );
 static int lexc ( FILE *file );
 
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+
 int
-FontFileReadDirectory (char *directory, FontDirectoryPtr *pdir)
+FontFileReadDirectory (const char *directory, FontDirectoryPtr *pdir)
 {
     char        file_name[MAXFONTFILENAMELEN];
     char        font_name[MAXFONTNAMELEN];
@@ -374,6 +377,9 @@ lexAlias(FILE *file, char **lexToken)
 	    int         nsize;
 	    char       *nbuf;
 
+	    if (tokenSize >= (INT_MAX >> 2))
+		/* Stop before we overflow */
+		return EALLOC;
 	    nsize = tokenSize ? (tokenSize << 1) : 64;
 	    nbuf = realloc(tokenBuf, nsize);
 	    if (!nbuf)

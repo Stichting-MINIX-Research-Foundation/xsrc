@@ -102,7 +102,7 @@ CreatorVtChange (ScreenPtr pScreen, int enter)
 			   FFB_FBC_ZE_OFF | FFB_FBC_YE_OFF | FFB_FBC_RGBE_ON);
 	pFfb->ppc_cache &= ~FFB_PPC_XS_MASK;
 	pFfb->ppc_cache |= FFB_PPC_XS_WID;
-	pFfb->wid_cache = (enter ? pFfb->xaa_wid : 0xff);
+	pFfb->wid_cache = (enter ? pFfb->wid : 0xff);
 	FFBFifo(pFfb, 11);
 	ffb->fbc = pFfb->fbc_cache;
 	ffb->ppc = FFB_PPC_XS_WID;
@@ -138,73 +138,9 @@ CreatorVtChange (ScreenPtr pScreen, int enter)
 FILE *FDEBUG_FD = NULL;
 #endif
 
-#define FFB_ATTR_SFB_VAR_XAA(__fpriv, __pmask, __alu) \
-do {   unsigned int __ppc = FFB_PPC_ABE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_VAR | FFB_PPC_XS_WID; \
-       unsigned int __ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK | FFB_PPC_CS_MASK | FFB_PPC_XS_MASK; \
-       unsigned int __rop = (FFB_ROP_EDIT_BIT | (__alu))|(FFB_ROP_NEW<<8); \
-       unsigned int __fbc = (__fpriv)->xaa_fbc; \
-       unsigned int __wid = (__fpriv)->xaa_wid; \
-       if (((__fpriv)->ppc_cache & __ppc_mask) != __ppc || \
-           (__fpriv)->fbc_cache != __fbc || \
-           (__fpriv)->wid_cache != __wid || \
-           (__fpriv)->rop_cache != __rop || \
-           (__fpriv)->pmask_cache != (__pmask)) \
-               __FFB_Attr_SFB_VAR(__fpriv, __ppc, __ppc_mask, __fbc, \
-                                  __wid, __rop, (__pmask)); \
-} while(0)
-
-#define FFB_ATTR_VSCROLL_XAA(__fpriv, __pmask) \
-do {    unsigned int __ppc = FFB_PPC_ABE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_VAR | FFB_PPC_XS_WID; \
-        unsigned int __ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK | FFB_PPC_CS_MASK | FFB_PPC_XS_MASK; \
-        unsigned int __rop = (FFB_ROP_OLD | (FFB_ROP_OLD << 8)); \
-        unsigned int __fbc = (__fpriv)->xaa_fbc; \
-        (__fpriv)->ppc_cache &= ~__ppc_mask; \
-        (__fpriv)->ppc_cache |= __ppc; \
-        (__fpriv)->regs->ppc = __ppc; \
-        if ((__fpriv)->fbc_cache != __fbc || \
-            (__fpriv)->rop_cache != __rop || \
-            (__fpriv)->pmask_cache != (__pmask) || \
-            (__fpriv)->drawop_cache != FFB_DRAWOP_VSCROLL) { \
-                ffb_fbcPtr __ffb = (__fpriv)->regs; \
-                (__fpriv)->fbc_cache = __fbc; \
-                (__fpriv)->rop_cache = __rop; \
-                (__fpriv)->pmask_cache = (__pmask); \
-                (__fpriv)->drawop_cache = FFB_DRAWOP_VSCROLL; \
-                (__fpriv)->rp_active = 1; \
-                FFBFifo(__fpriv, 4); \
-                (__ffb)->fbc = __fbc; \
-                (__ffb)->rop = __rop; \
-                (__ffb)->pmask = (__pmask); \
-                (__ffb)->drawop = FFB_DRAWOP_VSCROLL; \
-        } \
-} while(0)
-
-
 static CARD32 FFBAlphaTextureFormats[2] = { PICT_a8, 0 };
 static CARD32 FFBTextureFormats[2] = { PICT_a8b8g8r8, 0 };
 static CARD32 FFBTextureDstFormats[3] = { PICT_a8b8g8r8, PICT_x8b8g8r8, 0 };
-
-static void FFB_SetupTextureAttrs(FFBPtr pFfb)
-{
-       ffb_fbcPtr ffb = pFfb->regs;
-       unsigned int ppc = FFB_PPC_APE_DISABLE | FFB_PPC_CS_VAR | FFB_PPC_XS_VAR;
-       unsigned int ppc_mask = FFB_PPC_APE_MASK | FFB_PPC_CS_MASK | FFB_PPC_XS_MASK;
-       unsigned int rop = FFB_ROP_NEW | (FFB_ROP_NEW << 8);
-       unsigned int fbc = pFfb->xaa_fbc;
-       unsigned int wid = pFfb->xaa_wid;
-
-       ppc |= FFB_PPC_ABE_ENABLE;
-       ppc_mask |= FFB_PPC_ABE_MASK;
-
-       if ((pFfb->ppc_cache & ppc_mask) != ppc ||
-           pFfb->fbc_cache != fbc ||
-           pFfb->wid_cache != wid ||
-           pFfb->rop_cache != rop ||
-           pFfb->pmask_cache != 0xffffffff)
-               __FFB_Attr_SFB_VAR(pFfb, ppc, ppc_mask, fbc,
-                                  wid, rop, 0xffffffff);
-       FFBWait(pFfb, ffb);
-}
 
 static Bool FFB_SetupForCPUToScreenAlphaTexture(
 	ScrnInfoPtr	pScrn,
@@ -396,11 +332,11 @@ static void FFB_SetupForMono8x8PatternFill(ScrnInfoPtr pScrn,
                ppc |= FFB_PPC_TBE_OPAQUE;
        ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK |
          FFB_PPC_TBE_MASK | FFB_PPC_CS_MASK;
-       fbc = pFfb->xaa_fbc;
+       fbc = pFfb->fbc;
        rop = (rop | FFB_ROP_EDIT_BIT) | (FFB_ROP_NEW << 8);
 
        FFB_ATTR_RAW(pFfb, ppc, ppc_mask, planemask, rop,
-                    FFB_DRAWOP_RECTANGLE, fg, fbc, pFfb->xaa_wid);
+                    FFB_DRAWOP_RECTANGLE, fg, fbc, pFfb->wid);
        if (bg >= 0)
                FFB_WRITE_BG(pFfb, ffb, bg);
 
@@ -458,7 +394,7 @@ static void FFB_SetupForScanlineCPUToScreenColorExpandFill(ScrnInfoPtr pScrn,
                ppc |= FFB_PPC_TBE_OPAQUE;
        ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK |
          FFB_PPC_TBE_MASK | FFB_PPC_CS_MASK;
-       fbc = pFfb->xaa_fbc;
+       fbc = pFfb->fbc;
        rop = (rop | FFB_ROP_EDIT_BIT) | (FFB_ROP_NEW << 8);
 
        if ((pFfb->ppc_cache & ppc_mask) != ppc ||
@@ -545,20 +481,20 @@ static void FFB_SetupForDashedLine(ScrnInfoPtr pScrn,
                "fg[%x] bg[%x] rop[%d] pmask[%x] patlen[%d] pat[%x]\n",
                fg, bg, rop, planemask, length, *pat_ptr));
 
-       pFfb->xaa_planemask = planemask;
+       pFfb->planemask = planemask;
        pFfb->xaa_rop = rop;
        pFfb->xaa_linepat = 
                (*pat_ptr << FFB_LPAT_PATTERN_SHIFT) |
                (1 << FFB_LPAT_SCALEVAL_SHIFT) |
                ((length & 0xf) << FFB_LPAT_PATLEN_SHIFT);
 
-       fbc = pFfb->xaa_fbc;
+       fbc = pFfb->fbc;
        ppc = FFB_PPC_ABE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_CONST | FFB_PPC_XS_WID;
        ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK | FFB_PPC_CS_MASK | FFB_PPC_XS_MASK;
 
        FFB_ATTR_RAW(pFfb, ppc, ppc_mask, planemask,
                     (FFB_ROP_EDIT_BIT | rop) | (FFB_ROP_NEW << 8),
-                    FFB_DRAWOP_BRLINEOPEN, fg, fbc, pFfb->xaa_wid);
+                    FFB_DRAWOP_BRLINEOPEN, fg, fbc, pFfb->wid);
        pFfb->rp_active = 1;
 }
 
@@ -602,16 +538,16 @@ static void FFB_SetupForSolidLine(ScrnInfoPtr pScrn,
                "color[%d] rop[%d] pmask[%x]\n",
                color, rop, planemask));
 
-       pFfb->xaa_planemask = planemask;
+       pFfb->planemask = planemask;
        pFfb->xaa_rop = rop;
 
-       fbc = pFfb->xaa_fbc;
+       fbc = pFfb->fbc;
        ppc = FFB_PPC_ABE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_CONST | FFB_PPC_XS_WID;
        ppc_mask = FFB_PPC_ABE_MASK | FFB_PPC_APE_MASK | FFB_PPC_CS_MASK | FFB_PPC_XS_MASK;
 
        FFB_ATTR_RAW(pFfb, ppc, ppc_mask, planemask,
                     (FFB_ROP_EDIT_BIT | rop) | (FFB_ROP_NEW << 8),
-                    FFB_DRAWOP_BRLINEOPEN, color, fbc, pFfb->xaa_wid);
+                    FFB_DRAWOP_BRLINEOPEN, color, fbc, pFfb->wid);
        FFBFifo(pFfb, 1);
        ffb->lpat = 0;
        pFfb->rp_active = 1;
@@ -653,10 +589,10 @@ void FFB_SetupForSolidFill(ScrnInfoPtr pScrn,
                "color[%d] rop[%d] pmask[%u]\n",
                color, rop, planemask));
 
-       pFfb->xaa_planemask = planemask;
+       pFfb->planemask = planemask;
        pFfb->xaa_rop = rop;
 
-       fbc = pFfb->xaa_fbc;
+       fbc = pFfb->fbc;
        if (pFfb->ffb_res == ffb_res_high)
                fbc |= FFB_FBC_WB_B;
        ppc = FFB_PPC_ABE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_CONST | FFB_PPC_XS_WID;
@@ -664,7 +600,7 @@ void FFB_SetupForSolidFill(ScrnInfoPtr pScrn,
 
        FFB_ATTR_RAW(pFfb, ppc, ppc_mask, planemask,
                     (FFB_ROP_EDIT_BIT | rop) | (FFB_ROP_NEW << 8),
-                    FFB_DRAWOP_RECTANGLE, color, fbc, pFfb->xaa_wid);
+                    FFB_DRAWOP_RECTANGLE, color, fbc, pFfb->wid);
        pFfb->rp_active = 1;
 }
 
@@ -801,7 +737,7 @@ void FFB_SetupForScreenToScreenCopy(ScrnInfoPtr pScrn,
                "xdir[%d] ydir[%d] rop[%d] pmask[%x] tcolor[%d]\n",
                xdir, ydir, rop, planemask, trans_color));
 
-       pFfb->xaa_planemask = planemask;
+       pFfb->planemask = planemask;
        pFfb->xaa_xdir = xdir;
        pFfb->xaa_ydir = ydir;
        pFfb->xaa_rop = rop;
@@ -850,21 +786,6 @@ static void FFB_Sync(ScrnInfoPtr pScrn)
        FFBWait(pFfb, ffb);
 }
 
-/* Multiplies and divides suck... */
-static void CreatorAlignTabInit(FFBPtr pFfb)
-{
-	struct fastfill_parms *ffp = &FFB_FFPARMS(pFfb);
-	short *tab = pFfb->Pf_AlignTab;
-	int i;
-
-	for(i = 0; i < 0x800; i++) {
-		int alignval;
-
-		alignval = (i / ffp->pagefill_width) * ffp->pagefill_width;
-		*tab++ = alignval;
-	}
-}
-
 #endif
 
 Bool FFBAccelInit(ScreenPtr pScreen, FFBPtr pFfb)
@@ -873,19 +794,19 @@ Bool FFBAccelInit(ScreenPtr pScreen, FFBPtr pFfb)
 	XAAInfoRecPtr infoRec;
 	ffb_fbcPtr ffb = pFfb->regs;
 
-	pFfb->xaa_fbc = (FFB_FBC_WB_A | FFB_FBC_WM_COMBINED | FFB_FBC_RB_A |
+	pFfb->fbc = (FFB_FBC_WB_A | FFB_FBC_WM_COMBINED | FFB_FBC_RB_A |
 			 FFB_FBC_WE_FORCEON |
 			 FFB_FBC_SB_BOTH |
 			 FFB_FBC_ZE_OFF | FFB_FBC_YE_OFF |
 			 FFB_FBC_RGBE_MASK |
 			 FFB_FBC_XE_ON);
-	pFfb->xaa_wid = FFBWidAlloc(pFfb, TrueColor, 0, TRUE);
-	if (pFfb->xaa_wid == (unsigned int) -1)
+	pFfb->wid = FFBWidAlloc(pFfb, TrueColor, 0, TRUE);
+	if (pFfb->wid == (unsigned int) -1)
 		return FALSE;
 
 	pFfb->pXAAInfo = infoRec = XAACreateInfoRec();
 	if (!infoRec) {
-		FFBWidFree(pFfb, pFfb->xaa_wid);
+		FFBWidFree(pFfb, pFfb->wid);
 		return FALSE;
 	}
 
@@ -1003,72 +924,13 @@ Bool FFBAccelInit(ScreenPtr pScreen, FFBPtr pFfb)
 		"FFB: cfg0(%08x) cfg1(%08x) cfg2(%08x) cfg3(%08x) ppcfg(%08x)\n",
 		ffb->fbcfg0, ffb->fbcfg1, ffb->fbcfg2, ffb->fbcfg3, ffb->ppcfg));
 
-	/* Determine the current screen resolution type.  This is
-	 * needed to figure out the fastfill/pagefill parameters.
-	 */
-	switch(ffb->fbcfg0 & FFB_FBCFG0_RES_MASK) {
-	default:
-	case FFB_FBCFG0_RES_STD:
-		pFfb->ffb_res = ffb_res_standard;
-		break;
-	case FFB_FBCFG0_RES_HIGH:
-		pFfb->ffb_res = ffb_res_high;
-		break;
-	case FFB_FBCFG0_RES_STEREO:
-		pFfb->ffb_res = ffb_res_stereo;
-		break;
-	case FFB_FBCFG0_RES_PRTRAIT:
-		pFfb->ffb_res = ffb_res_portrait;
-		break;
-	};
-	CreatorAlignTabInit(pFfb);
-
-	/* Next, determine the hwbug workarounds and feature enables
-	 * we should be using on this board.
-	 */
-	pFfb->disable_pagefill = 0;
-	pFfb->disable_vscroll = 0;
-	pFfb->has_brline_bug = 0;
-	pFfb->use_blkread_prefetch = 0;
-	if (pFfb->ffb_type == ffb1_prototype ||
-	    pFfb->ffb_type == ffb1_standard ||
-	    pFfb->ffb_type == ffb1_speedsort) {
-		pFfb->has_brline_bug = 1;
-		if (pFfb->ffb_res == ffb_res_high)
-			pFfb->disable_vscroll = 1;
-		if (pFfb->ffb_res == ffb_res_high ||
-		    pFfb->ffb_res == ffb_res_stereo)
-			pFfb->disable_pagefill = 1;
-
-	} else {
-		/* FFB2 has blkread prefetch.  AFB supposedly does too
-		 * but the chip locks up on me when I try to use it. -DaveM
-		 */
-#define AFB_PREFETCH_IS_BUGGY	1
-		if (!AFB_PREFETCH_IS_BUGGY ||
-		    (pFfb->ffb_type != afb_m3 &&
-		     pFfb->ffb_type != afb_m6)) {
-			pFfb->use_blkread_prefetch = 1;
-		}
-		/* XXX I still cannot get page/block fast fills
-		 * XXX to work reliably on any of my AFB boards. -DaveM
-		 */
-#define AFB_FASTFILL_IS_BUGGY	1
-		if (AFB_FASTFILL_IS_BUGGY &&
-		    (pFfb->ffb_type == afb_m3 ||
-		     pFfb->ffb_type == afb_m6))
-			pFfb->disable_pagefill = 1;
-	}
-	pFfb->disable_fastfill_ap = 0;
-	if (pFfb->ffb_res == ffb_res_stereo ||
-	    pFfb->ffb_res == ffb_res_high)
-		pFfb->disable_fastfill_ap = 1;
+	FFB_HardwareSetup(pFfb);
 
 	pFfb->ppc_cache = (FFB_PPC_FW_DISABLE |
 			   FFB_PPC_VCE_DISABLE | FFB_PPC_APE_DISABLE | FFB_PPC_CS_CONST |
 			   FFB_PPC_XS_WID | FFB_PPC_YS_CONST | FFB_PPC_ZS_CONST |
 			   FFB_PPC_DCE_DISABLE | FFB_PPC_ABE_DISABLE | FFB_PPC_TBE_OPAQUE);
-	pFfb->wid_cache = pFfb->xaa_wid;
+	pFfb->wid_cache = pFfb->wid;
 	pFfb->pmask_cache = ~0;
 	pFfb->rop_cache = (FFB_ROP_NEW | (FFB_ROP_NEW << 8));
 	pFfb->drawop_cache = FFB_DRAWOP_RECTANGLE;
@@ -1120,7 +982,7 @@ Bool FFBAccelInit(ScreenPtr pScreen, FFBPtr pFfb)
 		free(pFfb->xaa_scanline_buffers[0]);
 		free(pFfb->xaa_scanline_buffers[1]);
 		pFfb->pXAAInfo = NULL;
-		FFBWidFree(pFfb, pFfb->xaa_wid);
+		FFBWidFree(pFfb, pFfb->wid);
 		return FALSE;
 	}
 	/* Success */

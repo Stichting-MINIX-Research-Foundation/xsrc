@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.3
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  *
@@ -17,12 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
@@ -111,7 +111,7 @@
 #endif
 
 #if DO_TRI
-static void TAG(triangle)( GLcontext *ctx, GLuint e0, GLuint e1, GLuint e2 )
+static void TAG(triangle)( struct gl_context *ctx, GLuint e0, GLuint e1, GLuint e2 )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT( ctx )->vb;
    VERTEX *v[3];
@@ -288,8 +288,9 @@ static void TAG(triangle)( GLcontext *ctx, GLuint e0, GLuint e1, GLuint e2 )
 	 VERT_Z_ADD(v[1], offset);
 	 VERT_Z_ADD(v[2], offset);
       }
-      if (DO_UNFILLED)
+      if (DO_UNFILLED) {
 	 RASTERIZE( GL_TRIANGLES );
+      }
       if (DO_TWOSTENCIL && !HAVE_STENCIL_TWOSIDE && ctx->Stencil.TestTwoSide) {
          SETUP_STENCIL(facing);
          TRI( v[0], v[1], v[2] );
@@ -335,7 +336,7 @@ static void TAG(triangle)( GLcontext *ctx, GLuint e0, GLuint e1, GLuint e2 )
 
 #if DO_QUAD
 #if DO_FULL_QUAD
-static void TAG(quadr)( GLcontext *ctx,
+static void TAG(quadr)( struct gl_context *ctx,
 		       GLuint e0, GLuint e1, GLuint e2, GLuint e3 )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT( ctx )->vb;
@@ -575,7 +576,7 @@ static void TAG(quadr)( GLcontext *ctx,
    }
 }
 #else
-static void TAG(quadr)( GLcontext *ctx, GLuint e0,
+static void TAG(quadr)( struct gl_context *ctx, GLuint e0,
 		       GLuint e1, GLuint e2, GLuint e3 )
 {
    if (DO_UNFILLED) {
@@ -597,7 +598,7 @@ static void TAG(quadr)( GLcontext *ctx, GLuint e0,
 #endif
 
 #if DO_LINE
-static void TAG(line)( GLcontext *ctx, GLuint e0, GLuint e1 )
+static void TAG(line)( struct gl_context *ctx, GLuint e0, GLuint e1 )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT(ctx)->vb;
    VERTEX *v[2];
@@ -628,7 +629,7 @@ static void TAG(line)( GLcontext *ctx, GLuint e0, GLuint e1 )
 #endif
 
 #if DO_POINTS
-static void TAG(points)( GLcontext *ctx, GLuint first, GLuint last )
+static void TAG(points)( struct gl_context *ctx, GLuint first, GLuint last )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT( ctx )->vb;
    GLuint i;

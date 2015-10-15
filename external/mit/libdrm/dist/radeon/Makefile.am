@@ -22,37 +22,25 @@
 # Authors:
 #    Jérôme Glisse <glisse@freedesktop.org>
 
+include Makefile.sources
+
 AM_CFLAGS = \
 	$(WARN_CFLAGS) \
 	-I$(top_srcdir) \
-	-I$(top_srcdir)/radeon \
 	$(PTHREADSTUBS_CFLAGS) \
 	-I$(top_srcdir)/include/drm
 
 libdrm_radeon_la_LTLIBRARIES = libdrm_radeon.la
 libdrm_radeon_ladir = $(libdir)
-libdrm_radeon_la_LDFLAGS = -version-number 1:0:0 -no-undefined
+libdrm_radeon_la_LDFLAGS = -version-number 1:0:1 -no-undefined
 libdrm_radeon_la_LIBADD = ../libdrm.la @PTHREADSTUBS_LIBS@
 
-libdrm_radeon_la_SOURCES = \
-	radeon_bo_gem.c \
-	radeon_cs_gem.c \
-	radeon_cs_space.c \
-	radeon_bo.c \
-	radeon_cs.c \
-	bof.c \
-	bof.h
+libdrm_radeon_la_SOURCES = $(LIBDRM_RADEON_FILES)
 
 libdrm_radeonincludedir = ${includedir}/libdrm
-libdrm_radeoninclude_HEADERS = \
-	radeon_bo.h \
-	radeon_cs.h \
-	radeon_bo_gem.h \
-	radeon_cs_gem.h \
-	radeon_bo_int.h \
-	radeon_cs_int.h
+libdrm_radeoninclude_HEADERS = $(LIBDRM_RADEON_H_FILES)
 
 pkgconfigdir = @pkgconfigdir@
 pkgconfig_DATA = libdrm_radeon.pc
 
-EXTRA_DIST = libdrm_radeon.pc.in
+EXTRA_DIST = Android.mk $(LIBDRM_RADEON_BOF_FILES) $(TESTS)

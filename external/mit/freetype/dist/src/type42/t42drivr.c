@@ -4,7 +4,7 @@
 /*                                                                         */
 /*    High-level Type 42 driver interface (body).                          */
 /*                                                                         */
-/*  Copyright 2002-2004, 2006, 2007, 2009, 2011, 2013 by                   */
+/*  Copyright 2002-2015 by                                                 */
 /*  Roberto Alameda.                                                       */
 /*                                                                         */
 /*  This file is part of the FreeType project, and may only be used,       */
@@ -41,7 +41,7 @@
 #include "t42error.h"
 #include FT_INTERNAL_DEBUG_H
 
-#include FT_SERVICE_XFREE86_NAME_H
+#include FT_SERVICE_FONT_FORMAT_H
 #include FT_SERVICE_GLYPH_DICT_H
 #include FT_SERVICE_POSTSCRIPT_NAME_H
 #include FT_SERVICE_POSTSCRIPT_INFO_H
@@ -72,13 +72,13 @@
   t42_get_name_index( T42_Face    face,
                       FT_String*  glyph_name )
   {
-    FT_Int      i;
-    FT_String*  gname;
+    FT_Int  i;
 
 
     for ( i = 0; i < face->type1.num_glyphs; i++ )
     {
-      gname = face->type1.glyph_names[i];
+      FT_String*  gname = face->type1.glyph_names[i];
+
 
       if ( glyph_name[0] == gname[0] && !ft_strcmp( glyph_name, gname ) )
         return (FT_UInt)ft_atol( (const char *)face->type1.charstrings[i] );
@@ -180,7 +180,7 @@
     { FT_SERVICE_ID_GLYPH_DICT,           &t42_service_glyph_dict },
     { FT_SERVICE_ID_POSTSCRIPT_FONT_NAME, &t42_service_ps_font_name },
     { FT_SERVICE_ID_POSTSCRIPT_INFO,      &t42_service_ps_info },
-    { FT_SERVICE_ID_XF86_NAME,            FT_XF86_FORMAT_TYPE_42 },
+    { FT_SERVICE_ID_FONT_FORMAT,          FT_FONT_FORMAT_TYPE_42 },
     { NULL, NULL }
   };
 
@@ -230,10 +230,6 @@
     T42_GlyphSlot_Init,
     T42_GlyphSlot_Done,
 
-#ifdef FT_CONFIG_OPTION_OLD_INTERNALS
-    ft_stub_set_char_sizes,
-    ft_stub_set_pixel_sizes,
-#endif
     T42_GlyphSlot_Load,
 
     0,                 /* FT_Face_GetKerningFunc  */

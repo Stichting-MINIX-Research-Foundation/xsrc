@@ -355,7 +355,7 @@ void MGAGetQuiescence( ScrnInfoPtr pScrn )
       MGAWaitForIdleDMA( pScrn );
 
         /* FIXME what about EXA? */
-#ifdef XAA
+#ifdef USE_XAA
         if (!pMga->Exa && pMga->AccelInfoRec) {
       WAITFIFO( 11 );
       OUTREG( MGAREG_MACCESS, pMga->MAccess );
@@ -1164,9 +1164,6 @@ Bool MGADRIScreenInit( ScreenPtr pScreen )
    pDRIInfo->frameBufferSize = pMga->FbMapSize;
    pDRIInfo->frameBufferStride = pScrn->displayWidth*(pScrn->bitsPerPixel/8);
    pDRIInfo->ddxDrawableTableEntry = MGA_MAX_DRAWABLES;
-
-   pDRIInfo->wrap.ValidateTree = NULL;
-   pDRIInfo->wrap.PostValidateTree = NULL;
 
    pDRIInfo->createDummyCtx = TRUE;
    pDRIInfo->createDummyCtxPriv = FALSE;

@@ -36,8 +36,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <errno.h>
+#include "libdrm_macros.h"
 #include "xf86drm.h"
 #include "xf86atomic.h"
 #include "drm.h"
@@ -45,13 +45,13 @@
 #include "radeon_bo.h"
 #include "radeon_bo_int.h"
 #include "radeon_bo_gem.h"
-
+#include <fcntl.h>
 struct radeon_bo_gem {
-    struct radeon_bo_int base;
-    uint32_t            name;
-    int                 map_count;
-    atomic_t            reloc_in_cs;
-    void *priv_ptr;
+    struct radeon_bo_int    base;
+    uint32_t                name;
+    int                     map_count;
+    atomic_t                reloc_in_cs;
+    void                    *priv_ptr;
 };
 
 struct bo_manager_gem {
@@ -134,7 +134,7 @@ static struct radeon_bo *bo_unref(struct radeon_bo_int *boi)
         return (struct radeon_bo *)boi;
     }
     if (bo_gem->priv_ptr) {
-        munmap(bo_gem->priv_ptr, boi->size);
+        drm_munmap(bo_gem->priv_ptr, boi->size);
     }
 
     /* Zero out args to make valgrind happy */
@@ -178,8 +178,8 @@ static int bo_map(struct radeon_bo_int *boi, int write)
                 boi, boi->handle, r);
         return r;
     }
-    ptr = mmap(0, args.size, PROT_READ|PROT_WRITE, MAP_SHARED, boi->bom->fd, args.addr_ptr);
-    if (ptr == MAP_FAILED)
+    r = drmMap(boi->bom->fd, args.addr_ptr, args.size, &ptr);
+    if (r)
         return -errno;
     bo_gem->priv_ptr = ptr;
 wait:
@@ -197,7 +197,7 @@ static int bo_unmap(struct radeon_bo_int *boi)
     if (--bo_gem->map_count > 0) {
         return 0;
     }
-    //munmap(bo->ptr, bo->size);
+    //drm_munmap(bo->ptr, bo->size);
     boi->ptr = NULL;
     return 0;
 }
@@ -211,8 +211,8 @@ static int bo_wait(struct radeon_bo_int *boi)
     memset(&args, 0, sizeof(args));
     args.handle = boi->handle;
     do {
-        ret = drmCommandWriteRead(boi->bom->fd, DRM_RADEON_GEM_WAIT_IDLE,
-                                  &args, sizeof(args));
+        ret = drmCommandWrite(boi->bom->fd, DRM_RADEON_GEM_WAIT_IDLE,
+			      &args, sizeof(args));
     } while (ret == -EBUSY);
     return ret;
 }
@@ -307,34 +307,44 @@ void radeon_bo_manager_gem_dtor(struct radeon_bo_manager *bom)
     free(bomg);
 }
 
-uint32_t radeon_gem_name_bo(struct radeon_bo *bo)
+uint32_t
+radeon_gem_name_bo(struct radeon_bo *bo)
 {
     struct radeon_bo_gem *bo_gem = (struct radeon_bo_gem*)bo;
     return bo_gem->name;
 }
 
-void *radeon_gem_get_reloc_in_cs(struct radeon_bo *bo)
+void *
+radeon_gem_get_reloc_in_cs(struct radeon_bo *bo)
 {
     struct radeon_bo_gem *bo_gem = (struct radeon_bo_gem*)bo;
     return &bo_gem->reloc_in_cs;
 }
 
-int radeon_gem_get_kernel_name(struct radeon_bo *bo, uint32_t *name)
+int
+radeon_gem_get_kernel_name(struct radeon_bo *bo, uint32_t *name)
 {
+    struct radeon_bo_gem *bo_gem = (struct radeon_bo_gem*)bo;
     struct radeon_bo_int *boi = (struct radeon_bo_int *)bo;
     struct drm_gem_flink flink;
     int r;
 
+    if (bo_gem->name) {
+        *name = bo_gem->name;
+        return 0;
+    }
     flink.handle = bo->handle;
     r = drmIoctl(boi->bom->fd, DRM_IOCTL_GEM_FLINK, &flink);
     if (r) {
         return r;
     }
+    bo_gem->name = flink.name;
     *name = flink.name;
     return 0;
 }
 
-int radeon_gem_set_domain(struct radeon_bo *bo, uint32_t read_domains, uint32_t write_domain)
+int
+radeon_gem_set_domain(struct radeon_bo *bo, uint32_t read_domains, uint32_t write_domain)
 {
     struct radeon_bo_int *boi = (struct radeon_bo_int *)bo;
     struct drm_radeon_gem_set_domain args;
@@ -349,4 +359,49 @@ int radeon_gem_set_domain(struct radeon_bo *bo, uint32_t read_domains, uint32_t 
                             &args,
                             sizeof(args));
     return r;
+}
+
+int radeon_gem_prime_share_bo(struct radeon_bo *bo, int *handle)
+{
+    struct radeon_bo_gem *bo_gem = (struct radeon_bo_gem*)bo;
+    int ret;
+
+    ret = drmPrimeHandleToFD(bo_gem->base.bom->fd, bo->handle, DRM_CLOEXEC, handle);
+    return ret;
+}
+
+struct radeon_bo *
+radeon_gem_bo_open_prime(struct radeon_bo_manager *bom, int fd_handle, uint32_t size)
+{
+    struct radeon_bo_gem *bo;
+    int r;
+    uint32_t handle;
+
+    bo = (struct radeon_bo_gem*)calloc(1, sizeof(struct radeon_bo_gem));
+    if (bo == NULL) {
+        return NULL;
+    }
+
+    bo->base.bom = bom;
+    bo->base.handle = 0;
+    bo->base.size = size;
+    bo->base.alignment = 0;
+    bo->base.domains = RADEON_GEM_DOMAIN_GTT;
+    bo->base.flags = 0;
+    bo->base.ptr = NULL;
+    atomic_set(&bo->reloc_in_cs, 0);
+    bo->map_count = 0;
+
+    r = drmPrimeFDToHandle(bom->fd, fd_handle, &handle);
+    if (r != 0) {
+	free(bo);
+	return NULL;
+    }
+
+    bo->base.handle = handle;
+    bo->name = handle;
+
+    radeon_bo_ref((struct radeon_bo *)bo);
+    return (struct radeon_bo *)bo;
+
 }

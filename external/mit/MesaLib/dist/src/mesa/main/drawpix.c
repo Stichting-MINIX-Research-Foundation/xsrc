@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "glheader.h"
@@ -30,68 +30,111 @@
 #include "enums.h"
 #include "feedback.h"
 #include "framebuffer.h"
-#include "readpix.h"
+#include "image.h"
+#include "pbo.h"
 #include "state.h"
-#include "main/dispatch.h"
-
-
-#if FEATURE_drawpix
-
-
-/**
- * If a fragment program is enabled, check that it's valid.
- * \return GL_TRUE if valid, GL_FALSE otherwise
- */
-static GLboolean
-valid_fragment_program(GLcontext *ctx)
-{
-   return !(ctx->FragmentProgram.Enabled && !ctx->FragmentProgram._Enabled);
-}
+#include "dispatch.h"
+#include "glformats.h"
+#include "fbobject.h"
 
 
 /*
  * Execute glDrawPixels
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_DrawPixels( GLsizei width, GLsizei height,
                   GLenum format, GLenum type, const GLvoid *pixels )
 {
+   GLenum err;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
+
+   if (MESA_VERBOSE & VERBOSE_API)
+      _mesa_debug(ctx, "glDrawPixels(%d, %d, %s, %s, %p) // to %s at %d, %d\n",
+                  width, height,
+                  _mesa_lookup_enum_by_nr(format),
+                  _mesa_lookup_enum_by_nr(type),
+                  pixels,
+                  _mesa_lookup_enum_by_nr(ctx->DrawBuffer->ColorDrawBuffer[0]),
+                  IROUND(ctx->Current.RasterPos[0]),
+                  IROUND(ctx->Current.RasterPos[1]));
+
 
    if (width < 0 || height < 0) {
-      _mesa_error( ctx, GL_INVALID_VALUE, "glDrawPixels(width or height < 0" );
+      _mesa_error( ctx, GL_INVALID_VALUE, "glDrawPixels(width or height < 0)" );
       return;
    }
 
    /* We're not using the current vertex program, and the driver may install
-    * it's own.
+    * its own.  Note: this may dirty some state.
     */
    _mesa_set_vp_override(ctx, GL_TRUE);
 
-   if (ctx->NewState) {
-      _mesa_update_state(ctx);
+   /* Note: this call does state validation */
+   if (!_mesa_valid_to_render(ctx, "glDrawPixels")) {
+      goto end;      /* the error code was recorded */
    }
 
-   if (!valid_fragment_program(ctx)) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glDrawPixels (invalid fragment program)");
+   /* GL 3.0 introduced a new restriction on glDrawPixels() over what was in
+    * GL_EXT_texture_integer.  From section 3.7.4 ("Rasterization of Pixel
+    * Rectangles) on page 151 of the GL 3.0 specification:
+    *
+    *     "If format contains integer components, as shown in table 3.6, an
+    *      INVALID OPERATION error is generated."
+    *
+    * Since DrawPixels rendering would be merely undefined if not an error (due
+    * to a lack of defined mapping from integer data to gl_Color fragment shader
+    * input), NVIDIA's implementation also just returns this error despite
+    * exposing GL_EXT_texture_integer, just return an error regardless.
+    */
+   if (_mesa_is_enum_format_integer(format)) {
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glDrawPixels(integer format)");
       goto end;
    }
 
-   if (_mesa_error_check_format_type(ctx, format, type, GL_TRUE)) {
-      /* the error was already recorded */
+   err = _mesa_error_check_format_and_type(ctx, format, type);
+   if (err != GL_NO_ERROR) {
+      _mesa_error(ctx, err, "glDrawPixels(invalid format %s and/or type %s)",
+                  _mesa_lookup_enum_by_nr(format),
+                  _mesa_lookup_enum_by_nr(type));
       goto end;
    }
 
-   if (ctx->DrawBuffer->_Status != GL_FRAMEBUFFER_COMPLETE_EXT) {
-      _mesa_error(ctx, GL_INVALID_FRAMEBUFFER_OPERATION_EXT,
-                  "glDrawPixels(incomplete framebuffer)" );
+   /* do special format-related checks */
+   switch (format) {
+   case GL_STENCIL_INDEX:
+   case GL_DEPTH_COMPONENT:
+   case GL_DEPTH_STENCIL_EXT:
+      /* these buffers must exist */
+      if (!_mesa_dest_buffer_exists(ctx, format)) {
+         _mesa_error(ctx, GL_INVALID_OPERATION,
+                     "glDrawPixels(missing dest buffer)");
+         goto end;
+      }
+      break;
+   case GL_COLOR_INDEX:
+      if (ctx->PixelMaps.ItoR.Size == 0 ||
+          ctx->PixelMaps.ItoG.Size == 0 ||
+          ctx->PixelMaps.ItoB.Size == 0) {
+         _mesa_error(ctx, GL_INVALID_OPERATION,
+                "glDrawPixels(drawing color index pixels into RGB buffer)");
+         goto end;
+      }
+      break;
+   default:
+      /* for color formats it's not an error if the destination color
+       * buffer doesn't exist.
+       */
+      break;
+   }
+
+   if (ctx->RasterDiscard) {
       goto end;
    }
 
    if (!ctx->Current.RasterPosValid) {
-      goto end; /* no-op, not an error */
+      goto end;  /* no-op, not an error */
    }
 
    if (ctx->RenderMode == GL_RENDER) {
@@ -100,15 +143,15 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
          GLint x = IROUND(ctx->Current.RasterPos[0]);
          GLint y = IROUND(ctx->Current.RasterPos[1]);
 
-         if (ctx->Unpack.BufferObj->Name) {
+         if (_mesa_is_bufferobj(ctx->Unpack.BufferObj)) {
             /* unpack from PBO */
-            if (!_mesa_validate_pbo_access(2, &ctx->Unpack, width, height, 1,
-                                           format, type, pixels)) {
+            if (!_mesa_validate_pbo_access(2, &ctx->Unpack, width, height,
+                                           1, format, type, INT_MAX, pixels)) {
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glDrawPixels(invalid PBO access)");
                goto end;
             }
-            if (_mesa_bufferobj_mapped(ctx->Unpack.BufferObj)) {
+            if (_mesa_check_disallowed_mapping(ctx->Unpack.BufferObj)) {
                /* buffer is mapped - that's an error */
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glDrawPixels(PBO is mapped)");
@@ -136,15 +179,30 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
 
 end:
    _mesa_set_vp_override(ctx, GL_FALSE);
+
+   if (MESA_DEBUG_FLAGS & DEBUG_ALWAYS_FLUSH) {
+      _mesa_flush(ctx);
+   }
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
                   GLenum type )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
+
+   if (MESA_VERBOSE & VERBOSE_API)
+      _mesa_debug(ctx,
+                  "glCopyPixels(%d, %d, %d, %d, %s) // from %s to %s at %d, %d\n",
+                  srcx, srcy, width, height,
+                  _mesa_lookup_enum_by_nr(type),
+                  _mesa_lookup_enum_by_nr(ctx->ReadBuffer->ColorReadBuffer),
+                  _mesa_lookup_enum_by_nr(ctx->DrawBuffer->ColorDrawBuffer[0]),
+                  IROUND(ctx->Current.RasterPos[0]),
+                  IROUND(ctx->Current.RasterPos[1]));
 
    if (width < 0 || height < 0) {
       _mesa_error(ctx, GL_INVALID_VALUE, "glCopyPixels(width or height < 0)");
@@ -165,24 +223,26 @@ _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
    }
 
    /* We're not using the current vertex program, and the driver may install
-    * it's own.
+    * it's own.  Note: this may dirty some state.
     */
    _mesa_set_vp_override(ctx, GL_TRUE);
 
-   if (ctx->NewState) {
-      _mesa_update_state(ctx);
+   /* Note: this call does state validation */
+   if (!_mesa_valid_to_render(ctx, "glCopyPixels")) {
+      goto end;      /* the error code was recorded */
    }
 
-   if (!valid_fragment_program(ctx)) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glCopyPixels (invalid fragment program)");
+   /* Check read buffer's status (draw buffer was already checked) */
+   if (ctx->ReadBuffer->_Status != GL_FRAMEBUFFER_COMPLETE_EXT) {
+      _mesa_error(ctx, GL_INVALID_FRAMEBUFFER_OPERATION_EXT,
+                  "glCopyPixels(incomplete framebuffer)" );
       goto end;
    }
 
-   if (ctx->DrawBuffer->_Status != GL_FRAMEBUFFER_COMPLETE_EXT ||
-       ctx->ReadBuffer->_Status != GL_FRAMEBUFFER_COMPLETE_EXT) {
-      _mesa_error(ctx, GL_INVALID_FRAMEBUFFER_OPERATION_EXT,
-                  "glCopyPixels(incomplete framebuffer)" );
+   if (_mesa_is_user_fbo(ctx->ReadBuffer) &&
+       ctx->ReadBuffer->Visual.samples > 0) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+		  "glCopyPixels(multisample FBO)");
       goto end;
    }
 
@@ -193,7 +253,11 @@ _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
       goto end;
    }
 
-   if (!ctx->Current.RasterPosValid || width ==0 || height == 0) {
+   if (ctx->RasterDiscard) {
+      goto end;
+   }
+
+   if (!ctx->Current.RasterPosValid || width == 0 || height == 0) {
       goto end; /* no-op, not an error */
    }
 
@@ -221,16 +285,21 @@ _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
 
 end:
    _mesa_set_vp_override(ctx, GL_FALSE);
+
+   if (MESA_DEBUG_FLAGS & DEBUG_ALWAYS_FLUSH) {
+      _mesa_flush(ctx);
+   }
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_Bitmap( GLsizei width, GLsizei height,
               GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove,
               const GLubyte *bitmap )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
 
    if (width < 0 || height < 0) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glBitmap(width or height < 0)" );
@@ -241,21 +310,14 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
       return;    /* do nothing */
    }
 
-   if (ctx->NewState) {
-      _mesa_update_state(ctx);
-   }
-
-   if (!valid_fragment_program(ctx)) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glBitmap (invalid fragment program)");
+   /* Note: this call does state validation */
+   if (!_mesa_valid_to_render(ctx, "glBitmap")) {
+      /* the error code was recorded */
       return;
    }
 
-   if (ctx->DrawBuffer->_Status != GL_FRAMEBUFFER_COMPLETE_EXT) {
-      _mesa_error(ctx, GL_INVALID_FRAMEBUFFER_OPERATION_EXT,
-                  "glBitmap(incomplete framebuffer)");
+   if (ctx->RasterDiscard)
       return;
-   }
 
    if (ctx->RenderMode == GL_RENDER) {
       /* Truncate, to satisfy conformance tests (matches SGI's OpenGL). */
@@ -264,16 +326,16 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
          GLint x = IFLOOR(ctx->Current.RasterPos[0] + epsilon - xorig);
          GLint y = IFLOOR(ctx->Current.RasterPos[1] + epsilon - yorig);
 
-         if (ctx->Unpack.BufferObj->Name) {
+         if (_mesa_is_bufferobj(ctx->Unpack.BufferObj)) {
             /* unpack from PBO */
-            if (!_mesa_validate_pbo_access(2, &ctx->Unpack, width, height, 1,
-                                           GL_COLOR_INDEX, GL_BITMAP,
-                                           (GLvoid *) bitmap)) {
+            if (!_mesa_validate_pbo_access(2, &ctx->Unpack, width, height,
+                                           1, GL_COLOR_INDEX, GL_BITMAP,
+                                           INT_MAX, (const GLvoid *) bitmap)) {
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glBitmap(invalid PBO access)");
                return;
             }
-            if (_mesa_bufferobj_mapped(ctx->Unpack.BufferObj)) {
+            if (_mesa_check_disallowed_mapping(ctx->Unpack.BufferObj)) {
                /* buffer is mapped - that's an error */
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glBitmap(PBO is mapped)");
@@ -284,7 +346,6 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
          ctx->Driver.Bitmap( ctx, x, y, width, height, &ctx->Unpack, bitmap );
       }
    }
-#if _HAVE_FULL_GL
    else if (ctx->RenderMode == GL_FEEDBACK) {
       FLUSH_CURRENT(ctx, 0);
       _mesa_feedback_token( ctx, (GLfloat) (GLint) GL_BITMAP_TOKEN );
@@ -297,21 +358,12 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
       ASSERT(ctx->RenderMode == GL_SELECT);
       /* Do nothing.  See OpenGL Spec, Appendix B, Corollary 6. */
    }
-#endif
 
    /* update raster position */
    ctx->Current.RasterPos[0] += xmove;
    ctx->Current.RasterPos[1] += ymove;
+
+   if (MESA_DEBUG_FLAGS & DEBUG_ALWAYS_FLUSH) {
+      _mesa_flush(ctx);
+   }
 }
-
-
-void
-_mesa_init_drawpix_dispatch(struct _glapi_table *disp)
-{
-   SET_Bitmap(disp, _mesa_Bitmap);
-   SET_CopyPixels(disp, _mesa_CopyPixels);
-   SET_DrawPixels(disp, _mesa_DrawPixels);
-}
-
-
-#endif /* FEATURE_drawpix */

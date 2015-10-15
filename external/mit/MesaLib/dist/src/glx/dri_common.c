@@ -39,8 +39,8 @@
 #include <dlfcn.h>
 #include <stdarg.h>
 #include "glxclient.h"
-#include "glcontextmodes.h"
 #include "dri_common.h"
+#include "loader.h"
 
 #ifndef RTLD_NOW
 #define RTLD_NOW 0
@@ -50,30 +50,23 @@
 #endif
 
 _X_HIDDEN void
-InfoMessageF(const char *f, ...)
+dri_message(int level, const char *f, ...)
 {
    va_list args;
-   const char *env;
+   int threshold = _LOADER_WARNING;
+   const char *libgl_debug;
 
-   if ((env = getenv("LIBGL_DEBUG")) && strstr(env, "verbose")) {
-      fprintf(stderr, "libGL: ");
-      va_start(args, f);
-      vfprintf(stderr, f, args);
-      va_end(args);
+   libgl_debug = getenv("LIBGL_DEBUG");
+   if (libgl_debug) {
+      if (strstr(libgl_debug, "quiet"))
+         threshold = _LOADER_FATAL;
+      else if (strstr(libgl_debug, "verbose"))
+         threshold = _LOADER_DEBUG;
    }
-}
 
-/**
- * Print error to stderr, unless LIBGL_DEBUG=="quiet".
- */
-_X_HIDDEN void
-ErrorMessageF(const char *f, ...)
-{
-   va_list args;
-   const char *env;
-
-   if ((env = getenv("LIBGL_DEBUG")) && !strstr(env, "quiet")) {
-      fprintf(stderr, "libGL error: ");
+   /* Note that the _LOADER_* levels are lower numbers for more severe. */
+   if (level <= threshold) {
+      fprintf(stderr, "libGL%s: ", level <= _LOADER_WARNING ? " error" : "");
       va_start(args, f);
       vfprintf(stderr, f, args);
       va_end(args);
@@ -92,7 +85,7 @@ ErrorMessageF(const char *f, ...)
  * directories specified by the \c LIBGL_DRIVERS_PATH environment variable in
  * order to find the driver.
  *
- * \param driverName - a name like "tdfx", "i810", "mga", etc.
+ * \param driverName - a name like "i965", "radeon", "nouveau", etc.
  *
  * \returns
  * A handle from \c dlopen, or \c NULL if driver file not found.
@@ -106,7 +99,11 @@ driOpenDriver(const char *driverName)
    int len;
 
    /* Attempt to make sure libGL symbols will be visible to the driver */
+#ifdef __NetBSD__ // base only, pkgsrc didn't get bumped for time_t
+   glhandle = dlopen("libGL.so.2", RTLD_NOW | RTLD_GLOBAL);
+#else
    glhandle = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
+#endif
 
    libPaths = NULL;
    if (geteuid() == getuid()) {
@@ -147,7 +144,7 @@ driOpenDriver(const char *driverName)
       if (handle != NULL)
          break;
       else
-         ErrorMessageF("dlopen %s failed (%s)\n", realDriverName, dlerror());
+         InfoMessageF("dlopen %s failed (%s)\n", realDriverName, dlerror());
    }
 
    if (!handle)
@@ -159,14 +156,54 @@ driOpenDriver(const char *driverName)
    return handle;
 }
 
+_X_HIDDEN const __DRIextension **
+driGetDriverExtensions(void *handle, const char *driver_name)
+{
+   const __DRIextension **extensions = NULL;
+   const __DRIextension **(*get_extensions)(void);
+   char *get_extensions_name;
+
+   if (asprintf(&get_extensions_name, "%s_%s",
+                __DRI_DRIVER_GET_EXTENSIONS, driver_name) != -1) {
+      get_extensions = dlsym(handle, get_extensions_name);
+      if (get_extensions) {
+         free(get_extensions_name);
+         return get_extensions();
+      } else {
+         InfoMessageF("driver does not expose %s(): %s\n",
+                      get_extensions_name, dlerror());
+         free(get_extensions_name);
+      }
+   }
+
+   extensions = dlsym(handle, __DRI_DRIVER_EXTENSIONS);
+   if (extensions == NULL) {
+      ErrorMessageF("driver exports no extensions (%s)\n", dlerror());
+      return NULL;
+   }
+
+   return extensions;
+}
+
+static GLboolean
+__driGetMSCRate(__DRIdrawable *draw,
+		int32_t * numerator, int32_t * denominator,
+		void *loaderPrivate)
+{
+   __GLXDRIdrawable *glxDraw = loaderPrivate;
+
+   return __glxGetMscRate(glxDraw->psc, numerator, denominator);
+}
+
 _X_HIDDEN const __DRIsystemTimeExtension systemTimeExtension = {
-   {__DRI_SYSTEM_TIME, __DRI_SYSTEM_TIME_VERSION},
-   __glXGetUST,
-   __driGetMscRateOML
+   .base = {__DRI_SYSTEM_TIME, 1 },
+
+   .getUST              = __glXGetUST,
+   .getMSCRate          = __driGetMSCRate
 };
 
 #define __ATTRIB(attrib, field) \
-    { attrib, offsetof(__GLcontextModes, field) }
+    { attrib, offsetof(struct glx_config, field) }
 
 static const struct
 {
@@ -213,12 +250,12 @@ __ATTRIB(__DRI_ATTRIB_BIND_TO_TEXTURE_RGB, bindToTextureRgb),
       __ATTRIB(__DRI_ATTRIB_BIND_TO_TEXTURE_RGBA, bindToTextureRgba),
       __ATTRIB(__DRI_ATTRIB_BIND_TO_MIPMAP_TEXTURE,
                      bindToMipmapTexture),
-      __ATTRIB(__DRI_ATTRIB_YINVERTED, yInverted),};
-
-#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
+      __ATTRIB(__DRI_ATTRIB_YINVERTED, yInverted),
+      __ATTRIB(__DRI_ATTRIB_FRAMEBUFFER_SRGB_CAPABLE, sRGBCapable)
+};
 
 static int
-scalarEqual(__GLcontextModes * mode, unsigned int attrib, unsigned int value)
+scalarEqual(struct glx_config *mode, unsigned int attrib, unsigned int value)
 {
    unsigned int glxValue;
    int i;
@@ -233,8 +270,8 @@ scalarEqual(__GLcontextModes * mode, unsigned int attrib, unsigned int value)
 }
 
 static int
-driConfigEqual(const __DRIcoreExtension * core,
-               __GLcontextModes * modes, const __DRIconfig * driConfig)
+driConfigEqual(const __DRIcoreExtension *core,
+               struct glx_config *config, const __DRIconfig *driConfig)
 {
    unsigned int attrib, value, glxValue;
    int i;
@@ -247,10 +284,16 @@ driConfigEqual(const __DRIcoreExtension * core,
          if (value & __DRI_ATTRIB_RGBA_BIT) {
             glxValue |= GLX_RGBA_BIT;
          }
-         else if (value & __DRI_ATTRIB_COLOR_INDEX_BIT) {
+         if (value & __DRI_ATTRIB_COLOR_INDEX_BIT) {
             glxValue |= GLX_COLOR_INDEX_BIT;
          }
-         if (glxValue != modes->renderType)
+         if (value & __DRI_ATTRIB_FLOAT_BIT) {
+            glxValue |= GLX_RGBA_FLOAT_BIT_ARB;
+         }
+         if (value & __DRI_ATTRIB_UNSIGNED_FLOAT_BIT) {
+            glxValue |= GLX_RGBA_UNSIGNED_FLOAT_BIT_EXT;
+         }
+         if (glxValue != config->renderType)
             return GL_FALSE;
          break;
 
@@ -261,7 +304,7 @@ driConfigEqual(const __DRIcoreExtension * core,
             glxValue = GLX_SLOW_CONFIG;
          else
             glxValue = GLX_NONE;
-         if (glxValue != modes->visualRating)
+         if (glxValue != config->visualRating)
             return GL_FALSE;
          break;
 
@@ -273,13 +316,13 @@ driConfigEqual(const __DRIcoreExtension * core,
             glxValue |= GLX_TEXTURE_2D_BIT_EXT;
          if (value & __DRI_ATTRIB_TEXTURE_RECTANGLE_BIT)
             glxValue |= GLX_TEXTURE_RECTANGLE_BIT_EXT;
-         if (modes->bindToTextureTargets != GLX_DONT_CARE &&
-             glxValue != modes->bindToTextureTargets)
+         if (config->bindToTextureTargets != GLX_DONT_CARE &&
+             glxValue != config->bindToTextureTargets)
             return GL_FALSE;
          break;
 
       default:
-         if (!scalarEqual(modes, attrib, value))
+         if (!scalarEqual(config, attrib, value))
             return GL_FALSE;
       }
    }
@@ -287,41 +330,41 @@ driConfigEqual(const __DRIcoreExtension * core,
    return GL_TRUE;
 }
 
-static __GLcontextModes *
+static struct glx_config *
 createDriMode(const __DRIcoreExtension * core,
-              __GLcontextModes * modes, const __DRIconfig ** driConfigs)
+	      struct glx_config *config, const __DRIconfig **driConfigs)
 {
-   __GLXDRIconfigPrivate *config;
+   __GLXDRIconfigPrivate *driConfig;
    int i;
 
    for (i = 0; driConfigs[i]; i++) {
-      if (driConfigEqual(core, modes, driConfigs[i]))
+      if (driConfigEqual(core, config, driConfigs[i]))
          break;
    }
 
    if (driConfigs[i] == NULL)
       return NULL;
 
-   config = Xmalloc(sizeof *config);
-   if (config == NULL)
+   driConfig = malloc(sizeof *driConfig);
+   if (driConfig == NULL)
       return NULL;
 
-   config->modes = *modes;
-   config->driConfig = driConfigs[i];
+   driConfig->base = *config;
+   driConfig->driConfig = driConfigs[i];
 
-   return &config->modes;
+   return &driConfig->base;
 }
 
-_X_HIDDEN __GLcontextModes *
+_X_HIDDEN struct glx_config *
 driConvertConfigs(const __DRIcoreExtension * core,
-                  __GLcontextModes * modes, const __DRIconfig ** configs)
+                  struct glx_config *configs, const __DRIconfig **driConfigs)
 {
-   __GLcontextModes head, *tail, *m;
+   struct glx_config head, *tail, *m;
 
    tail = &head;
    head.next = NULL;
-   for (m = modes; m; m = m->next) {
-      tail->next = createDriMode(core, m, configs);
+   for (m = configs; m; m = m->next) {
+      tail->next = createDriMode(core, m, driConfigs);
       if (tail->next == NULL) {
          /* no matching dri config for m */
          continue;
@@ -331,120 +374,228 @@ driConvertConfigs(const __DRIcoreExtension * core,
       tail = tail->next;
    }
 
-   _gl_context_modes_destroy(modes);
-
    return head.next;
 }
 
-/* Bind DRI1 specific extensions */
 _X_HIDDEN void
-driBindExtensions(__GLXscreenConfigs *psc)
+driDestroyConfigs(const __DRIconfig **configs)
 {
-   const __DRIextension **extensions;
    int i;
 
-   extensions = psc->core->getExtensions(psc->__driScreen);
-
-   for (i = 0; extensions[i]; i++) {
-#ifdef __DRI_SWAP_CONTROL
-      /* No DRI2 support for swap_control at the moment, since SwapBuffers
-       * is done by the X server */
-      if (strcmp(extensions[i]->name, __DRI_SWAP_CONTROL) == 0) {
-	 psc->swapControl = (__DRIswapControlExtension *) extensions[i];
-	 __glXEnableDirectExtension(psc, "GLX_SGI_swap_control");
-	 __glXEnableDirectExtension(psc, "GLX_MESA_swap_control");
-      }
-#endif
-
-#ifdef __DRI_MEDIA_STREAM_COUNTER
-      if (strcmp(extensions[i]->name, __DRI_MEDIA_STREAM_COUNTER) == 0) {
-         psc->msc = (__DRImediaStreamCounterExtension *) extensions[i];
-         __glXEnableDirectExtension(psc, "GLX_SGI_video_sync");
-      }
-#endif
-
-#ifdef __DRI_SWAP_BUFFER_COUNTER
-      /* No driver supports this at this time and the extension is
-       * not defined in dri_interface.h.  Will enable
-       * GLX_OML_sync_control if implemented. */
-#endif
-
-      /* Ignore unknown extensions */
-   }
+   for (i = 0; configs[i]; i++)
+      free((__DRIconfig *) configs[i]);
+   free(configs);
 }
 
-/* Bind DRI2 specific extensions */
-_X_HIDDEN void
-dri2BindExtensions(__GLXscreenConfigs *psc)
+_X_HIDDEN __GLXDRIdrawable *
+driFetchDrawable(struct glx_context *gc, GLXDrawable glxDrawable)
 {
-   const __DRIextension **extensions;
-   int i;
+   struct glx_display *const priv = __glXInitialize(gc->psc->dpy);
+   __GLXDRIdrawable *pdraw;
+   struct glx_screen *psc;
 
-   extensions = psc->core->getExtensions(psc->__driScreen);
+   if (priv == NULL)
+      return NULL;
 
-   for (i = 0; extensions[i]; i++) {
-#ifdef __DRI_TEX_BUFFER
-      if ((strcmp(extensions[i]->name, __DRI_TEX_BUFFER) == 0)) {
-	 psc->texBuffer = (__DRItexBufferExtension *) extensions[i];
-	 __glXEnableDirectExtension(psc, "GLX_EXT_texture_from_pixmap");
-      }
-#endif
+   if (glxDrawable == None)
+      return NULL;
 
-      __glXEnableDirectExtension(psc, "GLX_SGI_video_sync");
-      __glXEnableDirectExtension(psc, "GLX_SGI_swap_control");
-      __glXEnableDirectExtension(psc, "GLX_MESA_swap_control");
+   psc = priv->screens[gc->screen];
+   if (priv->drawHash == NULL)
+      return NULL;
 
-      /* FIXME: if DRI2 version supports it... */
-      __glXEnableDirectExtension(psc, "INTEL_swap_event");
-
-#ifdef __DRI2_FLUSH
-      if ((strcmp(extensions[i]->name, __DRI2_FLUSH) == 0)) {
-	 psc->f = (__DRI2flushExtension *) extensions[i];
-	 /* internal driver extension, no GL extension exposed */
-      }
-#endif
+   if (__glxHashLookup(priv->drawHash, glxDrawable, (void *) &pdraw) == 0) {
+      pdraw->refcount ++;
+      return pdraw;
    }
+
+   pdraw = psc->driScreen->createDrawable(psc, glxDrawable,
+                                          glxDrawable, gc->config);
+
+   if (pdraw == NULL) {
+      ErrorMessageF("failed to create drawable\n");
+      return NULL;
+   }
+
+   if (__glxHashInsert(priv->drawHash, glxDrawable, pdraw)) {
+      (*pdraw->destroyDrawable) (pdraw);
+      return NULL;
+   }
+   pdraw->refcount = 1;
+
+   return pdraw;
 }
 
-/* Bind extensions common to DRI1 and DRI2 */
 _X_HIDDEN void
-driBindCommonExtensions(__GLXscreenConfigs *psc)
+driReleaseDrawables(struct glx_context *gc)
 {
-   const __DRIextension **extensions;
-   int i;
+   const struct glx_display *priv = gc->psc->display;
+   __GLXDRIdrawable *pdraw;
 
-   extensions = psc->core->getExtensions(psc->__driScreen);
+   if (priv == NULL)
+      return;
 
-   for (i = 0; extensions[i]; i++) {
-#ifdef __DRI_COPY_SUB_BUFFER
-      if (strcmp(extensions[i]->name, __DRI_COPY_SUB_BUFFER) == 0) {
-	 psc->driCopySubBuffer = (__DRIcopySubBufferExtension *) extensions[i];
-	 __glXEnableDirectExtension(psc, "GLX_MESA_copy_sub_buffer");
+   if (__glxHashLookup(priv->drawHash,
+		       gc->currentDrawable, (void *) &pdraw) == 0) {
+      if (pdraw->drawable == pdraw->xDrawable) {
+	 pdraw->refcount --;
+	 if (pdraw->refcount == 0) {
+	    (*pdraw->destroyDrawable)(pdraw);
+	    __glxHashDelete(priv->drawHash, gc->currentDrawable);
+	 }
       }
-#endif
-
-#ifdef __DRI_ALLOCATE
-      if (strcmp(extensions[i]->name, __DRI_ALLOCATE) == 0) {
-	 psc->allocate = (__DRIallocateExtension *) extensions[i];
-	 __glXEnableDirectExtension(psc, "GLX_MESA_allocate_memory");
-      }
-#endif
-
-#ifdef __DRI_FRAME_TRACKING
-      if (strcmp(extensions[i]->name, __DRI_FRAME_TRACKING) == 0) {
-	 psc->frameTracking = (__DRIframeTrackingExtension *) extensions[i];
-	 __glXEnableDirectExtension(psc, "GLX_MESA_swap_frame_usage");
-      }
-#endif
-
-#ifdef __DRI_READ_DRAWABLE
-      if (strcmp(extensions[i]->name, __DRI_READ_DRAWABLE) == 0) {
-	 __glXEnableDirectExtension(psc, "GLX_SGI_make_current_read");
-      }
-#endif
-
-      /* Ignore unknown extensions */
    }
+
+   if (__glxHashLookup(priv->drawHash,
+		       gc->currentReadable, (void *) &pdraw) == 0) {
+      if (pdraw->drawable == pdraw->xDrawable) {
+	 pdraw->refcount --;
+	 if (pdraw->refcount == 0) {
+	    (*pdraw->destroyDrawable)(pdraw);
+	    __glxHashDelete(priv->drawHash, gc->currentReadable);
+	 }
+      }
+   }
+
+   gc->currentDrawable = None;
+   gc->currentReadable = None;
+
+}
+
+_X_HIDDEN bool
+dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
+                         unsigned *major_ver, unsigned *minor_ver,
+                         uint32_t *render_type, uint32_t *flags, unsigned *api,
+                         int *reset, unsigned *error)
+{
+   unsigned i;
+   bool got_profile = false;
+   uint32_t profile;
+
+   *major_ver = 1;
+   *minor_ver = 0;
+   *render_type = GLX_RGBA_TYPE;
+   *reset = __DRI_CTX_RESET_NO_NOTIFICATION;
+   *flags = 0;
+   *api = __DRI_API_OPENGL;
+
+   if (num_attribs == 0) {
+      return true;
+   }
+
+   /* This is actually an internal error, but what the heck.
+    */
+   if (attribs == NULL) {
+      *error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
+      return false;
+   }
+
+   for (i = 0; i < num_attribs; i++) {
+      switch (attribs[i * 2]) {
+      case GLX_CONTEXT_MAJOR_VERSION_ARB:
+	 *major_ver = attribs[i * 2 + 1];
+	 break;
+      case GLX_CONTEXT_MINOR_VERSION_ARB:
+	 *minor_ver = attribs[i * 2 + 1];
+	 break;
+      case GLX_CONTEXT_FLAGS_ARB:
+	 *flags = attribs[i * 2 + 1];
+	 break;
+      case GLX_CONTEXT_PROFILE_MASK_ARB:
+	 profile = attribs[i * 2 + 1];
+	 got_profile = true;
+	 break;
+      case GLX_RENDER_TYPE:
+         *render_type = attribs[i * 2 + 1];
+	 break;
+      case GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB:
+         switch (attribs[i * 2 + 1]) {
+         case GLX_NO_RESET_NOTIFICATION_ARB:
+            *reset = __DRI_CTX_RESET_NO_NOTIFICATION;
+            break;
+         case GLX_LOSE_CONTEXT_ON_RESET_ARB:
+            *reset = __DRI_CTX_RESET_LOSE_CONTEXT;
+            break;
+         default:
+            *error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
+            return false;
+         }
+         break;
+      default:
+	 /* If an unknown attribute is received, fail.
+	  */
+	 *error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
+	 return false;
+      }
+   }
+
+   if (!got_profile) {
+      if (*major_ver > 3 || (*major_ver == 3 && *minor_ver >= 2))
+	 *api = __DRI_API_OPENGL_CORE;
+   } else {
+      switch (profile) {
+      case GLX_CONTEXT_CORE_PROFILE_BIT_ARB:
+	 /* There are no profiles before OpenGL 3.2.  The
+	  * GLX_ARB_create_context_profile spec says:
+	  *
+	  *     "If the requested OpenGL version is less than 3.2,
+	  *     GLX_CONTEXT_PROFILE_MASK_ARB is ignored and the functionality
+	  *     of the context is determined solely by the requested version."
+	  */
+	 *api = (*major_ver > 3 || (*major_ver == 3 && *minor_ver >= 2))
+	    ? __DRI_API_OPENGL_CORE : __DRI_API_OPENGL;
+	 break;
+      case GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB:
+	 *api = __DRI_API_OPENGL;
+	 break;
+      case GLX_CONTEXT_ES2_PROFILE_BIT_EXT:
+	 *api = __DRI_API_GLES2;
+	 break;
+      default:
+	 *error = __DRI_CTX_ERROR_BAD_API;
+	 return false;
+      }
+   }
+
+   /* Unknown flag value.
+    */
+   if (*flags & ~(__DRI_CTX_FLAG_DEBUG | __DRI_CTX_FLAG_FORWARD_COMPATIBLE
+                  | __DRI_CTX_FLAG_ROBUST_BUFFER_ACCESS)) {
+      *error = __DRI_CTX_ERROR_UNKNOWN_FLAG;
+      return false;
+   }
+
+   /* There are no forward-compatible contexts before OpenGL 3.0.  The
+    * GLX_ARB_create_context spec says:
+    *
+    *     "Forward-compatible contexts are defined only for OpenGL versions
+    *     3.0 and later."
+    */
+   if (*major_ver < 3 && (*flags & __DRI_CTX_FLAG_FORWARD_COMPATIBLE) != 0) {
+      *error = __DRI_CTX_ERROR_BAD_FLAG;
+      return false;
+   }
+
+   if (*major_ver >= 3 && *render_type == GLX_COLOR_INDEX_TYPE) {
+      *error = __DRI_CTX_ERROR_BAD_FLAG;
+      return false;
+   }
+
+   /* The GLX_EXT_create_context_es2_profile spec says:
+    *
+    *     "... If the version requested is 2.0, and the
+    *     GLX_CONTEXT_ES2_PROFILE_BIT_EXT bit is set in the
+    *     GLX_CONTEXT_PROFILE_MASK_ARB attribute (see below), then the context
+    *     returned will implement OpenGL ES 2.0. This is the only way in which
+    *     an implementation may request an OpenGL ES 2.0 context."
+    */
+   if (*api == __DRI_API_GLES2 && (*major_ver != 2 || *minor_ver != 0)) {
+      *error = __DRI_CTX_ERROR_BAD_API;
+      return false;
+   }
+
+   *error = __DRI_CTX_ERROR_SUCCESS;
+   return true;
 }
 
 #endif /* GLX_DIRECT_RENDERING */

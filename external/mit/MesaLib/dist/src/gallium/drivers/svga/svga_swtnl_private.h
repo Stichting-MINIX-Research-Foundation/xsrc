@@ -45,8 +45,10 @@ struct svga_vbuf_render {
 
    unsigned prim;
 
-   struct pipe_buffer *vbuf;
-   struct pipe_buffer *ibuf;
+   struct pipe_resource *vbuf;
+   struct pipe_resource *ibuf;
+   struct pipe_transfer *vbuf_transfer;
+   struct pipe_transfer *ibuf_transfer;
 
    /* current size of buffer */
    size_t vbuf_size;
@@ -86,7 +88,7 @@ struct vbuf_render *
 svga_vbuf_render_create( struct svga_context *svga );
 
 
-int
+enum pipe_error
 svga_swtnl_update_vdecl( struct svga_context *svga );
 
 

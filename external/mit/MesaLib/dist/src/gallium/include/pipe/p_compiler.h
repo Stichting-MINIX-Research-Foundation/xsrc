@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,17 +29,15 @@
 #define P_COMPILER_H
 
 
+#include "c99_compat.h" /* inline, __func__, etc. */
+
 #include "p_config.h"
 
-#ifndef XFree86Server
 #include <stdlib.h>
 #include <string.h>
-#else
-#include "xf86_ansic.h"
-#include "xf86_libc.h"
-#endif
 #include <stddef.h>
 #include <stdarg.h>
+#include <limits.h>
 
 
 #if defined(_WIN32) && !defined(__WIN32__)
@@ -65,8 +63,15 @@
 #include <stdbool.h>
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #if !defined(__HAIKU__) && !defined(__USE_MISC)
+#if !defined(PIPE_OS_ANDROID)
 typedef unsigned int       uint;
+#endif
 typedef unsigned short     ushort;
 #endif
 typedef unsigned char      ubyte;
@@ -79,27 +84,27 @@ typedef unsigned char boolean;
 #define FALSE false
 #endif
 
+#ifndef va_copy
+#ifdef __va_copy
+#define va_copy(dest, src) __va_copy((dest), (src))
+#else
+#define va_copy(dest, src) (dest) = (src)
+#endif
+#endif
 
-/* Function inlining */
+/* XXX: Use standard `inline` keyword instead */
 #ifndef INLINE
-#  ifdef __cplusplus
-#    define INLINE inline
-#  elif defined(__GNUC__)
-#    define INLINE __inline__
+#  define INLINE inline
+#endif
+
+/* Forced function inlining */
+#ifndef ALWAYS_INLINE
+#  ifdef __GNUC__
+#    define ALWAYS_INLINE inline __attribute__((always_inline))
 #  elif defined(_MSC_VER)
-#    define INLINE __inline
-#  elif defined(__ICL)
-#    define INLINE __inline
-#  elif defined(__INTEL_COMPILER)
-#    define INLINE inline
-#  elif defined(__WATCOMC__) && (__WATCOMC__ >= 1100)
-#    define INLINE __inline
-#  elif defined(__SUNPRO_C) && defined(__C99FEATURES__)
-#    define INLINE inline
-#  elif (__STDC_VERSION__ >= 199901L) /* C99 */
-#    define INLINE inline
+#    define ALWAYS_INLINE __forceinline
 #  else
-#    define INLINE
+#    define ALWAYS_INLINE INLINE
 #  endif
 #endif
 
@@ -108,29 +113,18 @@ typedef unsigned char boolean;
 #ifndef PUBLIC
 #  if defined(__GNUC__) || (defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590))
 #    define PUBLIC __attribute__((visibility("default")))
+#  elif defined(_MSC_VER)
+#    define PUBLIC __declspec(dllexport)
 #  else
 #    define PUBLIC
 #  endif
 #endif
 
 
-/* The __FUNCTION__ gcc variable is generally only used for debugging.
- * If we're not using gcc, define __FUNCTION__ as a cpp symbol here.
- */
+/* XXX: Use standard `__func__` instead */
 #ifndef __FUNCTION__
-# if !defined(__GNUC__)
-#  if (__STDC_VERSION__ >= 199901L) /* C99 */ || \
-    (defined(__SUNPRO_C) && defined(__C99FEATURES__))
-#   define __FUNCTION__ __func__
-#  else
-#   define __FUNCTION__ "<unknown>"
-#  endif
-# endif
-# if defined(_MSC_VER) && _MSC_VER < 1300
-#  define __FUNCTION__ "<unknown>"
-# endif
+#  define __FUNCTION__ __func__
 #endif
-
 
 
 /* This should match linux gcc cdecl semantics everywhere, so that we
@@ -153,7 +147,7 @@ typedef unsigned char boolean;
 
 
 /* Macros for data alignment. */
-#if defined(__GNUC__) || (defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590))
+#if defined(__GNUC__) || (defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590)) || defined(__SUNPRO_CC)
 
 /* See http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Type-Attributes.html */
 #define PIPE_ALIGN_TYPE(_alignment, _type) _type __attribute__((aligned(_alignment)))
@@ -188,6 +182,86 @@ typedef unsigned char boolean;
 
 #endif
 
+
+#if defined(__GNUC__)
+
+#define PIPE_READ_WRITE_BARRIER() __asm__("":::"memory")
+
+#elif defined(_MSC_VER)
+
+void _ReadWriteBarrier(void);
+#pragma intrinsic(_ReadWriteBarrier)
+#define PIPE_READ_WRITE_BARRIER() _ReadWriteBarrier()
+
+#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+
+#define PIPE_READ_WRITE_BARRIER() __machine_rw_barrier()
+
+#else
+
+#warning "Unsupported compiler"
+#define PIPE_READ_WRITE_BARRIER() /* */
+
+#endif
+
+
+/* You should use these macros to mark if blocks where the if condition
+ * is either likely to be true, or unlikely to be true.
+ *
+ * This will inform human readers of this fact, and will also inform
+ * the compiler, who will in turn inform the CPU.
+ *
+ * CPUs often start executing code inside the if or the else blocks
+ * without knowing whether the condition is true or not, and will have
+ * to throw the work away if they find out later they executed the
+ * wrong part of the if.
+ *
+ * If these macros are used, the CPU is more likely to correctly predict
+ * the right path, and will avoid speculatively executing the wrong branch,
+ * thus not throwing away work, resulting in better performance.
+ *
+ * In light of this, it is also a good idea to mark as "likely" a path
+ * which is not necessarily always more likely, but that will benefit much
+ * more from performance improvements since it is already much faster than
+ * the other path, or viceversa with "unlikely".
+ *
+ * Example usage:
+ * if(unlikely(do_we_need_a_software_fallback()))
+ *    do_software_fallback();
+ * else
+ *    render_with_gpu();
+ *
+ * The macros follow the Linux kernel convention, and more examples can
+ * be found there.
+ *
+ * Note that profile guided optimization can offer better results, but
+ * needs an appropriate coverage suite and does not inform human readers.
+ */
+#ifndef likely
+#  if defined(__GNUC__)
+#    define likely(x)   __builtin_expect(!!(x), 1)
+#    define unlikely(x) __builtin_expect(!!(x), 0)
+#  else
+#    define likely(x)   (x)
+#    define unlikely(x) (x)
+#  endif
+#endif
+
+
+/**
+ * Static (compile-time) assertion.
+ * Basically, use COND to dimension an array.  If COND is false/zero the
+ * array size will be -1 and we'll get a compilation error.
+ */
+#define STATIC_ASSERT(COND) \
+   do { \
+      (void) sizeof(char [1 - 2*!(COND)]); \
+   } while (0)
+
+
+#if defined(__cplusplus)
+}
+#endif
 
 
 #endif /* P_COMPILER_H */

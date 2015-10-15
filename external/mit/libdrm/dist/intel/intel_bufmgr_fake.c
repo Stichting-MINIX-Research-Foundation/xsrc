@@ -49,12 +49,8 @@
 #include "drm.h"
 #include "i915_drm.h"
 #include "mm.h"
+#include "libdrm_macros.h"
 #include "libdrm_lists.h"
-
-/* Support gcc's __FUNCTION__ for people using other compilers */
-#if !defined(__GNUC__) && !defined(__FUNCTION__)
-# define __FUNCTION__ __func__ /* C99 */
-#endif
 
 #define DBG(...) do {					\
 	if (bufmgr_fake->bufmgr.debug)			\
@@ -277,7 +273,7 @@ _fence_emit_internal(drm_intel_bufmgr_fake *bufmgr_fake)
 	ret = drmCommandWriteRead(bufmgr_fake->fd, DRM_I915_IRQ_EMIT,
 				  &ie, sizeof(ie));
 	if (ret) {
-		drmMsg("%s: drm_i915_irq_emit: %d\n", __FUNCTION__, ret);
+		drmMsg("%s: drm_i915_irq_emit: %d\n", __func__, ret);
 		abort();
 	}
 
@@ -505,7 +501,7 @@ alloc_backing_store(drm_intel_bo *bo)
 
 	bo_fake->backing_store = malloc(bo->size);
 
-	DBG("alloc_backing - buf %d %p %d\n", bo_fake->id,
+	DBG("alloc_backing - buf %d %p %lu\n", bo_fake->id,
 	    bo_fake->backing_store, bo->size);
 	assert(bo_fake->backing_store);
 }
@@ -544,7 +540,7 @@ evict_lru(drm_intel_bufmgr_fake *bufmgr_fake, unsigned int max_fence)
 {
 	struct block *block, *tmp;
 
-	DBG("%s\n", __FUNCTION__);
+	DBG("%s\n", __func__);
 
 	DRMLISTFOREACHSAFE(block, tmp, &bufmgr_fake->lru) {
 		drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) block->bo;
@@ -571,7 +567,7 @@ evict_mru(drm_intel_bufmgr_fake *bufmgr_fake)
 {
 	struct block *block, *tmp;
 
-	DBG("%s\n", __FUNCTION__);
+	DBG("%s\n", __func__);
 
 	DRMLISTFOREACHSAFEREVERSE(block, tmp, &bufmgr_fake->lru) {
 		drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) block->bo;
@@ -631,7 +627,7 @@ clear_fenced(drm_intel_bufmgr_fake *bufmgr_fake, unsigned int fence_cookie)
 		}
 	}
 
-	DBG("%s: %d\n", __FUNCTION__, ret);
+	DBG("%s: %d\n", __func__, ret);
 	return ret;
 }
 
@@ -716,7 +712,7 @@ evict_and_alloc_block(drm_intel_bo *bo)
 		if (alloc_block(bo))
 			return 1;
 
-	DBG("%s 0x%x bytes failed\n", __FUNCTION__, bo->size);
+	DBG("%s 0x%lx bytes failed\n", __func__, bo->size);
 
 	return 0;
 }
@@ -835,7 +831,7 @@ drm_intel_fake_bo_alloc(drm_intel_bufmgr *bufmgr,
 	bo_fake->flags = 0;
 	bo_fake->is_static = 0;
 
-	DBG("drm_bo_alloc: (buf %d: %s, %d kb)\n", bo_fake->id, bo_fake->name,
+	DBG("drm_bo_alloc: (buf %d: %s, %lu kb)\n", bo_fake->id, bo_fake->name,
 	    bo_fake->bo.size / 1024);
 
 	return &bo_fake->bo;
@@ -894,7 +890,7 @@ drm_intel_bo_fake_alloc_static(drm_intel_bufmgr *bufmgr,
 	bo_fake->flags = BM_PINNED;
 	bo_fake->is_static = 1;
 
-	DBG("drm_bo_alloc_static: (buf %d: %s, %d kb)\n", bo_fake->id,
+	DBG("drm_bo_alloc_static: (buf %d: %s, %lu kb)\n", bo_fake->id,
 	    bo_fake->name, bo_fake->bo.size / 1024);
 
 	return &bo_fake->bo;
@@ -1022,16 +1018,16 @@ static int
 		return 0;
 
 	{
-		DBG("drm_bo_map: (buf %d: %s, %d kb)\n", bo_fake->id,
+		DBG("drm_bo_map: (buf %d: %s, %lu kb)\n", bo_fake->id,
 		    bo_fake->name, bo_fake->bo.size / 1024);
 
 		if (bo->virtual != NULL) {
-			drmMsg("%s: already mapped\n", __FUNCTION__);
+			drmMsg("%s: already mapped\n", __func__);
 			abort();
 		} else if (bo_fake->flags & (BM_NO_BACKING_STORE | BM_PINNED)) {
 
 			if (!bo_fake->block && !evict_and_alloc_block(bo)) {
-				DBG("%s: alloc failed\n", __FUNCTION__);
+				DBG("%s: alloc failed\n", __func__);
 				bufmgr_fake->fail = 1;
 				return 1;
 			} else {
@@ -1100,7 +1096,7 @@ static int
 	if (--bo_fake->map_count != 0)
 		return 0;
 
-	DBG("drm_bo_unmap: (buf %d: %s, %d kb)\n", bo_fake->id, bo_fake->name,
+	DBG("drm_bo_unmap: (buf %d: %s, %lu kb)\n", bo_fake->id, bo_fake->name,
 	    bo_fake->bo.size / 1024);
 
 	bo->virtual = NULL;
@@ -1167,7 +1163,7 @@ static int
 
 	bufmgr_fake = (drm_intel_bufmgr_fake *) bo->bufmgr;
 
-	DBG("drm_bo_validate: (buf %d: %s, %d kb)\n", bo_fake->id,
+	DBG("drm_bo_validate: (buf %d: %s, %lu kb)\n", bo_fake->id,
 	    bo_fake->name, bo_fake->bo.size / 1024);
 
 	/* Sanity check: Buffers should be unmapped before being validated.
@@ -1197,7 +1193,7 @@ static int
 
 	/* Upload the buffer contents if necessary */
 	if (bo_fake->dirty) {
-		DBG("Upload dirty buf %d:%s, sz %d offset 0x%x\n", bo_fake->id,
+		DBG("Upload dirty buf %d:%s, sz %lu offset 0x%x\n", bo_fake->id,
 		    bo_fake->name, bo->size, bo_fake->block->mem->ofs);
 
 		assert(!(bo_fake->flags & (BM_NO_BACKING_STORE | BM_PINNED)));
@@ -1522,12 +1518,12 @@ drm_intel_fake_check_aperture_space(drm_intel_bo ** bo_array, int count)
 	}
 
 	if (sz > bufmgr_fake->size) {
-		DBG("check_space: overflowed bufmgr size, %dkb vs %dkb\n",
+		DBG("check_space: overflowed bufmgr size, %ukb vs %lukb\n",
 		    sz / 1024, bufmgr_fake->size / 1024);
 		return -1;
 	}
 
-	DBG("drm_check_space: sz %dkb vs bufgr %dkb\n", sz / 1024,
+	DBG("drm_check_space: sz %ukb vs bufgr %lukb\n", sz / 1024,
 	    bufmgr_fake->size / 1024);
 	return 0;
 }
@@ -1539,7 +1535,8 @@ drm_intel_fake_check_aperture_space(drm_intel_bo ** bo_array, int count)
  * Used by the X Server on LeaveVT, when the card memory is no longer our
  * own.
  */
-void drm_intel_bufmgr_fake_evict_all(drm_intel_bufmgr *bufmgr)
+void
+drm_intel_bufmgr_fake_evict_all(drm_intel_bufmgr *bufmgr)
 {
 	drm_intel_bufmgr_fake *bufmgr_fake = (drm_intel_bufmgr_fake *) bufmgr;
 	struct block *block, *tmp;
@@ -1573,21 +1570,20 @@ void drm_intel_bufmgr_fake_evict_all(drm_intel_bufmgr *bufmgr)
 	pthread_mutex_unlock(&bufmgr_fake->lock);
 }
 
-void drm_intel_bufmgr_fake_set_last_dispatch(drm_intel_bufmgr *bufmgr,
-					     volatile unsigned int
-					     *last_dispatch)
+void
+drm_intel_bufmgr_fake_set_last_dispatch(drm_intel_bufmgr *bufmgr,
+					volatile unsigned int
+					*last_dispatch)
 {
 	drm_intel_bufmgr_fake *bufmgr_fake = (drm_intel_bufmgr_fake *) bufmgr;
 
 	bufmgr_fake->last_dispatch = (volatile int *)last_dispatch;
 }
 
-drm_intel_bufmgr *drm_intel_bufmgr_fake_init(int fd,
-					     unsigned long low_offset,
-					     void *low_virtual,
-					     unsigned long size,
-					     volatile unsigned int
-					     *last_dispatch)
+drm_intel_bufmgr *
+drm_intel_bufmgr_fake_init(int fd, unsigned long low_offset,
+			   void *low_virtual, unsigned long size,
+			   volatile unsigned int *last_dispatch)
 {
 	drm_intel_bufmgr_fake *bufmgr_fake;
 

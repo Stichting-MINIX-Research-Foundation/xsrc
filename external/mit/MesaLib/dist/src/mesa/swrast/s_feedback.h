@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  3.5
  *
  * Copyright (C) 1999-2001  Brian Paul   All Rights Reserved.
  *
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -31,20 +31,20 @@
 #include "swrast.h"
 
 
-extern void _swrast_feedback_point( GLcontext *ctx, const SWvertex *v );
+extern void _swrast_feedback_point( struct gl_context *ctx, const SWvertex *v );
 
-extern void _swrast_feedback_line( GLcontext *ctx,
+extern void _swrast_feedback_line( struct gl_context *ctx,
                               const SWvertex *v1, const SWvertex *v2 );
 
-extern void _swrast_feedback_triangle( GLcontext *ctx, const SWvertex *v0,
+extern void _swrast_feedback_triangle( struct gl_context *ctx, const SWvertex *v0,
                                   const SWvertex *v1, const SWvertex *v2 );
 
-extern void _swrast_select_point( GLcontext *ctx, const SWvertex *v );
+extern void _swrast_select_point( struct gl_context *ctx, const SWvertex *v );
 
-extern void _swrast_select_line( GLcontext *ctx,
+extern void _swrast_select_line( struct gl_context *ctx,
                             const SWvertex *v1, const SWvertex *v2 );
 
-extern void _swrast_select_triangle( GLcontext *ctx, const SWvertex *v0,
+extern void _swrast_select_triangle( struct gl_context *ctx, const SWvertex *v0,
                                 const SWvertex *v1, const SWvertex *v2 );
 
 #endif

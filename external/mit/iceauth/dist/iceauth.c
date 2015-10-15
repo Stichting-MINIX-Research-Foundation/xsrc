@@ -44,7 +44,7 @@ Bool break_locks = False;		/* for error recovery */
  */
 
 static char *authfilename = NULL;	/* filename of cookie file */
-static char *defcmds[] = { "source", "-", NULL };  /* default command */
+static const char *defcmds[] = { "source", "-", NULL };  /* default command */
 static int ndefcmds = 2;
 static const char *defsource = "(stdin)";
 
@@ -52,7 +52,8 @@ static const char *defsource = "(stdin)";
 /*
  * utility routines
  */
-static void usage (void)
+static void _X_NORETURN
+usage (int exitcode)
 {
     static const char prefixmsg[] = 
 "\n"
@@ -62,6 +63,7 @@ static void usage (void)
 "    -q                             turn off extra messages\n"
 "    -i                             ignore locks on authority file\n"
 "    -b                             break locks on authority file\n"
+"    -V                             print version and exit\n"
 "\n"
 "and commands have the following syntax:\n";
     static const char suffixmsg[] = 
@@ -70,10 +72,10 @@ static void usage (void)
 
     fprintf (stderr, "usage:  %s [-options ...] [command arg ...]\n",
 	     ProgramName);
-    fprintf (stderr, "%s\n", prefixmsg);
-    print_help (stderr, "    ");	/* match prefix indentation */
+    fprintf (stderr, "%s", prefixmsg);
+    print_help (stderr, NULL);
     fprintf (stderr, "\n%s\n", suffixmsg);
-    exit (1);
+    exit (exitcode);
 }
 
 
@@ -85,24 +87,31 @@ main (int argc, char *argv[])
 {
     int i;
     const char *sourcename = defsource;
-    char **arglist = defcmds;
+    const char **arglist = defcmds;
     int nargs = ndefcmds;
     int status;
 
     ProgramName = argv[0];
 
     for (i = 1; i < argc; i++) {
-	char *arg = argv[i];
+	const char *arg = argv[i];
 
 	if (arg[0] == '-') {
-	    char *flag;
+	    const char *flag;
 
 	    for (flag = (arg + 1); *flag; flag++) {
 		switch (*flag) {
 		  case 'f':		/* -f authfilename */
-		    if (++i >= argc) usage ();
+		    if (++i >= argc) {
+			fprintf(stderr, "%s: -f requires an argument\n",
+				ProgramName);
+			usage (1);
+		    }
 		    authfilename = argv[i];
 		    continue;
+		  case 'V':		/* -V */
+		    printf("%s\n", PACKAGE_STRING);
+		    exit(0);
 		  case 'v':		/* -v */
 		    verbose = 1;
 		    continue;
@@ -115,14 +124,18 @@ main (int argc, char *argv[])
 		  case 'i':		/* -i */
 		    ignore_locks = True;
 		    continue;
+		  case 'u':		/* -u */
+		    usage (0);
 		  default:
-		    usage ();
+		    fprintf(stderr, "%s: unrecognized option '%s'\n",
+			    ProgramName, flag);
+		    usage (1);
 		}
 	    }
 	} else {
 	    sourcename = "(argv)";
 	    nargs = argc - i;
-	    arglist = argv + i;
+	    arglist = (const char **) argv + i;
 	    if (verbose == -1) verbose = 0;
 	    break;
 	}

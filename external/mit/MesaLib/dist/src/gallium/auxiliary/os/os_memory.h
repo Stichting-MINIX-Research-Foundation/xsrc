@@ -39,7 +39,7 @@
 #include "pipe/p_compiler.h"
 
 
-#if defined(PIPE_OS_EMBEDDED)
+#if defined(PIPE_SUBSYSTEM_EMBEDDED)
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,10 +70,6 @@ os_free_aligned(void *ptr);
 #elif defined(PIPE_OS_WINDOWS) && defined(DEBUG) && !defined(DEBUG_MEMORY_IMPLEMENTATION)
 
 #  include "os_memory_debug.h"
-
-#elif defined(PIPE_SUBSYSTEM_WINDOWS_DISPLAY) || defined(PIPE_SUBSYSTEM_WINDOWS_MINIPORT)
-
-#  include "os_memory_win32k.h"
 
 #else
 

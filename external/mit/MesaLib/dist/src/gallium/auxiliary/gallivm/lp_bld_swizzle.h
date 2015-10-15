@@ -37,15 +37,18 @@
 #define LP_BLD_SWIZZLE_H
 
 
-#include <llvm-c/Core.h>  
+#include "gallivm/lp_bld.h"
 
 
 struct lp_type;
 struct lp_build_context;
 
 
+#define LP_BLD_SWIZZLE_DONTCARE 0xFF
+
+
 LLVMValueRef
-lp_build_broadcast(LLVMBuilderRef builder,
+lp_build_broadcast(struct gallivm_state *gallivm,
                    LLVMTypeRef vec_type,
                    LLVMValueRef scalar);
 
@@ -55,37 +58,91 @@ lp_build_broadcast_scalar(struct lp_build_context *bld,
                           LLVMValueRef scalar);
 
 
+LLVMValueRef
+lp_build_extract_broadcast(struct gallivm_state *gallivm,
+                           struct lp_type src_type,
+                           struct lp_type dst_type,
+                           LLVMValueRef vector,
+                           LLVMValueRef index);
+
+
 /**
- * Broadcast one channel of a vector composed of arrays of XYZW structures into
- * all four channel.
+ * Broadcast one channel of a vector composed of arrays of XYZ.. structures into
+ * all channels XXX...
  */
 LLVMValueRef
-lp_build_broadcast_aos(struct lp_build_context *bld,
-                       LLVMValueRef a,
-                       unsigned channel);
+lp_build_swizzle_scalar_aos(struct lp_build_context *bld,
+                            LLVMValueRef a,
+                            unsigned channel,
+                            unsigned num_channels);
 
 
 /**
  * Swizzle a vector consisting of an array of XYZW structs.
  *
- * @param swizzle is the in [0,4[ range.
+ * @param swizzles is the in [0,4[ range.
  */
 LLVMValueRef
-lp_build_swizzle1_aos(struct lp_build_context *bld,
-                      LLVMValueRef a,
-                      const unsigned char swizzle[4]);
+lp_build_swizzle_aos(struct lp_build_context *bld,
+                     LLVMValueRef a,
+                     const unsigned char swizzles[4]);
 
 
-/**
- * Swizzle two vector consisting of an array of XYZW structs.
- *
- * @param swizzle is the in [0,8[ range. Values in [4,8[ range refer to b.
- */
 LLVMValueRef
-lp_build_swizzle2_aos(struct lp_build_context *bld,
-                      LLVMValueRef a,
-                      LLVMValueRef b,
-                      const unsigned char swizzle[4]);
+lp_build_swizzle_aos_n(struct gallivm_state* gallivm,
+                       LLVMValueRef src,
+                       const unsigned char* swizzles,
+                       unsigned num_swizzles,
+                       unsigned dst_len);
+
+
+LLVMValueRef
+lp_build_swizzle_soa_channel(struct lp_build_context *bld,
+                             const LLVMValueRef *unswizzled,
+                             unsigned swizzle);
+
+
+void
+lp_build_swizzle_soa(struct lp_build_context *bld,
+                     const LLVMValueRef *unswizzled,
+                     const unsigned char swizzles[4],
+                     LLVMValueRef *swizzled);
+
+
+void
+lp_build_swizzle_soa_inplace(struct lp_build_context *bld,
+                             LLVMValueRef *values,
+                             const unsigned char swizzles[4]);
+
+
+void
+lp_build_transpose_aos(struct gallivm_state *gallivm,
+                       struct lp_type type,
+                       const LLVMValueRef src[4],
+                       LLVMValueRef dst[4]);
+
+
+void
+lp_build_transpose_aos_n(struct gallivm_state *gallivm,
+                         struct lp_type type,
+                         const LLVMValueRef* src,
+                         unsigned num_srcs,
+                         LLVMValueRef* dst);
+
+
+LLVMValueRef
+lp_build_pack_aos_scalars(struct gallivm_state *gallivm,
+                          struct lp_type src_type,
+                          struct lp_type dst_type,
+                          const LLVMValueRef src,
+                          unsigned channel);
+
+
+LLVMValueRef
+lp_build_unpack_broadcast_aos_scalars(struct gallivm_state *gallivm,
+                                      struct lp_type src_type,
+                                      struct lp_type dst_type,
+                                      const LLVMValueRef src);
 
 
 #endif /* !LP_BLD_SWIZZLE_H */

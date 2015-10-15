@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,12 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
@@ -47,7 +47,7 @@ static tnl_quad_func     quad_tab[SS_MAX_TRIFUNC];
 /*
  * Render a triangle respecting edge flags.
  */
-typedef void (* swsetup_edge_render_prim_tri)(GLcontext *ctx,
+typedef void (* swsetup_edge_render_prim_tri)(struct gl_context *ctx,
                                               const GLubyte *ef,
                                               GLuint e0,
                                               GLuint e1,
@@ -60,7 +60,7 @@ typedef void (* swsetup_edge_render_prim_tri)(GLcontext *ctx,
  * Render a triangle using lines and respecting edge flags.
  */
 static void
-_swsetup_edge_render_line_tri(GLcontext *ctx,
+_swsetup_edge_render_line_tri(struct gl_context *ctx,
                               const GLubyte *ef,
                               GLuint e0,
                               GLuint e1,
@@ -86,7 +86,7 @@ _swsetup_edge_render_line_tri(GLcontext *ctx,
  * Render a triangle using points and respecting edge flags.
  */
 static void
-_swsetup_edge_render_point_tri(GLcontext *ctx,
+_swsetup_edge_render_point_tri(struct gl_context *ctx,
                                const GLubyte *ef,
                                GLuint e0,
                                GLuint e1,
@@ -105,7 +105,7 @@ _swsetup_edge_render_point_tri(GLcontext *ctx,
 /*
  * Render a triangle respecting cull and shade model.
  */
-static void _swsetup_render_tri(GLcontext *ctx,
+static void _swsetup_render_tri(struct gl_context *ctx,
                                 GLuint e0,
                                 GLuint e1,
                                 GLuint e2,
@@ -137,21 +137,21 @@ static void _swsetup_render_tri(GLcontext *ctx,
       /* save colors/indexes for v0, v1 vertices */
       COPY_CHAN4(c[0], v0->color);
       COPY_CHAN4(c[1], v1->color);
-      COPY_4V(s[0], v0->attrib[FRAG_ATTRIB_COL1]);
-      COPY_4V(s[1], v1->attrib[FRAG_ATTRIB_COL1]);
+      COPY_4V(s[0], v0->attrib[VARYING_SLOT_COL1]);
+      COPY_4V(s[1], v1->attrib[VARYING_SLOT_COL1]);
 
       /* copy v2 color/indexes to v0, v1 indexes */
       COPY_CHAN4(v0->color, v2->color);
       COPY_CHAN4(v1->color, v2->color);
-      COPY_4V(v0->attrib[FRAG_ATTRIB_COL1], v2->attrib[FRAG_ATTRIB_COL1]);
-      COPY_4V(v1->attrib[FRAG_ATTRIB_COL1], v2->attrib[FRAG_ATTRIB_COL1]);
+      COPY_4V(v0->attrib[VARYING_SLOT_COL1], v2->attrib[VARYING_SLOT_COL1]);
+      COPY_4V(v1->attrib[VARYING_SLOT_COL1], v2->attrib[VARYING_SLOT_COL1]);
 
       render(ctx, ef, e0, e1, e2, v0, v1, v2);
 
       COPY_CHAN4(v0->color, c[0]);
       COPY_CHAN4(v1->color, c[1]);
-      COPY_4V(v0->attrib[FRAG_ATTRIB_COL1], s[0]);
-      COPY_4V(v1->attrib[FRAG_ATTRIB_COL1], s[1]);
+      COPY_4V(v0->attrib[VARYING_SLOT_COL1], s[0]);
+      COPY_4V(v1->attrib[VARYING_SLOT_COL1], s[1]);
    }
    else {
       render(ctx, ef, e0, e1, e2, v0, v1, v2);
@@ -159,7 +159,7 @@ static void _swsetup_render_tri(GLcontext *ctx,
 }
 
 #define SS_COLOR(a,b) UNCLAMPED_FLOAT_TO_RGBA_CHAN(a,b)
-#define SS_SPEC(a,b) UNCLAMPED_FLOAT_TO_RGB_CHAN(a,b)
+#define SS_SPEC(a,b) COPY_4V(a,b)
 #define SS_IND(a,b) (a = b)
 
 #define IND (0)
@@ -195,7 +195,7 @@ static void _swsetup_render_tri(GLcontext *ctx,
 #include "ss_tritmp.h"
 
 
-void _swsetup_trifuncs_init( GLcontext *ctx )
+void _swsetup_trifuncs_init( struct gl_context *ctx )
 {
    (void) ctx;
 
@@ -210,7 +210,7 @@ void _swsetup_trifuncs_init( GLcontext *ctx )
 }
 
 
-static void swsetup_points( GLcontext *ctx, GLuint first, GLuint last )
+static void swsetup_points( struct gl_context *ctx, GLuint first, GLuint last )
 {
    struct vertex_buffer *VB = &TNL_CONTEXT(ctx)->vb;
    SWvertex *verts = SWSETUP_CONTEXT(ctx)->verts;
@@ -228,7 +228,7 @@ static void swsetup_points( GLcontext *ctx, GLuint first, GLuint last )
    }
 }
 
-static void swsetup_line( GLcontext *ctx, GLuint v0, GLuint v1 )
+static void swsetup_line( struct gl_context *ctx, GLuint v0, GLuint v1 )
 {
    SWvertex *verts = SWSETUP_CONTEXT(ctx)->verts;
    _swrast_Line( ctx, &verts[v0], &verts[v1] );
@@ -236,7 +236,7 @@ static void swsetup_line( GLcontext *ctx, GLuint v0, GLuint v1 )
 
 
 
-void _swsetup_choose_trifuncs( GLcontext *ctx )
+void _swsetup_choose_trifuncs( struct gl_context *ctx )
 {
    TNLcontext *tnl = TNL_CONTEXT(ctx);
    GLuint ind = 0;

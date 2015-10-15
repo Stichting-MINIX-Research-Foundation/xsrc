@@ -26,6 +26,8 @@
  */
 
 #include <limits.h>
+#include <string.h>
+#include <sys/ioctl.h>
 #include "drmtest.h"
 
 /**

@@ -5,7 +5,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -22,9 +21,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -32,11 +32,15 @@
 #define POLYGON_H
 
 
-#include "mtypes.h"
+#include "glheader.h"
 
+struct gl_context;
+
+extern void GLAPIENTRY
+_mesa_GetnPolygonStippleARB( GLsizei bufSize, GLubyte *dest );
 
 extern void
-_mesa_polygon_stipple(GLcontext *ctx, const GLubyte *pattern);
+_mesa_polygon_stipple(struct gl_context *ctx, const GLubyte *pattern);
 
 
 extern void GLAPIENTRY
@@ -61,6 +65,6 @@ extern void GLAPIENTRY
 _mesa_GetPolygonStipple( GLubyte *mask );
 
 extern void 
-_mesa_init_polygon( GLcontext * ctx );
+_mesa_init_polygon( struct gl_context * ctx );
 
 #endif

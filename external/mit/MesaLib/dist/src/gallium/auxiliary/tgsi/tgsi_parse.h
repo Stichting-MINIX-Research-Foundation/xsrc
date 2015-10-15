@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -28,6 +28,7 @@
 #ifndef TGSI_PARSE_H
 #define TGSI_PARSE_H
 
+#include "pipe/p_compiler.h"
 #include "pipe/p_shader_tokens.h"
 
 #if defined __cplusplus
@@ -43,15 +44,17 @@ struct tgsi_full_header
 struct tgsi_full_dst_register
 {
    struct tgsi_dst_register               Register;
-   struct tgsi_src_register               Indirect;
+   struct tgsi_ind_register               Indirect;
+   struct tgsi_dimension                  Dimension;
+   struct tgsi_ind_register               DimIndirect;
 };
 
 struct tgsi_full_src_register
 {
    struct tgsi_src_register         Register;
-   struct tgsi_src_register         Indirect;
+   struct tgsi_ind_register         Indirect;
    struct tgsi_dimension            Dimension;
-   struct tgsi_src_register         DimIndirect;
+   struct tgsi_ind_register         DimIndirect;
 };
 
 struct tgsi_full_declaration
@@ -59,7 +62,11 @@ struct tgsi_full_declaration
    struct tgsi_declaration Declaration;
    struct tgsi_declaration_range Range;
    struct tgsi_declaration_dimension Dim;
+   struct tgsi_declaration_interp Interp;
    struct tgsi_declaration_semantic Semantic;
+   struct tgsi_declaration_resource Resource;
+   struct tgsi_declaration_sampler_view SamplerView;
+   struct tgsi_declaration_array Array;
 };
 
 struct tgsi_full_immediate
@@ -75,7 +82,8 @@ struct tgsi_full_property
 };
 
 #define TGSI_FULL_MAX_DST_REGISTERS 2
-#define TGSI_FULL_MAX_SRC_REGISTERS 4 /* TXD has 4 */
+#define TGSI_FULL_MAX_SRC_REGISTERS 5 /* SAMPLE_D has 5 */
+#define TGSI_FULL_MAX_TEX_OFFSETS 4
 
 struct tgsi_full_instruction
 {
@@ -85,6 +93,7 @@ struct tgsi_full_instruction
    struct tgsi_instruction_texture     Texture;
    struct tgsi_full_dst_register       Dst[TGSI_FULL_MAX_DST_REGISTERS];
    struct tgsi_full_src_register       Src[TGSI_FULL_MAX_SRC_REGISTERS];
+   struct tgsi_texture_offset          TexOffsets[TGSI_FULL_MAX_TEX_OFFSETS];
 };
 
 union tgsi_full_token
@@ -124,8 +133,16 @@ void
 tgsi_parse_token(
    struct tgsi_parse_context *ctx );
 
-unsigned
-tgsi_num_tokens(const struct tgsi_token *tokens);
+static INLINE unsigned
+tgsi_num_tokens(const struct tgsi_token *tokens)
+{
+   struct tgsi_header header;
+   memcpy(&header, tokens, sizeof(header));
+   return header.HeaderSize + header.BodySize;
+}
+
+void
+tgsi_dump_tokens(const struct tgsi_token *tokens);
 
 struct tgsi_token *
 tgsi_dup_tokens(const struct tgsi_token *tokens);

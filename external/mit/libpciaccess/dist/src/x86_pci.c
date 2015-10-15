@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009 Samuel Thibault
+ * Copyright (c) 2009, 2012 Samuel Thibault
  * Heavily inspired from the freebsd, netbsd, and openbsd backends
  * (C) Copyright Eric Anholt 2006
  * (C) Copyright IBM Corporation 2006
@@ -70,6 +70,133 @@ x86_disable_io(void)
     if (!iopl(0))
         return 0;
     return errno;
+}
+
+#elif defined(__CYGWIN__)
+
+#include <windows.h>
+
+/* WinIo declarations */
+typedef BYTE bool;
+typedef struct tagPhysStruct {
+    DWORD64 dwPhysMemSizeInBytes;
+    DWORD64 pvPhysAddress;
+    DWORD64 PhysicalMemoryHandle;
+    DWORD64 pvPhysMemLin;
+    DWORD64 pvPhysSection;
+} tagPhysStruct;
+
+typedef bool  (_stdcall* INITIALIZEWINIO)(void);
+typedef void  (_stdcall* SHUTDOWNWINIO)(void);
+typedef bool  (_stdcall* GETPORTVAL)(WORD,PDWORD,BYTE);
+typedef bool  (_stdcall* SETPORTVAL)(WORD,DWORD,BYTE);
+typedef PBYTE (_stdcall* MAPPHYSTOLIN)(tagPhysStruct*);
+typedef bool  (_stdcall* UNMAPPHYSMEM)(tagPhysStruct*);
+
+SHUTDOWNWINIO ShutdownWinIo;
+GETPORTVAL GetPortVal;
+SETPORTVAL SetPortVal;
+INITIALIZEWINIO InitializeWinIo;
+MAPPHYSTOLIN MapPhysToLin;
+UNMAPPHYSMEM UnmapPhysicalMemory;
+
+static int
+x86_enable_io(void)
+{
+    HMODULE lib = NULL;
+
+    if ((GetVersion() & 0x80000000) == 0) {
+      /* running on NT, try WinIo version 3 (32 or 64 bits) */
+#ifdef WIN64
+      lib = LoadLibrary("WinIo64.dll");
+#else
+      lib = LoadLibrary("WinIo32.dll");
+#endif
+    }
+
+    if (!lib) {
+      fprintf(stderr, "Failed to load WinIo library.\n");
+      return 1;
+    }
+
+#define GETPROC(n, d) 						\
+    n = (d) GetProcAddress(lib, #n); 				\
+    if (!n) { 							\
+      fprintf(stderr, "Failed to load " #n " function.\n");	\
+      return 1; 						\
+    }
+
+    GETPROC(InitializeWinIo, INITIALIZEWINIO);
+    GETPROC(ShutdownWinIo, SHUTDOWNWINIO);
+    GETPROC(GetPortVal, GETPORTVAL);
+    GETPROC(SetPortVal, SETPORTVAL);
+    GETPROC(MapPhysToLin, MAPPHYSTOLIN);
+    GETPROC(UnmapPhysicalMemory, UNMAPPHYSMEM);
+
+#undef GETPROC
+
+    if (!InitializeWinIo()) {
+      fprintf(stderr, "Failed to initialize WinIo.\n"
+		      "NOTE: WinIo.dll and WinIo.sys must be in the same directory as the executable!\n");
+      return 0;
+    }
+
+    return 0;
+}
+
+static int
+x86_disable_io(void)
+{
+    ShutdownWinIo();
+    return 1;
+}
+
+static inline uint8_t
+inb(uint16_t port)
+{
+    DWORD pv;
+
+    if (GetPortVal(port, &pv, 1))
+      return (uint8_t)pv;
+    return 0;
+}
+
+static inline uint16_t
+inw(uint16_t port)
+{
+    DWORD pv;
+
+    if (GetPortVal(port, &pv, 2))
+      return (uint16_t)pv;
+    return 0;
+}
+
+static inline uint32_t
+inl(uint16_t port)
+{
+    DWORD pv;
+
+    if (GetPortVal(port, &pv, 4))
+        return (uint32_t)pv;
+    return 0;
+}
+
+static inline void
+outb(uint8_t value, uint16_t port)
+{
+    SetPortVal(port, value, 1);
+}
+
+static inline void
+outw(uint16_t value, uint16_t port)
+{
+    SetPortVal(port, value, 2);
+}
+
+static inline void
+outl(uint32_t value, uint16_t port)
+{
+    SetPortVal(port, value, 4);
 }
 
 #else
@@ -471,6 +598,41 @@ pci_device_x86_probe(struct pci_device *dev)
     return 0;
 }
 
+#if defined(__CYGWIN__)
+
+static int
+pci_device_x86_map_range(struct pci_device *dev,
+    struct pci_device_mapping *map)
+{
+    tagPhysStruct phys;
+
+    phys.pvPhysAddress        = (DWORD64)(DWORD32)map->base;
+    phys.dwPhysMemSizeInBytes = map->size;
+
+    map->memory = (PDWORD)MapPhysToLin(&phys);
+    if (map->memory == NULL)
+        return EFAULT;
+
+    return 0;
+}
+
+static int
+pci_device_x86_unmap_range(struct pci_device *dev,
+    struct pci_device_mapping *map)
+{
+    tagPhysStruct phys;
+
+    phys.pvPhysAddress        = (DWORD64)(DWORD32)map->base;
+    phys.dwPhysMemSizeInBytes = map->size;
+
+    if (!UnmapPhysicalMemory(&phys))
+        return EFAULT;
+
+    return 0;
+}
+
+#else
+
 static int
 pci_device_x86_map_range(struct pci_device *dev,
     struct pci_device_mapping *map)
@@ -491,6 +653,15 @@ pci_device_x86_map_range(struct pci_device *dev,
 
     return 0;
 }
+
+static int
+pci_device_x86_unmap_range(struct pci_device *dev,
+    struct pci_device_mapping *map)
+{
+    return pci_device_generic_unmap_range(dev, map);
+}
+
+#endif
 
 static int
 pci_device_x86_read(struct pci_device *dev, void *data,
@@ -550,15 +721,114 @@ pci_system_x86_destroy(void)
     x86_disable_io();
 }
 
+static struct pci_io_handle *
+pci_device_x86_open_legacy_io(struct pci_io_handle *ret,
+    struct pci_device *dev, pciaddr_t base, pciaddr_t size)
+{
+    x86_enable_io();
+
+    ret->base = base;
+    ret->size = size;
+    ret->is_legacy = 1;
+
+    return ret;
+}
+
+static void
+pci_device_x86_close_io(struct pci_device *dev, struct pci_io_handle *handle)
+{
+    /* Like in the Linux case, do not disable I/O, as it may be opened several
+     * times, and closed fewer times. */
+    /* x86_disable_io(); */
+}
+
+static uint32_t
+pci_device_x86_read32(struct pci_io_handle *handle, uint32_t reg)
+{
+    return inl(reg + handle->base);
+}
+
+static uint16_t
+pci_device_x86_read16(struct pci_io_handle *handle, uint32_t reg)
+{
+    return inw(reg + handle->base);
+}
+
+static uint8_t
+pci_device_x86_read8(struct pci_io_handle *handle, uint32_t reg)
+{
+    return inb(reg + handle->base);
+}
+
+static void
+pci_device_x86_write32(struct pci_io_handle *handle, uint32_t reg,
+		       uint32_t data)
+{
+    outl(data, reg + handle->base);
+}
+
+static void
+pci_device_x86_write16(struct pci_io_handle *handle, uint32_t reg,
+		       uint16_t data)
+{
+    outw(data, reg + handle->base);
+}
+
+static void
+pci_device_x86_write8(struct pci_io_handle *handle, uint32_t reg,
+		      uint8_t data)
+{
+    outb(data, reg + handle->base);
+}
+
+static int
+pci_device_x86_map_legacy(struct pci_device *dev, pciaddr_t base,
+    pciaddr_t size, unsigned map_flags, void **addr)
+{
+    struct pci_device_mapping map;
+    int err;
+
+    map.base = base;
+    map.size = size;
+    map.flags = map_flags;
+    err = pci_device_x86_map_range(dev, &map);
+    *addr = map.memory;
+
+    return err;
+}
+
+static int
+pci_device_x86_unmap_legacy(struct pci_device *dev, void *addr,
+    pciaddr_t size)
+{
+    struct pci_device_mapping map;
+
+    map.size = size;
+    map.flags = 0;
+    map.memory = addr;
+
+    return pci_device_x86_unmap_range(dev, &map);
+}
+
 static const struct pci_system_methods x86_pci_methods = {
     .destroy = pci_system_x86_destroy,
     .read_rom = pci_device_x86_read_rom,
     .probe = pci_device_x86_probe,
     .map_range = pci_device_x86_map_range,
-    .unmap_range = pci_device_generic_unmap_range,
+    .unmap_range = pci_device_x86_unmap_range,
     .read = pci_device_x86_read,
     .write = pci_device_x86_write,
     .fill_capabilities = pci_fill_capabilities_generic,
+    .open_legacy_io = pci_device_x86_open_legacy_io,
+    .close_io = pci_device_x86_close_io,
+    .read32 = pci_device_x86_read32,
+    .read16 = pci_device_x86_read16,
+    .read8 = pci_device_x86_read8,
+    .write32 = pci_device_x86_write32,
+    .write16 = pci_device_x86_write16,
+    .write8 = pci_device_x86_write8,
+    .map_legacy = pci_device_x86_map_legacy,
+    .unmap_legacy = pci_device_x86_unmap_legacy,
 };
 
 static int pci_probe(struct pci_system_x86 *pci_sys_x86)

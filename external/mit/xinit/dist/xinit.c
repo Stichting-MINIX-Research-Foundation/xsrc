@@ -101,23 +101,23 @@ static char *displayNum = NULL;
 static char *program = NULL;
 static Display *xd = NULL;            /* server connection */
 int status;
-int serverpid = -1;
-int clientpid = -1;
+pid_t serverpid = -1;
+pid_t clientpid = -1;
 volatile int gotSignal = 0;
 
 static void Execute(char **vec);
 static Bool waitforserver(void);
-static Bool processTimeout(int timeout, char *string);
-static int startServer(char *server[]);
-static int startClient(char *client[]);
+static Bool processTimeout(int timeout, const char *string);
+static pid_t startServer(char *server[]);
+static pid_t startClient(char *client[]);
 static int ignorexio(Display *dpy);
 static void shutdown(void);
 static void set_environment(void);
 
-static void Fatal(const char *fmt, ...);
-static void Error(const char *fmt, ...);
-static void Fatalx(const char *fmt, ...);
-static void Errorx(const char *fmt, ...);
+static void Fatal(const char *fmt, ...) _X_ATTRIBUTE_PRINTF(1,2) _X_NORETURN;
+static void Error(const char *fmt, ...) _X_ATTRIBUTE_PRINTF(1,2);
+static void Fatalx(const char *fmt, ...) _X_ATTRIBUTE_PRINTF(1,2) _X_NORETURN;
+static void Errorx(const char *fmt, ...) _X_ATTRIBUTE_PRINTF(1,2);
 
 static void
 sigCatch(int sig)
@@ -149,7 +149,7 @@ main(int argc, char *argv[])
     register char **sptr = server;
     register char **cptr = client;
     register char **ptr;
-    int pid;
+    pid_t pid;
     int client_given = 0, server_given = 0;
     int client_args_given = 0, server_args_given = 0;
     int start_of_client_args, start_of_server_args;
@@ -364,10 +364,11 @@ waitforserver(void)
  * return TRUE if we timeout waiting for pid to exit, FALSE otherwise.
  */
 static Bool
-processTimeout(int timeout, char *string)
+processTimeout(int timeout, const char *string)
 {
-    int    i = 0, pidfound = -1;
-    static char    *laststring;
+    int    i = 0;
+    pid_t  pidfound = -1;
+    static const char    *laststring;
 
     for (;;) {
         if ((pidfound = waitpid(serverpid, &status, WNOHANG)) == serverpid)
@@ -388,8 +389,8 @@ processTimeout(int timeout, char *string)
     return (serverpid != pidfound);
 }
 
-static int
-startServer(char *server[])
+static pid_t
+startServer(char *server_argv[])
 {
     sigset_t mask, old;
     const char * const *cpp;
@@ -421,12 +422,12 @@ startServer(char *server[])
          * if client is xterm -L
          */
         setpgid(0,getpid());
-        Execute(server);
+        Execute(server_argv);
 
-        Error("unable to run server \"%s\"", server[0]);
+        Error("unable to run server \"%s\"", server_argv[0]);
 
         fprintf(stderr, "Use the -- option, or make sure that %s is in your path and\n", bindir);
-        fprintf(stderr, "that \"%s\" is a program or a link to the right type of server\n", server[0]);
+        fprintf(stderr, "that \"%s\" is a program or a link to the right type of server\n", server_argv[0]);
         fprintf(stderr, "for your display.  Possible server names include:\n\n");
         for (cpp = server_names; *cpp; cpp++)
             fprintf(stderr, "    %s\n", *cpp);
@@ -554,8 +555,8 @@ setWindowPath(void)
     free(newwindowpath);
 }
 
-static int
-startClient(char *client[])
+static pid_t
+startClient(char *client_argv[])
 {
     clientpid = fork();
     if (clientpid == 0) {
@@ -567,8 +568,8 @@ startClient(char *client[])
             _exit(EXIT_FAILURE);
         }
         setpgid(0, getpid());
-        Execute(client);
-        Error("Unable to run program \"%s\"", client[0]);
+        Execute(client_argv);
+        Error("Unable to run program \"%s\"", client_argv[0]);
 
         fprintf(stderr, "Specify a program on the command line or make sure that %s\n", bindir);
         fprintf(stderr, "is in your path.\n\n");
@@ -627,6 +628,26 @@ shutdown(void)
 
     if (processTimeout(3, "server to die"))
         Fatalx("X server refuses to die");
+#ifdef __sun
+    else {
+        /* Restore keyboard mode. */
+        serverpid = fork();
+        switch (serverpid) {
+        case 0:
+            execlp ("kbd_mode", "kbd_mode", "-a", NULL);
+            Fatal("Unable to run program \"%s\"", "kbd_mode");
+            break;
+
+        case 1:
+            Error("fork failed");
+            break;
+
+        default:
+            fprintf (stderr, "\r\nRestoring keyboard mode\r\n");
+            processTimeout(1, "kbd_mode");
+        }
+    }
+#endif
 }
 
 static void
@@ -636,7 +657,7 @@ set_environment(void)
         Fatal("unable to set DISPLAY");
 }
 
-static void
+static void _X_ATTRIBUTE_PRINTF(1,0)
 verror(const char *fmt, va_list ap)
 {
     fprintf(stderr, "%s: ", program);
@@ -644,7 +665,7 @@ verror(const char *fmt, va_list ap)
     fprintf(stderr, ": %s\n", strerror(errno));
 }
 
-static void
+static void _X_ATTRIBUTE_PRINTF(1,0)
 verrorx(const char *fmt, va_list ap)
 {
     fprintf(stderr, "%s: ", program);

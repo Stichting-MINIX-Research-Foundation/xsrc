@@ -21,10 +21,11 @@
 
 #include "main/glheader.h"
 #include "main/colormac.h"
-#include "main/context.h"
 #include "main/macros.h"
-#include "shader/atifragshader.h"
+#include "main/atifragshader.h"
+#include "main/samplerobj.h"
 #include "swrast/s_atifragshader.h"
+#include "swrast/s_context.h"
 
 
 /**
@@ -43,14 +44,15 @@ struct atifs_machine
  * Fetch a texel.
  */
 static void
-fetch_texel(GLcontext * ctx, const GLfloat texcoord[4], GLfloat lambda,
+fetch_texel(struct gl_context * ctx, const GLfloat texcoord[4], GLfloat lambda,
 	    GLuint unit, GLfloat color[4])
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
 
    /* XXX use a float-valued TextureSample routine here!!! */
-   swrast->TextureSample[unit](ctx, ctx->Texture.Unit[unit]._Current,
-                               1, (const GLfloat(*)[4]) texcoord,
+   swrast->TextureSample[unit](ctx, _mesa_get_samplerobj(ctx, unit),
+                               ctx->Texture.Unit[unit]._Current,
+			       1, (const GLfloat(*)[4]) texcoord,
                                &lambda, (GLfloat (*)[4]) color);
 }
 
@@ -235,21 +237,6 @@ finish_pass(struct atifs_machine *machine)
    }
 }
 
-struct ati_fs_opcode_st ati_fs_opcodes[] = {
-   {GL_ADD_ATI, 2},
-   {GL_SUB_ATI, 2},
-   {GL_MUL_ATI, 2},
-   {GL_MAD_ATI, 3},
-   {GL_LERP_ATI, 3},
-   {GL_MOV_ATI, 1},
-   {GL_CND_ATI, 3},
-   {GL_CND0_ATI, 3},
-   {GL_DOT2_ADD_ATI, 3},
-   {GL_DOT3_ATI, 2},
-   {GL_DOT4_ATI, 2}
-};
-
-
 
 static void
 handle_pass_op(struct atifs_machine *machine, struct atifs_setupinst *texinst,
@@ -261,7 +248,7 @@ handle_pass_op(struct atifs_machine *machine, struct atifs_setupinst *texinst,
    if (pass_tex >= GL_TEXTURE0_ARB && pass_tex <= GL_TEXTURE7_ARB) {
       pass_tex -= GL_TEXTURE0_ARB;
       COPY_4V(machine->Registers[idx],
-	      span->array->attribs[FRAG_ATTRIB_TEX0 + pass_tex][column]);
+	      span->array->attribs[VARYING_SLOT_TEX0 + pass_tex][column]);
    }
    else if (pass_tex >= GL_REG_0_ATI && pass_tex <= GL_REG_5_ATI) {
       pass_tex -= GL_REG_0_ATI;
@@ -272,7 +259,7 @@ handle_pass_op(struct atifs_machine *machine, struct atifs_setupinst *texinst,
 }
 
 static void
-handle_sample_op(GLcontext * ctx, struct atifs_machine *machine,
+handle_sample_op(struct gl_context * ctx, struct atifs_machine *machine,
 		 struct atifs_setupinst *texinst, const SWspan *span,
 		 GLuint column, GLuint idx)
 {
@@ -284,7 +271,7 @@ handle_sample_op(GLcontext * ctx, struct atifs_machine *machine,
    if (coord_source >= GL_TEXTURE0_ARB && coord_source <= GL_TEXTURE7_ARB) {
       coord_source -= GL_TEXTURE0_ARB;
       COPY_4V(tex_coords,
-              span->array->attribs[FRAG_ATTRIB_TEX0 + coord_source][column]);
+              span->array->attribs[VARYING_SLOT_TEX0 + coord_source][column]);
    }
    else if (coord_source >= GL_REG_0_ATI && coord_source <= GL_REG_5_ATI) {
       coord_source -= GL_REG_0_ATI;
@@ -311,7 +298,7 @@ do {						\
  * \param column - which pixel [i] we're operating on in the span
  */
 static void
-execute_shader(GLcontext *ctx, const struct ati_fragment_shader *shader,
+execute_shader(struct gl_context *ctx, const struct ati_fragment_shader *shader,
 	       struct atifs_machine *machine, const SWspan *span,
                GLuint column)
 {
@@ -555,7 +542,7 @@ execute_shader(GLcontext *ctx, const struct ati_fragment_shader *shader,
  * Init fragment shader virtual machine state.
  */
 static void
-init_machine(GLcontext * ctx, struct atifs_machine *machine,
+init_machine(struct gl_context * ctx, struct atifs_machine *machine,
 	     const struct ati_fragment_shader *shader,
 	     const SWspan *span, GLuint col)
 {
@@ -567,8 +554,8 @@ init_machine(GLcontext * ctx, struct atifs_machine *machine,
 	 machine->Registers[i][j] = 0.0;
    }
 
-   COPY_4V(inputs[ATI_FS_INPUT_PRIMARY], span->array->attribs[FRAG_ATTRIB_COL0][col]);
-   COPY_4V(inputs[ATI_FS_INPUT_SECONDARY], span->array->attribs[FRAG_ATTRIB_COL1][col]);
+   COPY_4V(inputs[ATI_FS_INPUT_PRIMARY], span->array->attribs[VARYING_SLOT_COL0][col]);
+   COPY_4V(inputs[ATI_FS_INPUT_SECONDARY], span->array->attribs[VARYING_SLOT_COL1][col]);
 }
 
 
@@ -577,7 +564,7 @@ init_machine(GLcontext * ctx, struct atifs_machine *machine,
  * Execute the current ATI shader program, operating on the given span.
  */
 void
-_swrast_exec_fragment_shader(GLcontext * ctx, SWspan *span)
+_swrast_exec_fragment_shader(struct gl_context * ctx, SWspan *span)
 {
    const struct ati_fragment_shader *shader = ctx->ATIFragmentShader.Current;
    struct atifs_machine machine;
@@ -597,7 +584,7 @@ _swrast_exec_fragment_shader(GLcontext * ctx, SWspan *span)
 	    const GLfloat *colOut = machine.Registers[0];
             /*fprintf(stderr,"outputs %f %f %f %f\n",
               colOut[0], colOut[1], colOut[2], colOut[3]); */
-            COPY_4V(span->array->attribs[FRAG_ATTRIB_COL0][i], colOut);
+            COPY_4V(span->array->attribs[VARYING_SLOT_COL0][i], colOut);
 	 }
       }
    }

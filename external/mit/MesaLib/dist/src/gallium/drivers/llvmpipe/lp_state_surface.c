@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,20 +18,22 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 #include "pipe/p_state.h"
 #include "util/u_inlines.h"
+#include "util/u_framebuffer.h"
 #include "util/u_surface.h"
 #include "lp_context.h"
+#include "lp_scene.h"
 #include "lp_state.h"
 #include "lp_setup.h"
 
@@ -51,25 +53,36 @@ llvmpipe_set_framebuffer_state(struct pipe_context *pipe,
 
    boolean changed = !util_framebuffer_state_equal(&lp->framebuffer, fb);
 
+   assert(fb->width <= LP_MAX_WIDTH);
+   assert(fb->height <= LP_MAX_HEIGHT);
+
    if (changed) {
+      /*
+       * If no depth buffer is bound, send the utility function the default
+       * format for no bound depth (PIPE_FORMAT_NONE).
+       */ 
+      enum pipe_format depth_format = fb->zsbuf ?
+         fb->zsbuf->format : PIPE_FORMAT_NONE;
+      const struct util_format_description *depth_desc =
+         util_format_description(depth_format);
 
       util_copy_framebuffer_state(&lp->framebuffer, fb);
 
-      /* Tell draw module how deep the Z/depth buffer is */
-      if (lp->framebuffer.zsbuf) {
-         int depth_bits;
-         double mrd;
-         depth_bits = util_format_get_component_bits(lp->framebuffer.zsbuf->format,
-                                                     UTIL_FORMAT_COLORSPACE_ZS,
-                                                     0);
-         if (depth_bits > 16) {
-            mrd = 0.0000001;
-         }
-         else {
-            mrd = 0.00002;
-         }
-         draw_set_mrd(lp->draw, mrd);
+      if (LP_PERF & PERF_NO_DEPTH) {
+	 pipe_surface_reference(&lp->framebuffer.zsbuf, NULL);
       }
+
+      /*
+       * Calculate the floating point depth sense and Minimum Resolvable Depth
+       * value for the llvmpipe module. This is separate from the draw module.
+       */
+      lp->floating_point_depth =
+         (util_get_depth_format_type(depth_desc) == UTIL_FORMAT_TYPE_FLOAT);
+ 
+      lp->mrd = util_get_depth_format_mrd(depth_desc);
+
+      /* Tell the draw module how deep the Z/depth buffer is. */
+      draw_set_zs_format(lp->draw, depth_format);
 
       lp_setup_bind_framebuffer( lp->setup, &lp->framebuffer );
 

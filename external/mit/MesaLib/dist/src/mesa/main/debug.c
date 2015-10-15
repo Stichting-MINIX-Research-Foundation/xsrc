@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "mtypes.h"
@@ -37,26 +37,6 @@
 #include "texobj.h"
 
 
-/**
- * Primitive names
- */
-const char *_mesa_prim_name[GL_POLYGON+4] = {
-   "GL_POINTS",
-   "GL_LINES",
-   "GL_LINE_LOOP",
-   "GL_LINE_STRIP",
-   "GL_TRIANGLES",
-   "GL_TRIANGLE_STRIP",
-   "GL_TRIANGLE_FAN",
-   "GL_QUADS",
-   "GL_QUAD_STRIP",
-   "GL_POLYGON",
-   "outside begin/end",
-   "inside unknown primitive",
-   "unknown state"
-};
-
-
 static const char *
 tex_target_name(GLenum tgt)
 {
@@ -70,9 +50,15 @@ tex_target_name(GLenum tgt)
       { GL_TEXTURE_CUBE_MAP, "GL_TEXTURE_CUBE_MAP" },
       { GL_TEXTURE_RECTANGLE, "GL_TEXTURE_RECTANGLE" },
       { GL_TEXTURE_1D_ARRAY_EXT, "GL_TEXTURE_1D_ARRAY" },
-      { GL_TEXTURE_2D_ARRAY_EXT, "GL_TEXTURE_2D_ARRAY" }
+      { GL_TEXTURE_2D_ARRAY_EXT, "GL_TEXTURE_2D_ARRAY" },
+      { GL_TEXTURE_CUBE_MAP_ARRAY, "GL_TEXTURE_CUBE_MAP_ARRAY" },
+      { GL_TEXTURE_BUFFER, "GL_TEXTURE_BUFFER" },
+      { GL_TEXTURE_2D_MULTISAMPLE, "GL_TEXTURE_2D_MULTISAMPLE" },
+      { GL_TEXTURE_2D_MULTISAMPLE_ARRAY, "GL_TEXTURE_2D_MULTISAMPLE_ARRAY" },
+      { GL_TEXTURE_EXTERNAL_OES, "GL_TEXTURE_EXTERNAL_OES" }
    };
    GLuint i;
+   STATIC_ASSERT(Elements(tex_targets) == NUM_TEXTURE_TARGETS);
    for (i = 0; i < Elements(tex_targets); i++) {
       if (tex_targets[i].target == tgt)
          return tex_targets[i].name;
@@ -85,14 +71,12 @@ void
 _mesa_print_state( const char *msg, GLuint state )
 {
    _mesa_debug(NULL,
-	   "%s: (0x%x) %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+	   "%s: (0x%x) %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
 	   msg,
 	   state,
 	   (state & _NEW_MODELVIEW)       ? "ctx->ModelView, " : "",
 	   (state & _NEW_PROJECTION)      ? "ctx->Projection, " : "",
 	   (state & _NEW_TEXTURE_MATRIX)  ? "ctx->TextureMatrix, " : "",
-	   (state & _NEW_COLOR_MATRIX)    ? "ctx->ColorMatrix, " : "",
-	   (state & _NEW_ACCUM)           ? "ctx->Accum, " : "",
 	   (state & _NEW_COLOR)           ? "ctx->Color, " : "",
 	   (state & _NEW_DEPTH)           ? "ctx->Depth, " : "",
 	   (state & _NEW_EVAL)            ? "ctx->Eval/EvalMap, " : "",
@@ -105,10 +89,10 @@ _mesa_print_state( const char *msg, GLuint state )
 	   (state & _NEW_POLYGON)         ? "ctx->Polygon, " : "",
 	   (state & _NEW_POLYGONSTIPPLE)  ? "ctx->PolygonStipple, " : "",
 	   (state & _NEW_SCISSOR)         ? "ctx->Scissor, " : "",
+	   (state & _NEW_STENCIL)         ? "ctx->Stencil, " : "",
 	   (state & _NEW_TEXTURE)         ? "ctx->Texture, " : "",
 	   (state & _NEW_TRANSFORM)       ? "ctx->Transform, " : "",
 	   (state & _NEW_VIEWPORT)        ? "ctx->Viewport, " : "",
-	   (state & _NEW_PACKUNPACK)      ? "ctx->Pack/Unpack, " : "",
 	   (state & _NEW_ARRAY)           ? "ctx->Array, " : "",
 	   (state & _NEW_RENDERMODE)      ? "ctx->RenderMode, " : "",
 	   (state & _NEW_BUFFERS)         ? "ctx->Visual, ctx->DrawBuffer,, " : "");
@@ -116,36 +100,10 @@ _mesa_print_state( const char *msg, GLuint state )
 
 
 
-void
-_mesa_print_tri_caps( const char *name, GLuint flags )
-{
-   _mesa_debug(NULL,
-	   "%s: (0x%x) %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
-	   name,
-	   flags,
-	   (flags & DD_FLATSHADE)           ? "flat-shade, " : "",
-	   (flags & DD_SEPARATE_SPECULAR)   ? "separate-specular, " : "",
-	   (flags & DD_TRI_LIGHT_TWOSIDE)   ? "tri-light-twoside, " : "",
-	   (flags & DD_TRI_TWOSTENCIL)      ? "tri-twostencil, " : "",
-	   (flags & DD_TRI_UNFILLED)        ? "tri-unfilled, " : "",
-	   (flags & DD_TRI_STIPPLE)         ? "tri-stipple, " : "",
-	   (flags & DD_TRI_OFFSET)          ? "tri-offset, " : "",
-	   (flags & DD_TRI_SMOOTH)          ? "tri-smooth, " : "",
-	   (flags & DD_LINE_SMOOTH)         ? "line-smooth, " : "",
-	   (flags & DD_LINE_STIPPLE)        ? "line-stipple, " : "",
-	   (flags & DD_LINE_WIDTH)          ? "line-wide, " : "",
-	   (flags & DD_POINT_SMOOTH)        ? "point-smooth, " : "",
-	   (flags & DD_POINT_SIZE)          ? "point-size, " : "",
-	   (flags & DD_POINT_ATTEN)         ? "point-atten, " : "",
-	   (flags & DD_TRI_CULL_FRONT_BACK) ? "cull-all, " : ""
-      );
-}
-
-
 /**
  * Print information about this Mesa version and build options.
  */
-void _mesa_print_info( void )
+void _mesa_print_info( struct gl_context *ctx )
 {
    _mesa_debug(NULL, "Mesa GL_VERSION = %s\n",
 	   (char *) _mesa_GetString(GL_VERSION));
@@ -153,8 +111,12 @@ void _mesa_print_info( void )
 	   (char *) _mesa_GetString(GL_RENDERER));
    _mesa_debug(NULL, "Mesa GL_VENDOR = %s\n",
 	   (char *) _mesa_GetString(GL_VENDOR));
-   _mesa_debug(NULL, "Mesa GL_EXTENSIONS = %s\n",
-	   (char *) _mesa_GetString(GL_EXTENSIONS));
+
+   /* use ctx as GL_EXTENSIONS will not work on 3.0 or higher
+    * core contexts.
+    */
+   _mesa_debug(NULL, "Mesa GL_EXTENSIONS = %s\n", ctx->Extensions.String);
+
 #if defined(THREADS)
    _mesa_debug(NULL, "Mesa thread-safe: YES\n");
 #else
@@ -174,21 +136,19 @@ void _mesa_print_info( void )
 
 
 /**
- * Set the debugging flags.
- *
- * \param debug debug string
- *
- * If compiled with debugging support then search for keywords in \p debug and
- * enables the verbose debug output of the respective feature.
+ * Set verbose logging flags.  When these flags are set, GL API calls
+ * in the various categories will be printed to stderr.
+ * \param str  a comma-separated list of keywords
  */
-static void add_debug_flags( const char *debug )
+static void
+set_verbose_flags(const char *str)
 {
 #ifdef DEBUG
-   struct debug_option {
+   struct option {
       const char *name;
       GLbitfield flag;
    };
-   static const struct debug_option debug_opt[] = {
+   static const struct option opts[] = {
       { "varray",    VERBOSE_VARRAY },
       { "tex",       VERBOSE_TEXTURE },
       { "mat",       VERBOSE_MATERIAL },
@@ -204,55 +164,59 @@ static void add_debug_flags( const char *debug )
    };
    GLuint i;
 
+   if (!str)
+      return;
+
    MESA_VERBOSE = 0x0;
-   for (i = 0; i < Elements(debug_opt); i++) {
-      if (strstr(debug, debug_opt[i].name))
-         MESA_VERBOSE |= debug_opt[i].flag;
+   for (i = 0; i < Elements(opts); i++) {
+      if (strstr(str, opts[i].name) || strcmp(str, "all") == 0)
+         MESA_VERBOSE |= opts[i].flag;
    }
-
-   /* Debug flag:
-    */
-   if (strstr(debug, "flush"))
-      MESA_DEBUG_FLAGS |= DEBUG_ALWAYS_FLUSH;
-
-#if defined(_FPU_GETCW) && defined(_FPU_SETCW)
-   if (strstr(debug, "fpexceptions")) {
-      /* raise FP exceptions */
-      fpu_control_t mask;
-      _FPU_GETCW(mask);
-      mask &= ~(_FPU_MASK_IM | _FPU_MASK_DM | _FPU_MASK_ZM
-                | _FPU_MASK_OM | _FPU_MASK_UM);
-      _FPU_SETCW(mask);
-   }
-#endif
-
-#else
-   (void) debug;
 #endif
 }
 
 
-void 
-_mesa_init_debug( GLcontext *ctx )
+/**
+ * Set debugging flags.  When these flags are set, Mesa will do additional
+ * debug checks or actions.
+ * \param str  a comma-separated list of keywords
+ */
+static void
+set_debug_flags(const char *str)
 {
-   char *c;
+#ifdef DEBUG
+   struct option {
+      const char *name;
+      GLbitfield flag;
+   };
+   static const struct option opts[] = {
+      { "silent", DEBUG_SILENT }, /* turn off debug messages */
+      { "flush", DEBUG_ALWAYS_FLUSH }, /* flush after each drawing command */
+      { "incomplete_tex", DEBUG_INCOMPLETE_TEXTURE },
+      { "incomplete_fbo", DEBUG_INCOMPLETE_FBO }
+   };
+   GLuint i;
 
-   /* Dither disable */
-   ctx->NoDither = _mesa_getenv("MESA_NO_DITHER") ? GL_TRUE : GL_FALSE;
-   if (ctx->NoDither) {
-      if (_mesa_getenv("MESA_DEBUG")) {
-         _mesa_debug(ctx, "MESA_NO_DITHER set - dithering disabled\n");
-      }
-      ctx->Color.DitherFlag = GL_FALSE;
+   if (!str)
+      return;
+
+   MESA_DEBUG_FLAGS = 0x0;
+   for (i = 0; i < Elements(opts); i++) {
+      if (strstr(str, opts[i].name))
+         MESA_DEBUG_FLAGS |= opts[i].flag;
    }
+#endif
+}
 
-   c = _mesa_getenv("MESA_DEBUG");
-   if (c)
-      add_debug_flags(c);
 
-   c = _mesa_getenv("MESA_VERBOSE");
-   if (c)
-      add_debug_flags(c);
+/**
+ * Initialize debugging variables from env vars.
+ */
+void 
+_mesa_init_debug( struct gl_context *ctx )
+{
+   set_debug_flags(_mesa_getenv("MESA_DEBUG"));
+   set_verbose_flags(_mesa_getenv("MESA_VERBOSE"));
 }
 
 
@@ -284,6 +248,9 @@ write_ppm(const char *filename, const GLubyte *buffer, int width, int height,
       }
       fclose(f);
    }
+   else {
+      fprintf(stderr, "Unable to create %s in write_ppm()\n", filename);
+   }
 }
 
 
@@ -303,18 +270,16 @@ write_texture_image(struct gl_texture_object *texObj,
       GLubyte *buffer;
       char s[100];
 
-      buffer = (GLubyte *) malloc(img->Width * img->Height
+      buffer = malloc(img->Width * img->Height
                                         * img->Depth * 4);
 
       store = ctx->Pack; /* save */
       ctx->Pack = ctx->DefaultPacking;
 
-      ctx->Driver.GetTexImage(ctx, texObj->Target, level,
-                              GL_RGBA, GL_UNSIGNED_BYTE,
-                              buffer, texObj, img);
+      ctx->Driver.GetTexImage(ctx, GL_RGBA, GL_UNSIGNED_BYTE, buffer, img);
 
       /* make filename */
-      sprintf(s, "/tmp/tex%u.l%u.f%u.ppm", texObj->Name, level, face);
+      _mesa_snprintf(s, sizeof(s), "/tmp/tex%u.l%u.f%u.ppm", texObj->Name, level, face);
 
       printf("  Writing image level %u to %s\n", level, s);
       write_ppm(s, buffer, img->Width, img->Height, 4, 0, 1, 2, GL_FALSE);
@@ -329,8 +294,8 @@ write_texture_image(struct gl_texture_object *texObj,
 /**
  * Write renderbuffer image to a ppm file.
  */
-static void
-write_renderbuffer_image(const struct gl_renderbuffer *rb)
+void
+_mesa_write_renderbuffer_image(const struct gl_renderbuffer *rb)
 {
    GET_CURRENT_CONTEXT(ctx);
    GLubyte *buffer;
@@ -347,18 +312,26 @@ write_renderbuffer_image(const struct gl_renderbuffer *rb)
       type = GL_UNSIGNED_INT_24_8;
    }
    else {
+      _mesa_debug(NULL,
+                  "Unsupported BaseFormat 0x%x in "
+                  "_mesa_write_renderbuffer_image()\n",
+                  rb->_BaseFormat);
       return;
    }
 
-   buffer = (GLubyte *) malloc(rb->Width * rb->Height * 4);
+   buffer = malloc(rb->Width * rb->Height * 4);
 
    ctx->Driver.ReadPixels(ctx, 0, 0, rb->Width, rb->Height,
                           format, type, &ctx->DefaultPacking, buffer);
 
    /* make filename */
-   sprintf(s, "/tmp/renderbuffer%u.ppm", rb->Name);
+   _mesa_snprintf(s, sizeof(s), "/tmp/renderbuffer%u.ppm", rb->Name);
+   _mesa_snprintf(s, sizeof(s), "C:\\renderbuffer%u.ppm", rb->Name);
 
    printf("  Writing renderbuffer image to %s\n", s);
+
+   _mesa_debug(NULL, "  Writing renderbuffer image to %s\n", s);
+
    write_ppm(s, buffer, rb->Width, rb->Height, 4, 0, 1, 2, GL_TRUE);
 
    free(buffer);
@@ -386,11 +359,10 @@ dump_texture(struct gl_texture_object *texObj, GLuint writeImages)
       for (j = 0; j < numFaces; j++) {
          struct gl_texture_image *texImg = texObj->Image[j][i];
          if (texImg) {
-            printf("  Face %u level %u: %d x %d x %d, format %s at %p\n",
+            printf("  Face %u level %u: %d x %d x %d, format %s\n",
 		   j, i,
 		   texImg->Width, texImg->Height, texImg->Depth,
-		   _mesa_get_format_name(texImg->TexFormat),
-		   texImg->Data);
+		   _mesa_get_format_name(texImg->TexFormat));
             if (writeImages == WRITE_ALL ||
                 (writeImages == WRITE_ONE && !written)) {
                write_texture_image(texObj, j, i);
@@ -445,7 +417,7 @@ dump_renderbuffer(const struct gl_renderbuffer *rb, GLboolean writeImage)
 	  rb->Name, rb->Width, rb->Height,
 	  _mesa_lookup_enum_by_nr(rb->InternalFormat));
    if (writeImage) {
-      write_renderbuffer_image(rb);
+      _mesa_write_renderbuffer_image(rb);
    }
 }
 
@@ -481,7 +453,7 @@ _mesa_dump_color_buffer(const char *filename)
    const GLuint h = ctx->DrawBuffer->Height;
    GLubyte *buf;
 
-   buf = (GLubyte *) malloc(w * h * 4);
+   buf = malloc(w * h * 4);
 
    _mesa_PushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
    _mesa_PixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -513,8 +485,8 @@ _mesa_dump_depth_buffer(const char *filename)
    GLubyte *buf2;
    GLuint i;
 
-   buf = (GLuint *) malloc(w * h * 4);  /* 4 bpp */
-   buf2 = (GLubyte *) malloc(w * h * 3); /* 3 bpp */
+   buf = malloc(w * h * 4);  /* 4 bpp */
+   buf2 = malloc(w * h * 3); /* 3 bpp */
 
    _mesa_PushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
    _mesa_PixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -549,8 +521,8 @@ _mesa_dump_stencil_buffer(const char *filename)
    GLubyte *buf2;
    GLuint i;
 
-   buf = (GLubyte *) malloc(w * h);  /* 1 bpp */
-   buf2 = (GLubyte *) malloc(w * h * 3); /* 3 bpp */
+   buf = malloc(w * h);  /* 1 bpp */
+   buf2 = malloc(w * h * 3); /* 3 bpp */
 
    _mesa_PushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
    _mesa_PixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -574,62 +546,114 @@ _mesa_dump_stencil_buffer(const char *filename)
 }
 
 
+void
+_mesa_dump_image(const char *filename, const void *image, GLuint w, GLuint h,
+                 GLenum format, GLenum type)
+{
+   GLboolean invert = GL_TRUE;
+
+   if (format == GL_RGBA && type == GL_UNSIGNED_BYTE) {
+      write_ppm(filename, image, w, h, 4, 0, 1, 2, invert);
+   }
+   else if (format == GL_BGRA && type == GL_UNSIGNED_BYTE) {
+      write_ppm(filename, image, w, h, 4, 2, 1, 0, invert);
+   }
+   else if (format == GL_LUMINANCE_ALPHA && type == GL_UNSIGNED_BYTE) {
+      write_ppm(filename, image, w, h, 2, 1, 0, 0, invert);
+   }
+   else if (format == GL_RED && type == GL_UNSIGNED_BYTE) {
+      write_ppm(filename, image, w, h, 1, 0, 0, 0, invert);
+   }
+   else if (format == GL_RGBA && type == GL_FLOAT) {
+      /* convert floats to ubyte */
+      GLubyte *buf = malloc(w * h * 4 * sizeof(GLubyte));
+      const GLfloat *f = (const GLfloat *) image;
+      GLuint i;
+      for (i = 0; i < w * h * 4; i++) {
+         UNCLAMPED_FLOAT_TO_UBYTE(buf[i], f[i]);
+      }
+      write_ppm(filename, buf, w, h, 4, 0, 1, 2, invert);
+      free(buf);
+   }
+   else if (format == GL_RED && type == GL_FLOAT) {
+      /* convert floats to ubyte */
+      GLubyte *buf = malloc(w * h * sizeof(GLubyte));
+      const GLfloat *f = (const GLfloat *) image;
+      GLuint i;
+      for (i = 0; i < w * h; i++) {
+         UNCLAMPED_FLOAT_TO_UBYTE(buf[i], f[i]);
+      }
+      write_ppm(filename, buf, w, h, 1, 0, 0, 0, invert);
+      free(buf);
+   }
+   else {
+      _mesa_problem(NULL,
+                 "Unsupported format 0x%x / type 0x%x in _mesa_dump_image()",
+                 format, type);
+   }
+}
+
+
 /**
  * Quick and dirty function to "print" a texture to stdout.
  */
 void
-_mesa_print_texture(GLcontext *ctx, const struct gl_texture_image *img)
+_mesa_print_texture(struct gl_context *ctx, struct gl_texture_image *img)
 {
-#if CHAN_TYPE != GL_UNSIGNED_BYTE
-   _mesa_problem(NULL, "PrintTexture not supported");
-#else
+   const GLint slice = 0;
+   GLint srcRowStride;
    GLuint i, j, c;
-   const GLubyte *data = (const GLubyte *) img->Data;
+   GLubyte *data;
+
+   ctx->Driver.MapTextureImage(ctx, img, slice,
+                               0, 0, img->Width, img->Height, GL_MAP_READ_BIT,
+                               &data, &srcRowStride);
 
    if (!data) {
       printf("No texture data\n");
-      return;
    }
-
-   /* XXX add more formats or make into a new format utility function */
-   switch (img->TexFormat) {
-      case MESA_FORMAT_A8:
-      case MESA_FORMAT_L8:
-      case MESA_FORMAT_I8:
-      case MESA_FORMAT_CI8:
-         c = 1;
-         break;
-      case MESA_FORMAT_AL88:
-      case MESA_FORMAT_AL88_REV:
-         c = 2;
-         break;
-      case MESA_FORMAT_RGB888:
-      case MESA_FORMAT_BGR888:
-         c = 3;
-         break;
-      case MESA_FORMAT_RGBA8888:
-      case MESA_FORMAT_ARGB8888:
-         c = 4;
-         break;
-      default:
-         _mesa_problem(NULL, "error in PrintTexture\n");
-         return;
-   }
-
-   for (i = 0; i < img->Height; i++) {
-      for (j = 0; j < img->Width; j++) {
-         if (c==1)
-            printf("%02x  ", data[0]);
-         else if (c==2)
-            printf("%02x%02x  ", data[0], data[1]);
-         else if (c==3)
-            printf("%02x%02x%02x  ", data[0], data[1], data[2]);
-         else if (c==4)
-            printf("%02x%02x%02x%02x  ", data[0], data[1], data[2], data[3]);
-         data += (img->RowStride - img->Width) * c;
+   else {
+      /* XXX add more formats or make into a new format utility function */
+      switch (img->TexFormat) {
+         case MESA_FORMAT_A_UNORM8:
+         case MESA_FORMAT_L_UNORM8:
+         case MESA_FORMAT_I_UNORM8:
+            c = 1;
+            break;
+         case MESA_FORMAT_L8A8_UNORM:
+         case MESA_FORMAT_A8L8_UNORM:
+            c = 2;
+            break;
+         case MESA_FORMAT_BGR_UNORM8:
+         case MESA_FORMAT_RGB_UNORM8:
+            c = 3;
+            break;
+         case MESA_FORMAT_A8B8G8R8_UNORM:
+         case MESA_FORMAT_B8G8R8A8_UNORM:
+            c = 4;
+            break;
+         default:
+            _mesa_problem(NULL, "error in PrintTexture\n");
+            return;
       }
-      /* XXX use img->ImageStride here */
-      printf("\n");
+
+      for (i = 0; i < img->Height; i++) {
+         for (j = 0; j < img->Width; j++) {
+            if (c==1)
+               printf("%02x  ", data[0]);
+            else if (c==2)
+               printf("%02x%02x  ", data[0], data[1]);
+            else if (c==3)
+               printf("%02x%02x%02x  ", data[0], data[1], data[2]);
+            else if (c==4)
+               printf("%02x%02x%02x%02x  ", data[0], data[1], data[2], data[3]);
+            data += (srcRowStride - img->Width) * c;
+         }
+         /* XXX use img->ImageStride here */
+         printf("\n");
+
+      }
    }
-#endif
+
+   ctx->Driver.UnmapTextureImage(ctx, img, slice);
 }

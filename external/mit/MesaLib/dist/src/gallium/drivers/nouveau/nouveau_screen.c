@@ -4,13 +4,28 @@
 
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
+#include "util/u_format.h"
+#include "util/u_format_s3tc.h"
+#include "util/u_string.h"
+
+#include "os/os_time.h"
 
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 
-#include "nouveau/nouveau_bo.h"
+#include <nouveau_drm.h>
+
 #include "nouveau_winsys.h"
 #include "nouveau_screen.h"
+#include "nouveau_fence.h"
+#include "nouveau_mm.h"
+#include "nouveau_buffer.h"
+
+/* XXX this should go away */
+#include "state_tracker/drm_driver.h"
+
+int nouveau_mesa_debug = 0;
 
 static const char *
 nouveau_screen_get_name(struct pipe_screen *pscreen)
@@ -18,7 +33,7 @@ nouveau_screen_get_name(struct pipe_screen *pscreen)
 	struct nouveau_device *dev = nouveau_screen(pscreen)->device;
 	static char buffer[128];
 
-	snprintf(buffer, sizeof(buffer), "NV%02X", dev->chipset);
+	util_snprintf(buffer, sizeof(buffer), "NV%02X", dev->chipset);
 	return buffer;
 }
 
@@ -28,183 +43,14 @@ nouveau_screen_get_vendor(struct pipe_screen *pscreen)
 	return "nouveau";
 }
 
-static struct pipe_buffer *
-nouveau_screen_bo_skel(struct pipe_screen *pscreen, struct nouveau_bo *bo,
-		       unsigned alignment, unsigned usage, unsigned size)
+static uint64_t
+nouveau_screen_get_timestamp(struct pipe_screen *pscreen)
 {
-	struct pipe_buffer *pb;
+	int64_t cpu_time = os_time_get() * 1000;
 
-	pb = CALLOC(1, sizeof(struct pipe_buffer)+sizeof(struct nouveau_bo *));
-	if (!pb) {
-		nouveau_bo_ref(NULL, &bo);
-		return NULL;
-	}
+        /* getparam of PTIMER_TIME takes about x10 as long (several usecs) */
 
-	pipe_reference_init(&pb->reference, 1);
-	pb->screen = pscreen;
-	pb->alignment = alignment;
-	pb->usage = usage;
-	pb->size = size;
-	*(struct nouveau_bo **)(pb + 1) = bo;
-	return pb;
-}
-
-static struct pipe_buffer *
-nouveau_screen_bo_new(struct pipe_screen *pscreen, unsigned alignment,
-		      unsigned usage, unsigned size)
-{
-	struct nouveau_device *dev = nouveau_screen(pscreen)->device;
-	struct nouveau_bo *bo = NULL;
-	uint32_t flags = NOUVEAU_BO_MAP, tile_mode = 0, tile_flags = 0;
-	int ret;
-
-	if (usage & NOUVEAU_BUFFER_USAGE_TRANSFER)
-		flags |= NOUVEAU_BO_GART;
-	else
-	if (usage & PIPE_BUFFER_USAGE_VERTEX) {
-		if (pscreen->get_param(pscreen, NOUVEAU_CAP_HW_VTXBUF))
-			flags |= NOUVEAU_BO_GART;
-	} else
-	if (usage & PIPE_BUFFER_USAGE_INDEX) {
-		if (pscreen->get_param(pscreen, NOUVEAU_CAP_HW_IDXBUF))
-			flags |= NOUVEAU_BO_GART;
-	}
-
-	if (usage & PIPE_BUFFER_USAGE_PIXEL) {
-		if (usage & NOUVEAU_BUFFER_USAGE_TEXTURE)
-			flags |= NOUVEAU_BO_GART;
-		if (!(usage & PIPE_BUFFER_USAGE_CPU_READ_WRITE))
-			flags |= NOUVEAU_BO_VRAM;
-
-		if (dev->chipset == 0x50 || dev->chipset >= 0x80) {
-			if (usage & NOUVEAU_BUFFER_USAGE_ZETA)
-				tile_flags = 0x2800;
-			else
-				tile_flags = 0x7000;
-		}
-	}
-
-	ret = nouveau_bo_new_tile(dev, flags, alignment, size,
-				  tile_mode, tile_flags, &bo);
-	if (ret)
-		return NULL;
-
-	return nouveau_screen_bo_skel(pscreen, bo, alignment, usage, size);
-}
-
-static struct pipe_buffer *
-nouveau_screen_bo_user(struct pipe_screen *pscreen, void *ptr, unsigned bytes)
-{
-	struct nouveau_device *dev = nouveau_screen(pscreen)->device;
-	struct nouveau_bo *bo = NULL;
-	int ret;
-
-	ret = nouveau_bo_user(dev, ptr, bytes, &bo);
-	if (ret)
-		return NULL;
-
-	return nouveau_screen_bo_skel(pscreen, bo, 0, 0, bytes);
-}
-
-static inline uint32_t
-nouveau_screen_map_flags(unsigned pipe)
-{
-	uint32_t flags = 0;
-
-	if (pipe & PIPE_BUFFER_USAGE_CPU_READ)
-		flags |= NOUVEAU_BO_RD;
-	if (pipe & PIPE_BUFFER_USAGE_CPU_WRITE)
-		flags |= NOUVEAU_BO_WR;
-	if (pipe & PIPE_BUFFER_USAGE_DISCARD)
-		flags |= NOUVEAU_BO_INVAL;
-	if (pipe & PIPE_BUFFER_USAGE_DONTBLOCK)
-		flags |= NOUVEAU_BO_NOWAIT;
-	else
-	if (pipe & 0 /*PIPE_BUFFER_USAGE_UNSYNCHRONIZED*/)
-		flags |= NOUVEAU_BO_NOSYNC;
-
-	return flags;
-}
-
-static void *
-nouveau_screen_bo_map(struct pipe_screen *pscreen, struct pipe_buffer *pb,
-		      unsigned usage)
-{
-	struct nouveau_bo *bo = nouveau_bo(pb);
-	struct nouveau_screen *nscreen = nouveau_screen(pscreen);
-	int ret;
-
-	if (nscreen->pre_pipebuffer_map_callback) {
-		ret = nscreen->pre_pipebuffer_map_callback(pscreen, pb, usage);
-		if (ret) {
-			debug_printf("pre_pipebuffer_map_callback failed %d\n",
-				ret);
-			return NULL;
-		}
-	}
-
-	ret = nouveau_bo_map(bo, nouveau_screen_map_flags(usage));
-	if (ret) {
-		debug_printf("map failed: %d\n", ret);
-		return NULL;
-	}
-
-	return bo->map;
-}
-
-static void *
-nouveau_screen_bo_map_range(struct pipe_screen *pscreen, struct pipe_buffer *pb,
-			    unsigned offset, unsigned length, unsigned usage)
-{
-	struct nouveau_bo *bo = nouveau_bo(pb);
-	struct nouveau_screen *nscreen = nouveau_screen(pscreen);
-	uint32_t flags = nouveau_screen_map_flags(usage);
-	int ret;
-
-	if (nscreen->pre_pipebuffer_map_callback) {
-		ret = nscreen->pre_pipebuffer_map_callback(pscreen, pb, usage);
-		if (ret) {
-			debug_printf("pre_pipebuffer_map_callback failed %d\n",
-				ret);
-			return NULL;
-		}
-	}
-
-	ret = nouveau_bo_map_range(bo, offset, length, flags);
-	if (ret) {
-		nouveau_bo_unmap(bo);
-		if (!(flags & NOUVEAU_BO_NOWAIT) || ret != -EBUSY)
-			debug_printf("map_range failed: %d\n", ret);
-		return NULL;
-	}
-
-	return (char *)bo->map - offset; /* why gallium? why? */
-}
-
-static void
-nouveau_screen_bo_map_flush(struct pipe_screen *pscreen, struct pipe_buffer *pb,
-			    unsigned offset, unsigned length)
-{
-	struct nouveau_bo *bo = nouveau_bo(pb);
-
-	nouveau_bo_map_flush(bo, offset, length);
-}
-
-static void
-nouveau_screen_bo_unmap(struct pipe_screen *pscreen, struct pipe_buffer *pb)
-{
-	struct nouveau_bo *bo = nouveau_bo(pb);
-
-	nouveau_bo_unmap(bo);
-}
-
-static void
-nouveau_screen_bo_del(struct pipe_buffer *pb)
-{
-	struct nouveau_bo *bo = nouveau_bo(pb);
-
-	nouveau_bo_ref(NULL, &bo);
-	FREE(pb);
+	return cpu_time + nouveau_screen(pscreen)->cpu_gpu_time_delta;
 }
 
 static void
@@ -212,60 +58,170 @@ nouveau_screen_fence_ref(struct pipe_screen *pscreen,
 			 struct pipe_fence_handle **ptr,
 			 struct pipe_fence_handle *pfence)
 {
-	*ptr = pfence;
+	nouveau_fence_ref(nouveau_fence(pfence), (struct nouveau_fence **)ptr);
 }
 
-static int
+static boolean
 nouveau_screen_fence_signalled(struct pipe_screen *screen,
-			       struct pipe_fence_handle *pfence,
-			       unsigned flags)
+                               struct pipe_fence_handle *pfence)
 {
-	return 0;
+        return nouveau_fence_signalled(nouveau_fence(pfence));
 }
 
-static int
+static boolean
 nouveau_screen_fence_finish(struct pipe_screen *screen,
 			    struct pipe_fence_handle *pfence,
-			    unsigned flags)
+                            uint64_t timeout)
 {
-	return 0;
+	return nouveau_fence_wait(nouveau_fence(pfence));
+}
+
+
+struct nouveau_bo *
+nouveau_screen_bo_from_handle(struct pipe_screen *pscreen,
+			      struct winsys_handle *whandle,
+			      unsigned *out_stride)
+{
+	struct nouveau_device *dev = nouveau_screen(pscreen)->device;
+	struct nouveau_bo *bo = 0;
+	int ret;
+
+	if (whandle->type != DRM_API_HANDLE_TYPE_SHARED &&
+	    whandle->type != DRM_API_HANDLE_TYPE_FD) {
+		debug_printf("%s: attempt to import unsupported handle type %d\n",
+			     __FUNCTION__, whandle->type);
+		return NULL;
+	}
+
+	if (whandle->type == DRM_API_HANDLE_TYPE_SHARED)
+		ret = nouveau_bo_name_ref(dev, whandle->handle, &bo);
+	else
+		ret = nouveau_bo_prime_handle_ref(dev, whandle->handle, &bo);
+
+	if (ret) {
+		debug_printf("%s: ref name 0x%08x failed with %d\n",
+			     __FUNCTION__, whandle->handle, ret);
+		return NULL;
+	}
+
+	*out_stride = whandle->stride;
+	return bo;
+}
+
+
+boolean
+nouveau_screen_bo_get_handle(struct pipe_screen *pscreen,
+			     struct nouveau_bo *bo,
+			     unsigned stride,
+			     struct winsys_handle *whandle)
+{
+	whandle->stride = stride;
+
+	if (whandle->type == DRM_API_HANDLE_TYPE_SHARED) {
+		return nouveau_bo_name_get(bo, &whandle->handle) == 0;
+	} else if (whandle->type == DRM_API_HANDLE_TYPE_KMS) {
+		whandle->handle = bo->handle;
+		return TRUE;
+	} else if (whandle->type == DRM_API_HANDLE_TYPE_FD) {
+		return nouveau_bo_set_prime(bo, (int *)&whandle->handle) == 0;
+	} else {
+		return FALSE;
+	}
 }
 
 int
 nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
 {
 	struct pipe_screen *pscreen = &screen->base;
-	int ret;
+	struct nv04_fifo nv04_data = { .vram = 0xbeef0201, .gart = 0xbeef0202 };
+	struct nvc0_fifo nvc0_data = { };
+	uint64_t time;
+	int size, ret;
+	void *data;
+	union nouveau_bo_config mm_config;
 
-	ret = nouveau_channel_alloc(dev, 0xbeef0201, 0xbeef0202,
-				    &screen->channel);
+	char *nv_dbg = getenv("NOUVEAU_MESA_DEBUG");
+	if (nv_dbg)
+	   nouveau_mesa_debug = atoi(nv_dbg);
+
+	/*
+	 * this is initialized to 1 in nouveau_drm_screen_create after screen
+	 * is fully constructed and added to the global screen list.
+	 */
+	screen->refcount = -1;
+
+	if (dev->chipset < 0xc0) {
+		data = &nv04_data;
+		size = sizeof(nv04_data);
+	} else {
+		data = &nvc0_data;
+		size = sizeof(nvc0_data);
+	}
+
+	ret = nouveau_object_new(&dev->object, 0, NOUVEAU_FIFO_CHANNEL_CLASS,
+				 data, size, &screen->channel);
 	if (ret)
 		return ret;
 	screen->device = dev;
 
+	ret = nouveau_client_new(screen->device, &screen->client);
+	if (ret)
+		return ret;
+	ret = nouveau_pushbuf_new(screen->client, screen->channel,
+				  4, 512 * 1024, 1,
+				  &screen->pushbuf);
+	if (ret)
+		return ret;
+
+        /* getting CPU time first appears to be more accurate */
+        screen->cpu_gpu_time_delta = os_time_get();
+
+        ret = nouveau_getparam(dev, NOUVEAU_GETPARAM_PTIMER_TIME, &time);
+        if (!ret)
+           screen->cpu_gpu_time_delta = time - screen->cpu_gpu_time_delta * 1000;
+
 	pscreen->get_name = nouveau_screen_get_name;
 	pscreen->get_vendor = nouveau_screen_get_vendor;
 
-	pscreen->buffer_create = nouveau_screen_bo_new;
-	pscreen->user_buffer_create = nouveau_screen_bo_user;
-	pscreen->buffer_map = nouveau_screen_bo_map;
-	pscreen->buffer_map_range = nouveau_screen_bo_map_range;
-	pscreen->buffer_flush_mapped_range = nouveau_screen_bo_map_flush;
-	pscreen->buffer_unmap = nouveau_screen_bo_unmap;
-	pscreen->buffer_destroy = nouveau_screen_bo_del;
+	pscreen->get_timestamp = nouveau_screen_get_timestamp;
 
 	pscreen->fence_reference = nouveau_screen_fence_ref;
 	pscreen->fence_signalled = nouveau_screen_fence_signalled;
 	pscreen->fence_finish = nouveau_screen_fence_finish;
 
+	util_format_s3tc_init();
+
+	screen->lowmem_bindings = PIPE_BIND_GLOBAL; /* gallium limit */
+	screen->vidmem_bindings =
+		PIPE_BIND_RENDER_TARGET | PIPE_BIND_DEPTH_STENCIL |
+		PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT |
+		PIPE_BIND_CURSOR |
+		PIPE_BIND_SAMPLER_VIEW |
+		PIPE_BIND_SHADER_RESOURCE | PIPE_BIND_COMPUTE_RESOURCE |
+		PIPE_BIND_GLOBAL;
+	screen->sysmem_bindings =
+		PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_STREAM_OUTPUT |
+		PIPE_BIND_COMMAND_ARGS_BUFFER;
+
+	memset(&mm_config, 0, sizeof(mm_config));
+
+	screen->mm_GART = nouveau_mm_create(dev,
+					    NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
+					    &mm_config);
+	screen->mm_VRAM = nouveau_mm_create(dev, NOUVEAU_BO_VRAM, &mm_config);
 	return 0;
 }
 
 void
 nouveau_screen_fini(struct nouveau_screen *screen)
 {
-	struct pipe_winsys *ws = screen->base.winsys;
-	nouveau_channel_free(&screen->channel);
-	ws->destroy(ws);
-}
+	nouveau_mm_destroy(screen->mm_GART);
+	nouveau_mm_destroy(screen->mm_VRAM);
 
+	nouveau_pushbuf_del(&screen->pushbuf);
+
+	nouveau_client_del(&screen->client);
+	nouveau_object_del(&screen->channel);
+
+	nouveau_device_del(&screen->device);
+}

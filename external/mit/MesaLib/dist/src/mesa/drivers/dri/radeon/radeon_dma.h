@@ -38,8 +38,10 @@ void radeonEmitVec8(uint32_t *out, const GLvoid * data, int stride, int count);
 void radeonEmitVec12(uint32_t *out, const GLvoid * data, int stride, int count);
 void radeonEmitVec16(uint32_t *out, const GLvoid * data, int stride, int count);
 
-void rcommon_emit_vector(GLcontext * ctx, struct radeon_aos *aos,
+void rcommon_emit_vector(struct gl_context * ctx, struct radeon_aos *aos,
 			 const GLvoid * data, int size, int stride, int count);
+void rcommon_emit_vecfog(struct gl_context *ctx, struct radeon_aos *aos,
+			 GLvoid *data, int stride, int count);
 
 void radeonReturnDmaRegion(radeonContextPtr rmesa, int return_bytes);
 void radeonRefillCurrentDmaRegion(radeonContextPtr rmesa, int size);
@@ -50,9 +52,9 @@ void radeonAllocDmaRegion(radeonContextPtr rmesa,
 			  int bytes, int alignment);
 void radeonReleaseDmaRegions(radeonContextPtr rmesa);
 
-void rcommon_flush_last_swtcl_prim(GLcontext *ctx);
+void rcommon_flush_last_swtcl_prim(struct gl_context *ctx);
 
 void *rcommonAllocDmaLowVerts(radeonContextPtr rmesa, int nverts, int vsize);
 void radeonFreeDmaRegions(radeonContextPtr rmesa);
-void radeonReleaseArrays( GLcontext *ctx, GLuint newinputs );
+void radeonReleaseArrays( struct gl_context *ctx, GLuint newinputs );
 #endif

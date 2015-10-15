@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -53,6 +53,7 @@
   * - rasterizer (old setup)
   * - sampler
   * - vertex shader
+  * - vertex elements
   *
   * Things that are not constant state objects include:
   * - blend_color
@@ -66,7 +67,7 @@
   * - texture_state
   * - viewport_state
   *
-  * @author Zack Rusin <zack@tungstengraphics.com>
+  * @author Zack Rusin <zackr@vmware.com>
   */
 
 #ifndef CSO_CACHE_H
@@ -85,12 +86,12 @@ extern "C" {
 #endif
 
 enum cso_cache_type {
-   CSO_BLEND,
-   CSO_SAMPLER,
-   CSO_DEPTH_STENCIL_ALPHA,
    CSO_RASTERIZER,
-   CSO_FRAGMENT_SHADER,
-   CSO_VERTEX_SHADER
+   CSO_BLEND,
+   CSO_DEPTH_STENCIL_ALPHA,
+   CSO_SAMPLER,
+   CSO_VELEMENTS,
+   CSO_CACHE_MAX,
 };
 
 typedef void (*cso_state_callback)(void *ctx, void *obj);
@@ -123,22 +124,20 @@ struct cso_rasterizer {
    struct pipe_context *context;
 };
 
-struct cso_fragment_shader {
-   struct pipe_shader_state state;
-   void *data;
-   cso_state_callback delete_state;
-   struct pipe_context *context;
-};
-
-struct cso_vertex_shader {
-   struct pipe_shader_state state;
-   void *data;
-   cso_state_callback delete_state;
-   struct pipe_context *context;
-};
-
 struct cso_sampler {
    struct pipe_sampler_state state;
+   void *data;
+   cso_state_callback delete_state;
+   struct pipe_context *context;
+};
+
+struct cso_velems_state {
+   unsigned count;
+   struct pipe_vertex_element velems[PIPE_MAX_ATTRIBS];
+};
+
+struct cso_velements {
+   struct cso_velems_state state;
    void *data;
    cso_state_callback delete_state;
    struct pipe_context *context;

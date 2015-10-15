@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,7 +32,7 @@
 #include "pipe/p_screen.h"
 
 
-struct intel_winsys;
+struct i915_winsys;
 
 
 /**
@@ -42,20 +42,15 @@ struct i915_screen
 {
    struct pipe_screen base;
 
-   struct intel_winsys *iws;
+   struct i915_winsys *iws;
 
    boolean is_i945;
-   uint pci_id;
-};
 
-/**
- * Subclass of pipe_transfer
- */
-struct i915_transfer
-{
-   struct pipe_transfer base;
-
-   unsigned offset;
+   struct {
+      boolean tiling;
+      boolean lie;
+      boolean use_blitter;
+   } debug;
 };
 
 
@@ -70,11 +65,11 @@ i915_screen(struct pipe_screen *pscreen)
    return (struct i915_screen *) pscreen;
 }
 
-static INLINE struct i915_transfer *
-i915_transfer(struct pipe_transfer *transfer)
-{
-   return (struct i915_transfer *)transfer;
-}
-
+boolean
+i915_is_format_supported(struct pipe_screen *screen,
+                         enum pipe_format format,
+                         enum pipe_texture_target target,
+                         unsigned sample_count,
+                         unsigned tex_usage);
 
 #endif /* I915_SCREEN_H */

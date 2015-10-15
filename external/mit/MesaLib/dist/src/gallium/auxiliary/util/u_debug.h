@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,7 +32,7 @@
  * For now it just has assert and printf replacements, but it might be extended 
  * with stack trace reports and more advanced logging in the near future. 
  * 
- * @author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
 #ifndef U_DEBUG_H_
@@ -40,6 +40,8 @@
 
 
 #include "os/os_misc.h"
+
+#include "pipe/p_format.h"
 
 
 #ifdef	__cplusplus
@@ -91,14 +93,17 @@ debug_printf(const char *format, ...)
    (void) format; /* silence warning */
 #endif
 }
+#else /* is Haiku */
+/* Haiku provides debug_printf in libroot with OS.h */
+#include <OS.h>
+#endif
 
-#endif /* !PIPE_OS_HAIKU */
 
 /*
  * ... isn't portable so we need to pass arguments in parentheses.
  *
  * usage:
- *    debug_printf_once(("awnser: %i\n", 42));
+ *    debug_printf_once(("answer: %i\n", 42));
  */
 #define debug_printf_once(args) \
    do { \
@@ -134,6 +139,15 @@ void debug_print_format(const char *msg, unsigned fmt );
 
 
 /**
+ * Disable interactive error message boxes.
+ *
+ * Should be called as soon as possible for effectiveness.
+ */
+void
+debug_disable_error_message_boxes(void);
+
+
+/**
  * Hard-coded breakpoint.
  */
 #ifdef DEBUG
@@ -146,10 +160,17 @@ void debug_print_format(const char *msg, unsigned fmt );
 long
 debug_get_num_option(const char *name, long dfault);
 
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
 void _debug_assert_fail(const char *expr, 
                         const char *file, 
                         unsigned line, 
-                        const char *function);
+                        const char *function)
+#ifdef __GNUC__
+   __attribute__((__noreturn__))
+#endif
+;
 
 
 /** 
@@ -192,7 +213,7 @@ void _debug_assert_fail(const char *expr,
  */
 #ifdef DEBUG
 #define debug_checkpoint_full() \
-   _debug_printf("%s:%u:%s", __FILE__, __LINE__, __FUNCTION__) 
+   _debug_printf("%s:%u:%s\n", __FILE__, __LINE__, __FUNCTION__)
 #else
 #define debug_checkpoint_full() \
    ((void)0) 
@@ -207,6 +228,25 @@ void _debug_assert_fail(const char *expr,
    _debug_printf("%s:%u:%s: warning: %s\n", __FILE__, __LINE__, __FUNCTION__, __msg)
 #else
 #define debug_warning(__msg) \
+   ((void)0) 
+#endif
+
+
+/**
+ * Emit a warning message, but only once.
+ */
+#ifdef DEBUG
+#define debug_warn_once(__msg) \
+   do { \
+      static bool warned = FALSE; \
+      if (!warned) { \
+         _debug_printf("%s:%u:%s: one time warning: %s\n", \
+                       __FILE__, __LINE__, __FUNCTION__, __msg); \
+         warned = TRUE; \
+      } \
+   } while (0)
+#else
+#define debug_warn_once(__msg) \
    ((void)0) 
 #endif
 
@@ -230,6 +270,7 @@ struct debug_named_value
 {
    const char *name;
    unsigned long value;
+   const char *desc;
 };
 
 
@@ -252,8 +293,9 @@ struct debug_named_value
  *    ...
  * @endcode
  */
-#define DEBUG_NAMED_VALUE(__symbol) {#__symbol, (unsigned long)__symbol} 
-#define DEBUG_NAMED_VALUE_END {NULL, 0} 
+#define DEBUG_NAMED_VALUE(__symbol) {#__symbol, (unsigned long)__symbol, NULL}
+#define DEBUG_NAMED_VALUE_WITH_DESCRIPTION(__symbol, __desc) {#__symbol, (unsigned long)__symbol, __desc}
+#define DEBUG_NAMED_VALUE_END {NULL, 0, NULL}
 
 
 /**
@@ -275,6 +317,43 @@ debug_dump_enum_noprefix(const struct debug_named_value *names,
 const char *
 debug_dump_flags(const struct debug_named_value *names, 
                  unsigned long value);
+
+
+/**
+ * Function enter exit loggers
+ */
+#ifdef DEBUG
+int debug_funclog_enter(const char* f, const int line, const char* file);
+void debug_funclog_exit(const char* f, const int line, const char* file);
+void debug_funclog_enter_exit(const char* f, const int line, const char* file);
+
+#define DEBUG_FUNCLOG_ENTER() \
+   int __debug_decleration_work_around = \
+      debug_funclog_enter(__FUNCTION__, __LINE__, __FILE__)
+#define DEBUG_FUNCLOG_EXIT() \
+   do { \
+      (void)__debug_decleration_work_around; \
+      debug_funclog_exit(__FUNCTION__, __LINE__, __FILE__); \
+      return; \
+   } while(0)
+#define DEBUG_FUNCLOG_EXIT_RET(ret) \
+   do { \
+      (void)__debug_decleration_work_around; \
+      debug_funclog_exit(__FUNCTION__, __LINE__, __FILE__); \
+      return ret; \
+   } while(0)
+#define DEBUG_FUNCLOG_ENTER_EXIT() \
+   debug_funclog_enter_exit(__FUNCTION__, __LINE__, __FILE__)
+
+#else
+#define DEBUG_FUNCLOG_ENTER() \
+   int __debug_decleration_work_around
+#define DEBUG_FUNCLOG_EXIT() \
+   do { (void)__debug_decleration_work_around; return; } while(0)
+#define DEBUG_FUNCLOG_EXIT_RET(ret) \
+   do { (void)__debug_decleration_work_around; return ret; } while(0)
+#define DEBUG_FUNCLOG_ENTER_EXIT()
+#endif
 
 
 /**
@@ -303,6 +382,45 @@ debug_get_flags_option(const char *name,
                        const struct debug_named_value *flags,
                        unsigned long dfault);
 
+#define DEBUG_GET_ONCE_BOOL_OPTION(sufix, name, dfault) \
+static boolean \
+debug_get_option_ ## sufix (void) \
+{ \
+   static boolean first = TRUE; \
+   static boolean value; \
+   if (first) { \
+      first = FALSE; \
+      value = debug_get_bool_option(name, dfault); \
+   } \
+   return value; \
+}
+
+#define DEBUG_GET_ONCE_NUM_OPTION(sufix, name, dfault) \
+static long \
+debug_get_option_ ## sufix (void) \
+{ \
+   static boolean first = TRUE; \
+   static long value; \
+   if (first) { \
+      first = FALSE; \
+      value = debug_get_num_option(name, dfault); \
+   } \
+   return value; \
+}
+
+#define DEBUG_GET_ONCE_FLAGS_OPTION(sufix, name, flags, dfault) \
+static unsigned long \
+debug_get_option_ ## sufix (void) \
+{ \
+   static boolean first = TRUE; \
+   static unsigned long value; \
+   if (first) { \
+      first = FALSE; \
+      value = debug_get_flags_option(name, flags, dfault); \
+   } \
+   return value; \
+}
+
 
 unsigned long
 debug_memory_begin(void);
@@ -312,33 +430,42 @@ debug_memory_end(unsigned long beginning);
 
 
 #ifdef DEBUG
+struct pipe_context;
 struct pipe_surface;
 struct pipe_transfer;
-struct pipe_texture;
+struct pipe_resource;
 
 void debug_dump_image(const char *prefix,
-                      unsigned format, unsigned cpp,
+                      enum pipe_format format, unsigned cpp,
                       unsigned width, unsigned height,
                       unsigned stride,
                       const void *data);
-void debug_dump_surface(const char *prefix,
+void debug_dump_surface(struct pipe_context *pipe,
+			const char *prefix,
                         struct pipe_surface *surface);   
-void debug_dump_texture(const char *prefix,
-                        struct pipe_texture *texture);
-void debug_dump_surface_bmp(const char *filename,
+void debug_dump_texture(struct pipe_context *pipe,
+			const char *prefix,
+                        struct pipe_resource *texture);
+void debug_dump_surface_bmp(struct pipe_context *pipe,
+                            const char *filename,
                             struct pipe_surface *surface);
-void debug_dump_transfer_bmp(const char *filename,
-                             struct pipe_transfer *transfer);
+void debug_dump_transfer_bmp(struct pipe_context *pipe,
+                             const char *filename,
+                             struct pipe_transfer *transfer, void *ptr);
 void debug_dump_float_rgba_bmp(const char *filename,
                                unsigned width, unsigned height,
                                float *rgba, unsigned stride);
 #else
 #define debug_dump_image(prefix, format, cpp, width, height, stride, data) ((void)0)
-#define debug_dump_surface(prefix, surface) ((void)0)
-#define debug_dump_surface_bmp(filename, surface) ((void)0)
-#define debug_dump_transfer_bmp(filename, transfer) ((void)0)
+#define debug_dump_surface(pipe, prefix, surface) ((void)0)
+#define debug_dump_surface_bmp(pipe, filename, surface) ((void)0)
+#define debug_dump_transfer_bmp(filename, transfer, ptr) ((void)0)
 #define debug_dump_float_rgba_bmp(filename, width, height, rgba, stride) ((void)0)
 #endif
+
+
+void
+debug_print_transfer_flags(const char *msg, unsigned usage);
 
 
 #ifdef	__cplusplus

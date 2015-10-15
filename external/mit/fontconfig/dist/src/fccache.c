@@ -20,9 +20,6 @@
  * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
 #include "fcint.h"
 #include "fcarch.h"
 #include <stdio.h>
@@ -31,6 +28,7 @@
 #include <dirent.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <assert.h>
 #if defined(HAVE_MMAP) || defined(__CYGWIN__)
 #  include <unistd.h>
@@ -299,7 +297,7 @@ free_lock (void)
   lock = fc_atomic_ptr_get (&cache_lock);
   if (lock && fc_atomic_ptr_cmpexch (&cache_lock, lock, NULL)) {
     FcMutexFinish (lock);
-    free (lock);
+    free (((void *)(uintptr_t)lock));
   }
 }
 
@@ -575,7 +573,7 @@ FcDirCacheMapFd (int fd, struct stat *fd_stat, struct stat *dir_stat)
     {
 #if defined(HAVE_MMAP) || defined(__CYGWIN__)
 	cache = mmap (0, fd_stat->st_size, PROT_READ, MAP_SHARED, fd, 0);
-#ifdef HAVE_POSIX_FADVISE
+#if (HAVE_POSIX_FADVISE) && defined(POSIX_FADV_WILLNEED)
 	posix_fadvise (fd, 0, fd_stat->st_size, POSIX_FADV_WILLNEED);
 #endif
 	if (cache == MAP_FAILED)
@@ -830,32 +828,17 @@ bail1:
     return NULL;
 }
 
-
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path,mode) _mkdir(path)
-#endif
-
-static FcBool
-FcMakeDirectory (const FcChar8 *dir)
+FcCache *
+FcDirCacheRebuild (FcCache *cache, struct stat *dir_stat, FcStrSet *dirs)
 {
-    FcChar8 *parent;
-    FcBool  ret;
+    FcCache *new;
+    FcFontSet *set = FcFontSetDeserialize (FcCacheSet (cache));
+    const FcChar8 *dir = FcCacheDir (cache);
 
-    if (strlen ((char *) dir) == 0)
-	return FcFalse;
+    new = FcDirCacheBuild (set, dir, dir_stat, dirs);
+    FcFontSetDestroy (set);
 
-    parent = FcStrDirname (dir);
-    if (!parent)
-	return FcFalse;
-    if (access ((char *) parent, F_OK) == 0)
-	ret = mkdir ((char *) dir, 0755) == 0 && chmod ((char *) dir, 0755) == 0;
-    else if (access ((char *) parent, F_OK) == -1)
-	ret = FcMakeDirectory (parent) && (mkdir ((char *) dir, 0755) == 0) && chmod ((char *) dir, 0755) == 0;
-    else
-	ret = FcFalse;
-    FcStrFree (parent);
-    return ret;
+    return new;
 }
 
 /* write serialized state to the cache file */
